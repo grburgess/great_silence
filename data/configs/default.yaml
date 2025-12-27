@@ -1,0 +1,59 @@
+# Default configuration for GalaticBot simulation
+
+galaxy:
+  disk_radius_kpc: 15.0
+  disk_height_kpc: 0.3
+  bulge_radius_kpc: 3.0
+  halo_radius_kpc: 50.0
+  stellar_density_profile: exponential
+  scale_length_kpc: 3.5
+  rotation_velocity_km_s: 220.0
+  spiral_arm_count: 4
+  spiral_arm_strength: 0.2
+  enable_bar: true
+  total_stars: 100000000
+
+astrophysics:
+  current_sfr_msun_yr: 1.5
+  sfr_peak_age_gyr: 10.0
+  imf_type: kroupa
+  sn_rate_per_century: 2.0
+  sn_lethal_range_pc: 10.0
+  sn_sterilization_range_pc: 30.0
+  grb_rate_per_century: 0.01
+  grb_lethal_range_kpc: 5.0
+  grb_beaming_angle_deg: 10.0
+
+civilization:
+  # Drake equation parameters
+  fraction_stars_with_planets: 1.0
+  avg_habitable_planets_per_system: 0.2
+  fraction_develop_life: 0.5
+  fraction_develop_intelligence: 0.1
+  fraction_develop_technology: 0.1
+
+  # Lifetime and behavior
+  mean_civilization_lifetime_myr: 1.0
+  lifetime_stddev_myr: 0.5
+
+  # Expansion
+  expansion_enabled: true
+  expansion_velocity_fraction_c: 0.01
+  colonization_probability: 0.8
+  min_habitable_distance_pc: 1.0
+  max_expansion_range_pc: 1000.0
+
+  # Extinction
+  self_destruction_probability_per_myr: 0.1
+
+simulation:
+  simulation_duration_gyr: 10.0
+  time_step_myr: 1.0
+  num_realizations: 100
+  random_seed: 42
+  use_numba: true
+  parallel_processing: true
+  chunk_size: 10000
+  save_snapshots: true
+  snapshot_interval_myr: 100.0
+  output_directory: output

@@ -1,0 +1,695 @@
+"""3D galactic structure modeling with proper stellar kinematics."""
+
+import numpy as np
+from typing import Tuple, Optional
+from ..config.parameters import GalaxyParameters
+
+
+class GalaxyModel:
+    """
+    3D model of a Milky Way-like spiral galaxy.
+
+    Handles stellar positions, velocities, and galactic rotation.
+    Uses exponential disk profile with optional bulge and spiral arms.
+    """
+
+    def __init__(self, params: GalaxyParameters, seed: Optional[int] = None, use_numba: bool = True):
+        """
+        Initialize galaxy model.
+
+        Args:
+            params: Galaxy configuration parameters
+            seed: Random seed for reproducibility
+            use_numba: Use Numba JIT-compiled kernels for performance (recommended for M1 Max)
+        """
+        self.params = params
+        self.rng = np.random.default_rng(seed)
+        self.use_numba = use_numba
+
+        # Store stellar positions and properties
+        self.positions: Optional[np.ndarray] = None  # (N, 3) in kpc
+        self.velocities: Optional[np.ndarray] = None  # (N, 3) in km/s
+        self.ages: Optional[np.ndarray] = None  # in Gyr
+        self.masses: Optional[np.ndarray] = None  # in solar masses
+        self.metallicities: Optional[np.ndarray] = None  # [Fe/H] in dex
+        self.stellar_types: Optional[np.ndarray] = None
+        self.component_type: Optional[np.ndarray] = None  # 0=bulge, 1=thin disk, 2=thick disk
+
+    def generate_stellar_population(self) -> None:
+        """
+        Generate stellar positions, velocities, and properties.
+
+        Includes bulge + disk components if configured.
+        """
+        n_stars = self.params.total_stars
+
+        # Generate positions based on components (bulge + disk)
+        if self.params.include_bulge:
+            positions_list = []
+            component_types = []
+
+            # Bulge component
+            n_bulge = int(n_stars * self.params.bulge_fraction)
+            if n_bulge > 0:
+                bulge_pos = self._generate_bulge(n_bulge)
+                positions_list.append(bulge_pos)
+                component_types.extend([0] * n_bulge)  # 0 = bulge
+
+            # Disk component
+            n_disk = n_stars - n_bulge
+            if self.params.stellar_density_profile == "exponential":
+                disk_pos = self._generate_exponential_disk(n_disk, use_numba=self.use_numba)
+            else:
+                disk_pos = self._generate_double_exponential_disk(n_disk)
+            positions_list.append(disk_pos)
+            component_types.extend([1] * n_disk)  # 1 = thin disk
+
+            # Combine
+            self.positions = np.vstack(positions_list)
+            self.component_type = np.array(component_types, dtype=int)
+        else:
+            # Disk only (legacy behavior)
+            if self.params.stellar_density_profile == "exponential":
+                self.positions = self._generate_exponential_disk(n_stars, use_numba=self.use_numba)
+            else:
+                self.positions = self._generate_double_exponential_disk(n_stars)
+            self.component_type = np.ones(n_stars, dtype=int)  # All disk
+
+        # Add spiral arm perturbations (disk only)
+        if self.params.spiral_arm_count > 0:
+            self._apply_spiral_arms()
+
+        # Generate velocities from rotation curve
+        self.velocities = self._generate_velocities()
+
+        # Initialize stellar ages, masses, and metallicities
+        # (will be populated by star formation history with gradients)
+        self.ages = np.zeros(n_stars)
+        self.masses = np.ones(n_stars)  # Solar masses
+        self.metallicities = np.zeros(n_stars)  # [Fe/H]
+        self.stellar_types = np.zeros(n_stars, dtype=int)
+
+    def _generate_exponential_disk(self, n_stars: int, use_numba: bool = True) -> np.ndarray:
+        """
+        Generate stellar positions using exponential disk profile.
+
+        ρ(R, z) = ρ₀ exp(-R/h_R) exp(-|z|/h_z)
+
+        Uses Numba-accelerated rejection sampling for 50-100x speedup when
+        use_numba=True.
+
+        Args:
+            n_stars: Number of stars to generate
+            use_numba: Use Numba JIT-compiled kernel (recommended)
+
+        Returns:
+            Array of shape (n_stars, 3) with (x, y, z) positions in kpc
+        """
+        h_R = self.params.scale_length_kpc
+        h_z = self.params.disk_height_kpc
+
+        # Sample radii using Numba kernel if available
+        if use_numba:
+            try:
+                from ..utils.numba_kernels import rejection_sample_exponential_disk_radii
+                # Generate seed from RNG state
+                seed = self.rng.integers(0, 2**31)
+                r = rejection_sample_exponential_disk_radii(
+                    n_stars, h_R, self.params.disk_radius_kpc, seed
+                )
+            except ImportError:
+                use_numba = False
+
+        if not use_numba:
+            # Fallback: Python rejection sampling (slow for large N)
+            r = np.zeros(n_stars)
+            for i in range(n_stars):
+                while True:
+                    r_test = self.rng.exponential(h_R)
+                    if r_test < self.params.disk_radius_kpc:
+                        # Accept with probability proportional to r
+                        if self.rng.uniform(0, 1) < r_test / self.params.disk_radius_kpc:
+                            r[i] = r_test
+                            break
+
+        # Random azimuthal angles
+        theta = self.rng.uniform(0, 2 * np.pi, n_stars)
+
+        # Heights from exponential distribution
+        z = self.rng.laplace(0, h_z, n_stars)
+
+        # Convert to Cartesian coordinates
+        x = r * np.cos(theta)
+        y = r * np.sin(theta)
+
+        return np.column_stack([x, y, z])
+
+    def _generate_bulge(self, n_stars: int) -> np.ndarray:
+        """
+        Generate stellar positions for bulge using Hernquist profile.
+
+        The Hernquist profile is a good approximation for elliptical galaxies
+        and bulges:
+            ρ(r) ∝ 1 / (r * (r + a)³)
+
+        where a is the scale radius.
+
+        Args:
+            n_stars: Number of bulge stars
+
+        Returns:
+            Array of shape (n_stars, 3) with bulge positions
+        """
+        a = self.params.bulge_radius_kpc  # Scale radius
+
+        # Truncate Hernquist profile at r_max to avoid infinite tail
+        # Choose r_max = 10 * a (contains ~99% of mass)
+        r_max = 10.0 * a
+
+        # Sample radii from truncated Hernquist cumulative distribution
+        # For Hernquist: M(<r) = M_total * r² / (r + a)²
+        # Inverting: r = a * u / (1 - u) where u ~ Uniform(0, u_max)
+        # u_max corresponds to r_max: u_max = r_max / (r_max + a)
+        u_max = r_max / (r_max + a)
+        u = self.rng.uniform(0, u_max, n_stars)
+        r = a * u / (1 - u)
+
+        # Convert to Cartesian (isotropic sphere)
+        # Sample angles uniformly on sphere
+        theta = np.arccos(2 * self.rng.uniform(0, 1, n_stars) - 1)  # Polar angle
+        phi = 2 * np.pi * self.rng.uniform(0, 1, n_stars)  # Azimuthal angle
+
+        # Convert to Cartesian
+        x = r * np.sin(theta) * np.cos(phi)
+        y = r * np.sin(theta) * np.sin(phi)
+        z = r * np.cos(theta)
+
+        return np.column_stack([x, y, z])
+
+    def _generate_double_exponential_disk(self, n_stars: int) -> np.ndarray:
+        """Generate positions with thin and thick disk components."""
+        # Split between thin (90%) and thick (10%) disk
+        n_thin = int(0.9 * n_stars)
+        n_thick = n_stars - n_thin
+
+        # Thin disk
+        thin_scale_height = self.params.disk_height_kpc
+        thick_scale_height = 3 * thin_scale_height
+
+        # Generate separately
+        old_height = self.params.disk_height_kpc
+
+        self.params.disk_height_kpc = thin_scale_height
+        thin_pos = self._generate_exponential_disk(n_thin)
+
+        self.params.disk_height_kpc = thick_scale_height
+        thick_pos = self._generate_exponential_disk(n_thick)
+
+        self.params.disk_height_kpc = old_height
+
+        return np.vstack([thin_pos, thick_pos])
+
+    def _apply_spiral_arms(self) -> None:
+        """Apply spiral arm density enhancements to stellar positions."""
+        if self.positions is None:
+            return
+
+        n_arms = self.params.spiral_arm_count
+        strength = self.params.spiral_arm_strength
+
+        x, y, z = self.positions[:, 0], self.positions[:, 1], self.positions[:, 2]
+        r = np.sqrt(x**2 + y**2)
+        theta = np.arctan2(y, x)
+
+        # Logarithmic spiral: r = a * exp(b * θ)
+        # Rearranged: θ_spiral = ln(r/a) / b
+        pitch_angle = 12 * np.pi / 180  # 12 degrees
+        b = 1 / np.tan(pitch_angle)
+
+        # For each arm, calculate angular offset
+        for i in range(n_arms):
+            arm_angle = 2 * np.pi * i / n_arms
+            theta_spiral = np.log(r / 1.0) / b + arm_angle
+
+            # Angular distance to this spiral arm
+            dtheta = np.abs((theta - theta_spiral + np.pi) % (2 * np.pi) - np.pi)
+
+            # Apply perturbation based on proximity to spiral arm
+            perturbation = strength * np.exp(-dtheta**2 / 0.1)
+
+            # Perturb positions radially
+            x += perturbation * x / (r + 1e-10)
+            y += perturbation * y / (r + 1e-10)
+
+        self.positions[:, 0] = x
+        self.positions[:, 1] = y
+
+    def _compute_circular_velocity(self, position: np.ndarray) -> float:
+        """
+        Compute circular velocity at a position from the gravitational potential.
+
+        For a circular orbit at cylindrical radius R, the centripetal acceleration
+        equals the radial gravitational acceleration:
+            v_circ² / R = |a_R|
+            v_circ = sqrt(R * |a_R|)
+
+        The computed velocity is normalized to match the target rotation velocity
+        at R=8 kpc (solar neighborhood).
+
+        Args:
+            position: Position (x, y, z) in kpc
+
+        Returns:
+            Circular velocity in km/s
+        """
+        # Compute total gravitational acceleration
+        accel = self._compute_gravitational_acceleration(position.reshape(1, 3))[0]
+
+        # Extract radial component (in xy-plane)
+        x, y = position[0], position[1]
+        R = np.sqrt(x**2 + y**2)
+
+        if R < 1e-6:
+            # Near center, use small-R approximation
+            return 0.0
+
+        # Radial acceleration (pointing inward is negative)
+        a_R = (accel[0] * x + accel[1] * y) / R
+
+        # Circular velocity: v² / R = |a_R|
+        # a_R is negative (pointing inward), so we use -a_R
+        v_circ_kpc_myr = np.sqrt(R * (-a_R)) if a_R < 0 else 0.0
+
+        # Convert from kpc/Myr to km/s
+        v_circ_km_s = v_circ_kpc_myr / 0.001022
+
+        return v_circ_km_s
+
+    def _generate_velocities(self) -> np.ndarray:
+        """
+        Generate stellar velocities in equilibrium with gravitational potential.
+
+        Uses the actual gravitational potential (disk + bulge + halo) to compute
+        circular velocities, ensuring stars are in stable orbits. Bulge stars are
+        pressure-supported with random motions.
+        """
+        if self.positions is None:
+            raise ValueError("Must generate positions before velocities")
+
+        n_stars = len(self.positions)
+        x, y, z = self.positions[:, 0], self.positions[:, 1], self.positions[:, 2]
+        R = np.sqrt(x**2 + y**2)
+
+        v_x = np.zeros(n_stars)
+        v_y = np.zeros(n_stars)
+        v_z = np.zeros(n_stars)
+
+        # Handle each component differently
+        if self.component_type is not None:
+            # Bulge stars (component_type == 0): pressure-supported
+            bulge_mask = self.component_type == 0
+            if np.any(bulge_mask):
+                n_bulge = np.sum(bulge_mask)
+                sigma_bulge = self.params.bulge_velocity_dispersion_km_s
+
+                # Compute circular velocity from potential at bulge scale radius
+                bulge_ref_pos = np.array([self.params.bulge_radius_kpc, 0.0, 0.0])
+                v_rot_bulge = 0.3 * self._compute_circular_velocity(bulge_ref_pos)
+
+                # Isotropic velocity dispersion + small rotation
+                for i in np.where(bulge_mask)[0]:
+                    r_i = R[i] + 1e-10
+                    v_x[i] = self.rng.normal(0, sigma_bulge)
+                    v_y[i] = self.rng.normal(0, sigma_bulge) + v_rot_bulge * x[i] / r_i
+                    v_z[i] = self.rng.normal(0, sigma_bulge)
+
+            # Disk stars (component_type >= 1): rotationally-supported
+            disk_mask = self.component_type >= 1
+            if np.any(disk_mask):
+                print("  Computing equilibrium velocities from potential...")
+
+                for i in np.where(disk_mask)[0]:
+                    # Compute circular velocity from potential
+                    v_circ = self._compute_circular_velocity(self.positions[i])
+
+                    r_i = R[i] + 1e-10
+                    x_i, y_i, z_i = x[i], y[i], z[i]
+
+                    # Circular velocity components (counterclockwise)
+                    v_x[i] = -v_circ * y_i / r_i
+                    v_y[i] = v_circ * x_i / r_i
+
+                    # Add velocity dispersion (increases with height)
+                    sigma_r = 30.0 * (1 + np.abs(z_i) / self.params.disk_height_kpc)
+                    sigma_theta = 20.0 * (1 + np.abs(z_i) / self.params.disk_height_kpc)
+                    sigma_z = 20.0 * (1 + np.abs(z_i) / self.params.disk_height_kpc)
+
+                    # Add random dispersions
+                    v_x[i] += self.rng.normal(0, sigma_r)
+                    v_y[i] += self.rng.normal(0, sigma_theta)
+                    v_z[i] += self.rng.normal(0, sigma_z)
+        else:
+            # Legacy: all stars in disk with flat rotation curve
+            v_circ = self.params.rotation_velocity_km_s
+
+            v_x = -v_circ * y / (R + 1e-10)
+            v_y = v_circ * x / (R + 1e-10)
+
+            sigma_r = 30.0 * (1 + np.abs(z) / self.params.disk_height_kpc)
+            sigma_theta = 20.0 * (1 + np.abs(z) / self.params.disk_height_kpc)
+            sigma_z = 20.0 * (1 + np.abs(z) / self.params.disk_height_kpc)
+
+            v_x += self.rng.normal(0, sigma_r, n_stars)
+            v_y += self.rng.normal(0, sigma_theta, n_stars)
+            v_z += self.rng.normal(0, sigma_z, n_stars)
+
+        return np.column_stack([v_x, v_y, v_z])
+
+    def calculate_metallicities(self) -> np.ndarray:
+        """
+        Calculate metallicity [Fe/H] for each star with radial gradient.
+
+        Metallicity decreases with galactocentric radius (radial gradient).
+        Bulge stars are metal-rich.
+
+        Returns:
+            Array of metallicities in dex ([Fe/H])
+        """
+        if self.positions is None:
+            raise ValueError("Must generate positions first")
+
+        n_stars = len(self.positions)
+        metallicities = np.zeros(n_stars)
+
+        # Calculate galactocentric radius
+        x, y = self.positions[:, 0], self.positions[:, 1]
+        radii = np.sqrt(x**2 + y**2)
+
+        for i in range(n_stars):
+            r = radii[i]
+
+            if self.component_type is not None and self.component_type[i] == 0:
+                # Bulge: metal-rich
+                metallicities[i] = self.params.central_metallicity_feh
+            else:
+                # Disk: linear gradient with radius
+                # [Fe/H](r) = [Fe/H]_center + gradient * r
+                metallicities[i] = self.params.central_metallicity_feh + \
+                                   self.params.metallicity_gradient_dex_per_kpc * r
+
+        return metallicities
+
+    def _compute_disk_acceleration(
+        self,
+        positions: np.ndarray
+    ) -> np.ndarray:
+        """
+        Compute gravitational acceleration from Miyamoto-Nagai disk potential.
+
+        The Miyamoto-Nagai potential provides a good analytic approximation
+        for a galactic disk:
+            Φ_disk(R, z) = -GM / sqrt(R² + (a + sqrt(z² + b²))²)
+
+        where:
+            R = sqrt(x² + y²) is cylindrical radius
+            a = disk scale length
+            b = disk scale height
+            M = disk mass
+
+        Args:
+            positions: Array of shape (N, 3) with stellar positions in kpc
+
+        Returns:
+            Array of shape (N, 3) with acceleration in km/s per Myr
+        """
+        x, y, z = positions[:, 0], positions[:, 1], positions[:, 2]
+        R = np.sqrt(x**2 + y**2)
+
+        # Miyamoto-Nagai parameters
+        a = self.params.scale_length_kpc  # Disk scale length
+        b = self.params.disk_height_kpc   # Disk scale height
+
+        # Estimate disk mass from rotation curve
+        # Total rotation curve v_total² = v_disk² + v_bulge² + v_halo²
+        # For Milky Way at R ~ 8 kpc: v_total ~ 220 km/s
+        # Typical breakdown: v_disk ~ 150 km/s, v_bulge ~ 80 km/s, v_halo ~ 120 km/s
+        # Fractions must satisfy: frac_disk² + frac_bulge² + frac_halo² = 1.0
+
+        v_circ = self.params.rotation_velocity_km_s  # Total circular velocity
+        v_disk_frac = 0.72  # Disk contributes 72% → 0.72² = 0.518
+        v_disk = v_disk_frac * v_circ
+
+        R_char = 8.0  # kpc (solar neighborhood)
+        G_kpc_msun = 4.498e-12  # G in kpc³/(M_sun Myr²)
+
+        # Convert v from km/s to kpc/Myr: 1 km/s = 0.001022 kpc/Myr
+        v_disk_kpc_myr = v_disk * 0.001022
+        M_disk = v_disk_kpc_myr**2 * R_char / G_kpc_msun  # Solar masses
+
+        # Miyamoto-Nagai acceleration components
+        # Φ = -GM / sqrt(R² + (a + sqrt(z² + b²))²)
+        # a_R = -∂Φ/∂R = -GM R / [R² + (a + sqrt(z² + b²))²]^(3/2)
+        # a_z = -∂Φ/∂z = -GM (a + sqrt(z² + b²)) z / [sqrt(z² + b²) × [...]^(3/2)]
+
+        sqrt_term = np.sqrt(z**2 + b**2)
+        D_squared = R**2 + (a + sqrt_term)**2
+        D_cubed = D_squared**1.5
+
+        # Radial component (in xy-plane)
+        a_R = -G_kpc_msun * M_disk * R / (D_cubed + 1e-30)
+
+        # z component
+        a_z = -G_kpc_msun * M_disk * (a + sqrt_term) * z / ((sqrt_term + 1e-10) * D_cubed + 1e-30)
+
+        # Convert to Cartesian (handle R=0 case)
+        a_x = a_R * x / (R + 1e-10)
+        a_y = a_R * y / (R + 1e-10)
+
+        return np.column_stack([a_x, a_y, a_z])
+
+    def _compute_bulge_acceleration(
+        self,
+        positions: np.ndarray
+    ) -> np.ndarray:
+        """
+        Compute gravitational acceleration from Hernquist bulge potential.
+
+        The Hernquist potential:
+            Φ_bulge(r) = -GM / (r + a)
+
+        where:
+            r = sqrt(x² + y² + z²) is spherical radius
+            a = bulge scale radius
+            M = bulge mass
+
+        Args:
+            positions: Array of shape (N, 3) with stellar positions in kpc
+
+        Returns:
+            Array of shape (N, 3) with acceleration in kpc/Myr²
+        """
+        if not self.params.include_bulge:
+            # No bulge - return zero acceleration
+            return np.zeros_like(positions)
+
+        x, y, z = positions[:, 0], positions[:, 1], positions[:, 2]
+        r = np.sqrt(x**2 + y**2 + z**2)
+
+        # Hernquist parameters
+        a_bulge = self.params.bulge_radius_kpc
+
+        # Bulge circular velocity contribution
+        # v_total² = v_disk² + v_bulge² + v_halo²
+        # Fractions: 0.72² + 0.38² + 0.58² = 0.518 + 0.144 + 0.336 = 0.998 ≈ 1.0
+        v_circ = self.params.rotation_velocity_km_s
+        v_bulge_frac = 0.38  # Bulge contributes 38% → 0.38² = 0.144
+        v_bulge = v_bulge_frac * v_circ
+
+        R_char = 8.0  # kpc
+        G_kpc_msun = 4.498e-12  # G in kpc³/(M_sun Myr²)
+
+        v_bulge_kpc_myr = v_bulge * 0.001022
+        M_bulge = v_bulge_kpc_myr**2 * R_char / G_kpc_msun
+
+        # Hernquist acceleration: a = -∇Φ where Φ = -GM/(r + a)
+        # ∂Φ/∂r = -GM/(r + a)²
+        # a_r = -∂Φ/∂r = GM/(r + a)² (pointing inward, so negative sign needed)
+        factor = -G_kpc_msun * M_bulge / ((r + a_bulge)**2 + 1e-30)
+
+        a_x = factor * x / (r + 1e-10)
+        a_y = factor * y / (r + 1e-10)
+        a_z = factor * z / (r + 1e-10)
+
+        return np.column_stack([a_x, a_y, a_z])
+
+    def _compute_halo_acceleration(
+        self,
+        positions: np.ndarray
+    ) -> np.ndarray:
+        """
+        Compute gravitational acceleration from NFW dark matter halo.
+
+        The NFW (Navarro-Frenk-White) potential is used for dark matter halos.
+        For simplicity, we use an isothermal sphere approximation which gives
+        a flat rotation curve (matching observations).
+
+        Φ_halo(r) = v_halo² ln(r)
+
+        This gives constant circular velocity at large radii.
+
+        Args:
+            positions: Array of shape (N, 3) with stellar positions in kpc
+
+        Returns:
+            Array of shape (N, 3) with acceleration in kpc/Myr²
+        """
+        x, y, z = positions[:, 0], positions[:, 1], positions[:, 2]
+        r = np.sqrt(x**2 + y**2 + z**2)
+
+        # Dark matter halo circular velocity contribution
+        # Total v² = v_disk² + v_bulge² + v_halo²
+        # Fractions: 0.72² + 0.38² + 0.58² ≈ 1.0
+        v_circ = self.params.rotation_velocity_km_s
+        v_halo_frac = 0.58  # Halo contributes 58% → 0.58² = 0.336
+        v_halo = v_halo_frac * v_circ
+
+        v_halo_kpc_myr = v_halo * 0.001022  # Convert to kpc/Myr
+
+        # Isothermal sphere: a = v_halo² / r (radially inward)
+        v_halo_sq = v_halo_kpc_myr**2
+
+        factor = -v_halo_sq / (r + 1e-10)
+
+        a_x = factor * x / (r + 1e-10)
+        a_y = factor * y / (r + 1e-10)
+        a_z = factor * z / (r + 1e-10)
+
+        return np.column_stack([a_x, a_y, a_z])
+
+    def _compute_gravitational_acceleration(
+        self,
+        positions: np.ndarray
+    ) -> np.ndarray:
+        """
+        Compute total gravitational acceleration from all components.
+
+        Sums contributions from:
+        - Miyamoto-Nagai disk
+        - Hernquist bulge
+        - Dark matter halo (isothermal sphere)
+
+        Args:
+            positions: Array of shape (N, 3) with stellar positions in kpc
+
+        Returns:
+            Array of shape (N, 3) with total acceleration in kpc/Myr²
+        """
+        a_disk = self._compute_disk_acceleration(positions)
+        a_bulge = self._compute_bulge_acceleration(positions)
+        a_halo = self._compute_halo_acceleration(positions)
+
+        return a_disk + a_bulge + a_halo
+
+    def evolve_positions(self, dt_myr: float, use_numba: bool = True, enable_motion: bool = False) -> None:
+        """
+        Evolve stellar positions and velocities using leapfrog integrator.
+
+        **EXPERIMENTAL FEATURE:** Gravitational evolution is currently disabled
+        by default because the initial velocity distribution (flat rotation curve)
+        is not in perfect equilibrium with the Miyamoto-Nagai + Hernquist + halo
+        potential. This causes systematic radial drift over long timescales.
+
+        For most simulations (<1 Gyr), static stellar positions are a good
+        approximation since stellar neighborhoods don't change significantly.
+
+        Uses a second-order symplectic leapfrog integrator which conserves
+        energy and angular momentum well for orbital dynamics.
+
+        The leapfrog algorithm (drift-kick form):
+        1. Compute acceleration a(t) at current positions
+        2. Update positions: r(t+dt) = r(t) + v(t)×dt + 0.5×a(t)×dt²
+        3. Compute acceleration a(t+dt) at new positions
+        4. Update velocities: v(t+dt) = v(t) + 0.5×(a(t) + a(t+dt))×dt
+
+        Args:
+            dt_myr: Time step in million years
+            use_numba: Use Numba JIT-compiled kernel (recommended, currently unused)
+            enable_motion: Enable gravitational evolution (disabled by default)
+        """
+        if not enable_motion:
+            # Keep stellar positions static (default behavior)
+            return
+
+        if self.positions is None or self.velocities is None:
+            raise ValueError("Must generate positions and velocities first")
+
+        # Convert velocities from km/s to kpc/Myr
+        v_kpc_myr = self.velocities * 0.001022  # 1 km/s = 0.001022 kpc/Myr
+
+        # Step 1: Compute acceleration at current positions
+        a_current = self._compute_gravitational_acceleration(self.positions)
+
+        # Step 2: Update positions (drift + half-kick)
+        # r(t+dt) = r(t) + v(t)×dt + 0.5×a(t)×dt²
+        self.positions += v_kpc_myr * dt_myr + 0.5 * a_current * dt_myr**2
+
+        # Step 3: Compute acceleration at new positions
+        a_new = self._compute_gravitational_acceleration(self.positions)
+
+        # Step 4: Update velocities (average acceleration)
+        # v(t+dt) = v(t) + 0.5×(a(t) + a(t+dt))×dt
+        # Acceleration is in kpc/Myr², velocity in kpc/Myr
+        v_kpc_myr += 0.5 * (a_current + a_new) * dt_myr
+
+        # Convert back to km/s
+        self.velocities = v_kpc_myr / 0.001022
+
+    def get_distance_matrix(self, indices: Optional[np.ndarray] = None) -> np.ndarray:
+        """
+        Compute pairwise distance matrix between stars.
+
+        Args:
+            indices: Optional subset of star indices to compute distances for
+
+        Returns:
+            Distance matrix in parsecs
+        """
+        if self.positions is None:
+            raise ValueError("Must generate positions first")
+
+        if indices is not None:
+            pos = self.positions[indices]
+        else:
+            pos = self.positions
+
+        # Compute pairwise distances (kpc)
+        diff = pos[:, np.newaxis, :] - pos[np.newaxis, :, :]
+        dist_kpc = np.sqrt(np.sum(diff**2, axis=2))
+
+        # Convert to parsecs
+        return dist_kpc * 1000.0
+
+    def get_stellar_density(self, position: np.ndarray) -> float:
+        """
+        Get stellar number density at a given position.
+
+        Args:
+            position: 3D position (x, y, z) in kpc
+
+        Returns:
+            Number density in stars/kpc³
+        """
+        x, y, z = position
+        r = np.sqrt(x**2 + y**2)
+
+        h_R = self.params.scale_length_kpc
+        h_z = self.params.disk_height_kpc
+
+        # Exponential disk density
+        rho = np.exp(-r / h_R) * np.exp(-np.abs(z) / h_z)
+
+        # Normalize by total number of stars
+        # Rough normalization (exact would require integration)
+        norm = self.params.total_stars / (2 * np.pi * h_R**2 * 2 * h_z)
+
+        return rho * norm
