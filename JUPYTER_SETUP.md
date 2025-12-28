@@ -43,6 +43,29 @@ In the notebook:
 - **Run all:** Menu → Run → Run All Cells
 - **Restart kernel:** Menu → Kernel → Restart Kernel
 
+## Force Reload Notebooks (If Changes Don't Appear)
+
+If you've updated notebooks but don't see changes in Jupyter Lab:
+
+**1. Close and reload the notebook file:**
+   - File → Close Tab
+   - Re-open the notebook from file browser
+
+**2. If still not working, hard refresh the browser:**
+   - **Chrome/Edge:** Cmd+Shift+R (Mac) or Ctrl+Shift+R (Windows)
+   - **Firefox:** Cmd+Shift+R (Mac) or Ctrl+F5 (Windows)
+   - **Safari:** Cmd+Option+R
+
+**3. Clear Jupyter checkpoints:**
+```bash
+rm -rf notebooks/.ipynb_checkpoints/
+```
+Then refresh browser.
+
+**4. Nuclear option - restart Jupyter Lab:**
+   - Stop Jupyter Lab (Ctrl+C in terminal)
+   - Restart: `jupyter lab`
+
 ## Troubleshooting
 
 ### Kernel doesn't appear in list
