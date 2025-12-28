@@ -1,0 +1,191 @@
+
+======================================================================
+💀 DEADLY GALACTIC CIVILIZATION SIMULATION 💀
+======================================================================
+
+Configuration:
+  Duration: 10,000 Myr (10 Gyr)
+  Civilizations: 50 (expect heavy casualties)
+  Stars: 100,000
+  Mode: DEADLY - No cooperation, 100x astrophysical hazards
+
+======================================================================
+
+📁 Output directory: outputs/deadly_run_20251227_194052
+
+🚀 Starting DEADLY simulation...
+
+
+💀 DEADLY MODE ENABLED 💀
+  Cooperation: DISABLED
+  Supernova rate: 100.0x normal
+  GRB rate: 100.0x normal
+  Crisis severity: 3.0x
+  Response quality: 20% of normal
+  Catastrophic failure: 10% per crisis
+
+Initializing 3D galaxy...
+  Computing equilibrium velocities from potential...
+Generating stellar ages and masses...
+Placing 50 civilizations in galaxy...
+  ✅ 50 civilizations initialized
+  📍 Galaxy contains 100000 stars
+  🌟 19666 habitable stars found
+
+⚠️  WARNING: This simulation is HARD - expect casualties!
+
+
+======================================================================
+RUNNING REALISTIC 3D SIMULATION FOR 10000.0 MYR
+Adaptive timesteps, active astrophysical hazards, tough crises
+======================================================================
+
+    ⚠️  Civ1 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ11 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ14 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ16 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ26 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ27 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ42 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ43 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ46 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ49 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ44 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ18 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ35 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ21 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ15 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ5 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ34 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ33 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ7 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ2 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ6 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ4 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ45 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ11 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ31 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ19 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ2 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ28 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ18 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ47 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ41 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ35 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ6 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ24 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ41 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ27 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ44 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ33 enters nuclear_age crisis (severity=0.86)
+    ⚠️  Civ32 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ1 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ25 enters nuclear_age crisis (severity=0.80)
+    ⚠️  Civ8 enters nuclear_age crisis (severity=0.93)
+    ⚠️  Civ16 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ32 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ0 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ12 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ43 enters climate_collapse crisis (severity=0.85)
+    ⚠️  Civ22 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ20 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ47 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ48 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ7 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ39 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ23 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ11 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ30 enters nuclear_age crisis (severity=0.92)
+    ⚠️  Civ49 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ45 enters nuclear_age crisis (severity=0.83)
+    ⚠️  Civ3 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ13 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ3 enters nuclear_age crisis (severity=0.88)
+    ⚠️  Civ38 enters nuclear_age crisis (severity=0.92)
+    ⚠️  Civ31 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ34 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ25 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ36 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ42 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ15 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ8 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ42 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ12 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ46 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ4 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ14 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ26 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ29 enters nuclear_age crisis (severity=0.93)
+    ⚠️  Civ15 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ16 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ5 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ36 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ32 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ17 enters nuclear_age crisis (severity=0.93)
+    ⚠️  Civ10 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ10 enters nuclear_age crisis (severity=0.88)
+    ⚠️  Civ9 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ39 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ0 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ9 enters nuclear_age crisis (severity=0.88)
+    ⚠️  Civ40 enters nuclear_age crisis (severity=0.82)
+    ⚠️  Civ38 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ40 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ30 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ47 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ14 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ49 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ17 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ22 enters climate_collapse crisis (severity=0.85)
+    ⚠️  Civ23 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ19 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ7 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ6 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ13 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ33 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ37 enters nuclear_age crisis (severity=0.81)
+    ⚠️  Civ48 enters climate_collapse crisis (severity=0.86)
+    ⚠️  Civ18 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ1 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ21 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ43 enters biotech_hazard crisis (severity=1.00)
+    ⚠️  Civ21 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ29 enters climate_collapse crisis (severity=0.86)
+    ⚠️  Civ37 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ45 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ46 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ44 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ28 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ28 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ19 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ46 enters biotech_hazard crisis (severity=1.00)
+    ⚠️  Civ33 enters biotech_hazard crisis (severity=1.00)
+    ⚠️  Civ12 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ30 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ45 enters biotech_hazard crisis (severity=1.00)
+    ⚠️  Civ4 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ25 enters biotech_hazard crisis (severity=1.00)
+    ⚠️  Civ24 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ35 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ43 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ20 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ24 enters ai_transition crisis (severity=1.00)
+Traceback (most recent call last):
+  File "/Users/jburgess/coding/projects/galaticbot/examples/deadly_simulation.py", line 337, in <module>
+    main()
+    ~~~~^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/deadly_simulation.py", line 267, in main
+    sim.run(duration_myr=10000.0, print_interval_myr=1000.0)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 317, in run
+    self.process_civilization(civ)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 428, in process_civilization
+    self.advance_active_crises(civ)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/deadly_simulation.py", line 192, in advance_active_crises
+    survived = self.evaluate_crisis_response(civ, crisis_type, new_state)
+  File "/Users/jburgess/coding/projects/galaticbot/examples/deadly_simulation.py", line 125, in evaluate_crisis_response
+    if crisis_type.value in civ.traits.crisis_resistance:
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'CivilizationTraits' object has no attribute 'crisis_resistance'

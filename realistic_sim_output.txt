@@ -1,0 +1,32 @@
+
+======================================================================
+REALISTIC 3D GALACTIC CIVILIZATION SIMULATION
+======================================================================
+
+Features:
+  • 3D galactic positions for all civilizations
+  • Active supernova and GRB hazards
+  • Adaptive time stepping
+  • MUCH tougher survival parameters
+  • Full integration of all 9 survival mechanics
+
+⚠️  This is NOT easy mode - expect casualties!
+
+Traceback (most recent call last):
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 845, in <module>
+    main()
+    ~~~~^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 829, in main
+    sim = Realistic3DSimulation(
+        num_stars=100000,
+        num_civilizations=20,
+        seed=42
+    )
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 163, in __init__
+    self.learning_system = CrisisLearningSystem(
+                           ~~~~~~~~~~~~~~~~~~~~^
+        experience_decay_timescale_myr=2000.0  # Faster decay
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+TypeError: CrisisLearningSystem.__init__() got an unexpected keyword argument 'experience_decay_timescale_myr'. Did you mean 'experience_decay_timescale_gyr'?

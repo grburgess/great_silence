@@ -33,8 +33,8 @@ class SimulationWidget:
         """Create all widget components."""
         # Preset selector
         self.preset_selector = widgets.Dropdown(
-            options=['realistic', 'optimistic', 'moderate', 'early_filter', 'late_filter', 'rare_earth'],
-            value='realistic',
+            options=['moderate', 'optimistic', 'early_filter', 'late_filter', 'rare_earth'],
+            value='moderate',
             description='Preset:',
             style={'description_width': '120px'},
             layout=widgets.Layout(width='400px')

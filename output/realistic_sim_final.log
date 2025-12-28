@@ -1,0 +1,57 @@
+
+======================================================================
+REALISTIC 3D GALACTIC CIVILIZATION SIMULATION
+======================================================================
+
+Features:
+  • 3D galactic positions for all civilizations
+  • Active supernova and GRB hazards
+  • Adaptive time stepping
+  • MUCH tougher survival parameters
+  • Full integration of all 9 survival mechanics
+
+⚠️  This is NOT easy mode - expect casualties!
+
+Initializing 3D galaxy...
+  Computing equilibrium velocities from potential...
+Generating stellar ages and masses...
+Placing 20 civilizations in galaxy...
+  ✅ 20 civilizations initialized
+  📍 Galaxy contains 100000 stars
+  🌟 19666 habitable stars found
+
+⚠️  WARNING: This simulation is HARD - expect casualties!
+
+
+======================================================================
+RUNNING REALISTIC 3D SIMULATION FOR 1000.0 MYR
+Adaptive timesteps, active astrophysical hazards, tough crises
+======================================================================
+
+    ⚠️  Civ0 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ1 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ5 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ11 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ12 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ14 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ16 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ12 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ2 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ2 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ4 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ1 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ19 enters nuclear_age crisis (severity=1.00)
+Traceback (most recent call last):
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 865, in <module>
+    main()
+    ~~~~^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 856, in main
+    sim.run(duration_myr=1000.0, print_interval_myr=100.0)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 317, in run
+    self.process_civilization(civ)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 371, in process_civilization
+    civ.maturity = self.breakthrough_system.apply_breakthrough(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'BreakthroughSystem' object has no attribute 'apply_breakthrough'

@@ -1,0 +1,110 @@
+
+======================================================================
+REALISTIC 3D GALACTIC CIVILIZATION SIMULATION
+======================================================================
+
+Features:
+  • 3D galactic positions for all civilizations
+  • Active supernova and GRB hazards
+  • Adaptive time stepping
+  • MUCH tougher survival parameters
+  • Full integration of all 9 survival mechanics
+
+⚠️  This is NOT easy mode - expect casualties!
+
+Initializing 3D galaxy...
+  Computing equilibrium velocities from potential...
+Generating stellar ages and masses...
+Placing 20 civilizations in galaxy...
+  ✅ 20 civilizations initialized
+  📍 Galaxy contains 100000 stars
+  🌟 19666 habitable stars found
+
+⚠️  WARNING: This simulation is HARD - expect casualties!
+
+
+======================================================================
+RUNNING REALISTIC 3D SIMULATION FOR 1000.0 MYR
+Adaptive timesteps, active astrophysical hazards, tough crises
+======================================================================
+
+    ⚠️  Civ0 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ1 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ5 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ11 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ12 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ14 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ16 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ12 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ2 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ2 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ4 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ1 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ19 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ18 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ17 enters nuclear_age crisis (severity=0.93)
+    ⚠️  Civ7 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ11 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ6 enters climate_collapse crisis (severity=1.00)
+    ⚠️  Civ16 enters climate_collapse crisis (severity=0.98)
+  T=100.0 Myr: 20/20 alive, 14 in crisis, dt=1.00 Myr, SN:0, GRB:0
+    ⚠️  Civ15 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ0 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ18 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ6 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ13 enters nuclear_age crisis (severity=1.00)
+    ⚠️  Civ17 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ3 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ3 enters nuclear_age crisis (severity=0.88)
+    ⚠️  Civ10 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ7 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ14 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ10 enters nuclear_age crisis (severity=0.88)
+    ⚠️  Civ11 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ12 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ9 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ4 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ5 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ9 enters nuclear_age crisis (severity=0.88)
+    ⚠️  Civ8 enters nuclear_age crisis (severity=0.93)
+    ⚠️  Civ16 enters ai_transition crisis (severity=1.00)
+  T=200.0 Myr: 20/20 alive, 20 in crisis, dt=1.00 Myr, SN:0, GRB:0
+    ⚠️  Civ14 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ1 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ13 enters climate_collapse crisis (severity=0.83)
+    ⚠️  Civ8 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ15 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ19 enters climate_collapse crisis (severity=0.98)
+    ⚠️  Civ15 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ7 enters ai_transition crisis (severity=1.00)
+  T=300.0 Myr: 20/20 alive, 20 in crisis, dt=1.00 Myr, SN:0, GRB:0
+    ⚠️  Civ0 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ19 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ6 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ9 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ4 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ17 enters biotech_hazard crisis (severity=1.00)
+    ⚠️  Civ18 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ5 enters biotech_hazard crisis (severity=1.00)
+    ⚠️  Civ5 enters ai_transition crisis (severity=1.00)
+    ⚠️  Civ17 enters ai_transition crisis (severity=1.00)
+Traceback (most recent call last):
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 878, in <module>
+    main()
+    ~~~~^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 869, in main
+    sim.run(duration_myr=1000.0, print_interval_myr=100.0)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 317, in run
+    self.process_civilization(civ)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 428, in process_civilization
+    self.advance_active_crises(civ)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 483, in advance_active_crises
+    self.civilization_survives_crisis(civ, crisis_type, new_state)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jburgess/coding/projects/galaticbot/examples/realistic_3d_simulation.py", line 496, in civilization_survives_crisis
+    civ.experience = self.learning_system.record_crisis_survived(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'CrisisLearningSystem' object has no attribute 'record_crisis_survived'. Did you mean: 'record_crisis_success'?

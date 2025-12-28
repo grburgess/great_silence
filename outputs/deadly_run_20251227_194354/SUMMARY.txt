@@ -1,0 +1,22 @@
+
+======================================================================
+💀 DEADLY SIMULATION RESULTS 💀
+======================================================================
+
+Duration: 10,000 Myr
+Starting Civilizations: 50
+
+FINAL CASUALTY REPORT:
+  ✅ Survived: 0 (0.0%)
+  ☠️  Died: 50 (100.0%)
+
+CAUSES OF DEATH:
+  nuclear_age: 44
+  climate_collapse: 6
+
+ASTROPHYSICAL CARNAGE:
+  💥 Supernovae: 0
+  🌟 Gamma-ray Bursts: 94
+
+Output: outputs/deadly_run_20251227_194354
+======================================================================
