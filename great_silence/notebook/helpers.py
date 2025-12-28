@@ -283,6 +283,102 @@ def export_interactive_plot(fig, path: str, auto_open: bool = False):
         return None
 
 
+def reconstruct_simulation_from_hdf5(path: str):
+    """
+    Reconstruct a GalaxySimulation object from HDF5 file for visualization.
+
+    Args:
+        path: Path to .h5 file
+
+    Returns:
+        GalaxySimulation object suitable for visualization
+
+    Note:
+        This recreates the simulation state from saved data but won't have
+        all internal state (e.g., spatial indices, running simulation).
+        Suitable for visualization and analysis only.
+    """
+    from ..simulation.engine import GalaxySimulation, CivilizationState
+    from ..galaxy.structure import GalaxyModel
+    from ..config.parameters import SimulationConfig
+
+    # Load raw data
+    data = load_simulation(path)
+
+    # Create minimal config
+    config = SimulationConfig()
+    config.galaxy.total_stars = len(data['galaxy']['positions'])
+
+    # Create galaxy model from loaded data
+    galaxy = GalaxyModel(config.galaxy)
+    galaxy.positions = data['galaxy']['positions']
+    galaxy.ages = data['galaxy']['ages']
+    galaxy.metallicities = data['galaxy']['metallicities']
+
+    # Need to set other required attributes for visualization
+    # Use placeholder values since we only need positions for viz
+    galaxy.stellar_types = np.ones(len(galaxy.positions), dtype=int)  # All habitable
+    galaxy.velocities = np.zeros_like(galaxy.positions)
+
+    # Create simulation object
+    sim = GalaxySimulation(config, seed=42)
+    sim.galaxy = galaxy
+
+    # Reconstruct civilization states
+    sim.civilizations = []
+    for civ_data in data['civilizations']:
+        # Create minimal CivilizationState
+        civ = CivilizationState(
+            civ_id=len(sim.civilizations),
+            parent_star_idx=civ_data['parent_star_idx'],
+            birth_time_myr=civ_data['emergence_time_gyr'] * 1000.0,
+            kardashev_scale=civ_data.get('kardashev_level', 0.7)
+        )
+
+        civ.is_active = civ_data['is_active']
+        if civ_data['extinction_time_gyr'] is not None:
+            civ.death_time_myr = civ_data['extinction_time_gyr'] * 1000.0
+        civ.death_cause = civ_data.get('death_cause')
+
+        # Add home world as colonized
+        civ.colonized_stars = [civ.parent_star_idx]
+
+        sim.civilizations.append(civ)
+
+    # Reconstruct hazard events if available
+    if 'hazard_events' in data and data['hazard_events']:
+        from ..simulation.engine import HazardEvent
+        sim.hazard_events = []
+        for event_data in data['hazard_events']:
+            event = HazardEvent(
+                time_myr=event_data['time_myr'],
+                event_type=event_data['event_type'],
+                position=np.array(event_data['position']),
+                energy=event_data['energy'],
+                sterilization_radius_pc=event_data['sterilization_radius_pc'],
+                affected_civ_ids=event_data['affected_civ_ids']
+            )
+            sim.hazard_events.append(event)
+
+    # Set simulation time
+    if 'statistics' in data:
+        sim.current_time_myr = data['statistics'].get('current_time_gyr', 0.0) * 1000.0
+
+    # Reconstruct snapshots if available
+    if 'snapshots' in data and data['snapshots']:
+        from ..simulation.engine import SimulationSnapshot
+        sim.snapshots = []
+        for snap_data in data['snapshots']:
+            snapshot = SimulationSnapshot(
+                time_myr=snap_data['time_gyr'] * 1000.0,
+                active_civilizations=snap_data['active_civilizations'],
+                active_civ_positions=None  # Not stored in current format
+            )
+            sim.snapshots.append(snapshot)
+
+    return sim
+
+
 def create_results_summary(simulation) -> pd.DataFrame:
     """
     Create formatted summary table of simulation results.
