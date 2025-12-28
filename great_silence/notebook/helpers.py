@@ -18,8 +18,16 @@ def configure_notebook_display():
         plt.rcParams['figure.figsize'] = (12, 8)
         plt.rcParams['figure.dpi'] = 100
 
+        # Configure plotly for JupyterLab
+        try:
+            import plotly.io as pio
+            # Use 'jupyterlab' renderer for JupyterLab, falls back to 'notebook' for classic Jupyter
+            pio.renderers.default = 'jupyterlab'
+        except ImportError:
+            pass  # plotly not installed
+
         # Display confirmation
-        display(HTML("<p style='color: #28a745;'>✓ Notebook display configured</p>"))
+        display(HTML("<p style='color: #28a745;'>✓ Notebook display configured (matplotlib + plotly)</p>"))
 
     except ImportError:
         print("Warning: IPython not available. Display configuration skipped.")
@@ -58,11 +66,11 @@ def save_simulation_hdf5(simulation, path: str, compress: bool = True):
             for civ in simulation.civilizations:
                 civ_data.append({
                     'parent_star_idx': civ.parent_star_idx,
-                    'emergence_time_gyr': civ.emergence_time_gyr,
+                    'emergence_time_gyr': civ.birth_time_myr / 1000.0,  # Convert Myr to Gyr
                     'is_active': civ.is_active,
-                    'extinction_time_gyr': civ.extinction_time_gyr if hasattr(civ, 'extinction_time_gyr') else None,
-                    'kardashev_level': civ.kardashev_level if hasattr(civ, 'kardashev_level') else 0.7,
-                    'death_cause': civ.death_cause if hasattr(civ, 'death_cause') else None,
+                    'extinction_time_gyr': civ.death_time_myr / 1000.0 if civ.death_time_myr else None,
+                    'kardashev_level': civ.kardashev_scale,
+                    'death_cause': civ.death_cause if civ.death_cause else None,
                 })
 
             # Convert to structured arrays
@@ -101,12 +109,42 @@ def save_simulation_hdf5(simulation, path: str, compress: bool = True):
             for i, snapshot in enumerate(simulation.snapshots):
                 s_grp = snap_grp.create_group(f'snapshot_{i}')
                 # Handle both dict and object snapshots
-                if hasattr(snapshot, 'time_gyr'):
-                    s_grp.attrs['time_gyr'] = snapshot.time_gyr
+                if hasattr(snapshot, 'time_myr'):
+                    # SimulationSnapshot object with time in Myr
+                    s_grp.attrs['time_gyr'] = snapshot.time_myr / 1000.0
                     s_grp.attrs['active_civilizations'] = snapshot.active_civilizations
                 elif isinstance(snapshot, dict):
+                    # Dict with time already in Gyr
                     s_grp.attrs['time_gyr'] = snapshot.get('time_gyr', 0.0)
                     s_grp.attrs['active_civilizations'] = snapshot.get('active_civilizations', 0)
+
+        # Save hazard events if available
+        if hasattr(simulation, 'hazard_events') and simulation.hazard_events:
+            hazard_grp = f.create_group('hazard_events')
+
+            # Convert to arrays for HDF5 storage
+            times_myr = np.array([e.time_myr for e in simulation.hazard_events])
+            event_types = np.array([e.event_type.encode('utf-8') for e in simulation.hazard_events], dtype='S20')
+            energies = np.array([e.energy for e in simulation.hazard_events])
+            radii_pc = np.array([e.sterilization_radius_pc for e in simulation.hazard_events])
+
+            # Positions as N x 3 array
+            positions = np.array([e.position for e in simulation.hazard_events])
+
+            # Store datasets
+            hazard_grp.create_dataset('time_myr', data=times_myr, compression=compression)
+            hazard_grp.create_dataset('event_type', data=event_types)
+            hazard_grp.create_dataset('position', data=positions, compression=compression)
+            hazard_grp.create_dataset('energy', data=energies, compression=compression)
+            hazard_grp.create_dataset('sterilization_radius_pc', data=radii_pc, compression=compression)
+
+            # Store affected civilization IDs as variable-length datasets
+            affected_civ_ids = [e.affected_civ_ids for e in simulation.hazard_events]
+            max_len = max(len(ids) for ids in affected_civ_ids) if affected_civ_ids else 0
+            if max_len > 0:
+                # Pad to fixed length for HDF5
+                padded_ids = np.array([ids + [-1] * (max_len - len(ids)) for ids in affected_civ_ids])
+                hazard_grp.create_dataset('affected_civ_ids', data=padded_ids, compression=compression)
 
     return h5_path
 
@@ -183,6 +221,34 @@ def load_simulation(path: str) -> Dict[str, Any]:
                     'positions': s_grp['positions'][:] if 'positions' in s_grp else None,
                 }
                 data['snapshots'].append(snapshot)
+
+        # Load hazard events
+        if 'hazard_events' in f:
+            hazard_grp = f['hazard_events']
+            data['hazard_events'] = []
+
+            if 'time_myr' in hazard_grp:
+                n_events = len(hazard_grp['time_myr'])
+
+                for i in range(n_events):
+                    # Extract affected civ IDs (remove padding -1s)
+                    affected_ids = []
+                    if 'affected_civ_ids' in hazard_grp:
+                        ids = hazard_grp['affected_civ_ids'][i].tolist()
+                        affected_ids = [cid for cid in ids if cid >= 0]
+
+                    event = {
+                        'time_myr': float(hazard_grp['time_myr'][i]),
+                        'time_gyr': float(hazard_grp['time_myr'][i]) / 1000.0,
+                        'event_type': hazard_grp['event_type'][i].decode('utf-8'),
+                        'position': hazard_grp['position'][i].tolist(),
+                        'energy': float(hazard_grp['energy'][i]),
+                        'sterilization_radius_pc': float(hazard_grp['sterilization_radius_pc'][i]),
+                        'affected_civ_ids': affected_ids
+                    }
+                    data['hazard_events'].append(event)
+        else:
+            data['hazard_events'] = []
 
     return data
 

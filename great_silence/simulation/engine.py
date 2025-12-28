@@ -38,6 +38,18 @@ class SimulationSnapshot:
     stellar_positions: np.ndarray  # For visualization
 
 
+@dataclass
+class HazardEvent:
+    """Record of an astrophysical hazard event."""
+
+    time_myr: float
+    event_type: str  # 'supernova', 'grb'
+    position: np.ndarray  # 3D position in kpc
+    energy: float  # Event energy (ergs)
+    sterilization_radius_pc: float  # Lethal range in parsecs
+    affected_civ_ids: List[int] = field(default_factory=list)  # Civilizations destroyed/affected
+
+
 class GalaxySimulation:
     """
     Main simulation engine orchestrating all components.
@@ -140,6 +152,7 @@ class GalaxySimulation:
 
         # History tracking
         self.snapshots: List[SimulationSnapshot] = []
+        self.hazard_events: List[HazardEvent] = []
 
         # Habitable star indices (cached)
         self.habitable_star_indices: Optional[np.ndarray] = None
@@ -549,6 +562,16 @@ class GalaxySimulation:
                 civ.is_active = False
                 civ.death_time_myr = self.current_time_myr
                 civ.death_cause = 'supernova'
+
+                # Record hazard event for visualization
+                self.hazard_events.append(HazardEvent(
+                    time_myr=self.current_time_myr,
+                    event_type='supernova',
+                    position=civ_pos.copy(),  # Approximate location
+                    energy=1e51,  # Typical supernova energy in ergs
+                    sterilization_radius_pc=sn_info.get('sn_distance_pc', self.config.astrophysics.sn_sterilization_range_pc),
+                    affected_civ_ids=[civ.civ_id]
+                ))
                 continue
 
             # Check GRB hazard (now returns tuple with info dict)
@@ -570,6 +593,16 @@ class GalaxySimulation:
                 civ.is_active = False
                 civ.death_time_myr = self.current_time_myr
                 civ.death_cause = 'grb'
+
+                # Record hazard event for visualization
+                self.hazard_events.append(HazardEvent(
+                    time_myr=self.current_time_myr,
+                    event_type='grb',
+                    position=civ_pos.copy(),  # Approximate location
+                    energy=1e54,  # Typical GRB energy in ergs
+                    sterilization_radius_pc=grb_info.get('grb_distance_kpc', 1.0) * 1000.0,  # Convert kpc to pc
+                    affected_civ_ids=[civ.civ_id]
+                ))
 
     def _save_snapshot(self) -> None:
         """Save current simulation state as snapshot."""
