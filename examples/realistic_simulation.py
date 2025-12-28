@@ -88,7 +88,7 @@ def create_realistic_config():
     # Supernovae (well-constrained)
     config.astrophysics.supernova_rate_per_century = 2.0  # Milky Way rate
     config.astrophysics.sn_sterilization_range_pc = 10.0  # Conservative
-    config.astrophysics.sn_lethal_dose_sv = 10.0  # Radiation dose
+    config.astrophysics.sn_lethal_range_pc = 10.0  # Lethal range in parsecs
 
     # Gamma-ray bursts (uncertain but potentially deadly)
     config.astrophysics.grb_rate_per_century = 0.01  # Very rare

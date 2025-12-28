@@ -85,12 +85,14 @@ class CivilizationParameters:
 
     # Drake equation parameters (RECALIBRATED for Fermi consistency)
     fraction_stars_with_planets: float = 1.0  # Well-established from Kepler
-    avg_habitable_planets_per_system: float = 0.2  # ~20% reasonable estimate
+    avg_habitable_planets_per_system: float = 0.3  # Updated from Kepler/TESS 2024-2025
+    # NASA (2024): ~50% of Sun-like stars have Earth-sized planets in HZ
+    # Averaged across all stellar types (including M-dwarfs): ~30%
     fraction_develop_life: float = 0.1  # ← REDUCED from 0.5 (more conservative)
     fraction_develop_intelligence: float = 0.01  # ← REDUCED from 0.1 (rarer)
     fraction_develop_technology: float = 0.1  # Unchanged
-    # Combined: 1.0 × 0.2 × 0.1 × 0.01 × 0.1 = 0.00002 (0.002% per star per Gyr)
-    # Predicts ~1000 civilizations over galaxy lifetime (Fermi-consistent)
+    # Combined: 1.0 × 0.3 × 0.1 × 0.01 × 0.1 = 0.00003 (0.003% per star per Gyr)
+    # Predicts ~1500 civilizations over galaxy lifetime (Fermi-consistent)
 
     # Civilization lifetime and behavior
     mean_civilization_lifetime_myr: float = 1.0  # Million years
