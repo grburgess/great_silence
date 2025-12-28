@@ -322,6 +322,41 @@ class NotebookSimulationRunner:
         else:
             raise ValueError(f"Unknown backend: {backend}")
 
+    def plot_interactive_3d_galaxy(self, subsample_stars=10000, **layer_toggles):
+        """
+        Create enhanced interactive 3D galaxy visualization with multi-layer support.
+
+        Args:
+            subsample_stars: Number of background stars to show (default: 10000)
+            **layer_toggles: Layer visibility controls:
+                show_stars (bool): Show background star field (default: True)
+                show_active (bool): Show active civilizations (default: True)
+                show_extinct (bool): Show extinct civilizations (default: True)
+                show_deaths (bool): Show death location markers (default: False)
+                show_hazards (bool): Show hazard events (default: False)
+
+        Returns:
+            plotly Figure object with toggleable layers
+
+        Example:
+            >>> fig = runner.plot_interactive_3d_galaxy(
+            ...     subsample_stars=20000,
+            ...     show_deaths=True,
+            ...     show_hazards=True
+            ... )
+            >>> fig.show()
+        """
+        if self.simulation is None:
+            raise ValueError("No simulation available. Run simulation first.")
+
+        from great_silence.visualization.interactive_3d import Interactive3DVisualizer
+
+        viz = Interactive3DVisualizer(self.simulation)
+        return viz.create_static_figure(
+            subsample_stars=subsample_stars,
+            **layer_toggles
+        )
+
     def plot_timeline(self):
         """Create timeline visualization."""
         if self.simulation is None:

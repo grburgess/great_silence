@@ -144,7 +144,9 @@ class SimulationWidget:
 
     def display(self):
         """Display the widget interface."""
+        from IPython.display import display
         display(self.main_layout)
+        return None  # Explicitly return None to prevent output
 
     def _on_run_clicked(self, button):
         """Handle run button click."""
@@ -424,6 +426,7 @@ class ResultsExplorer:
         ])
 
         display(layout)
+        return None
 
 
 class AnimationBuilder:
@@ -511,3 +514,204 @@ class AnimationBuilder:
         ])
 
         display(layout)
+        return None
+
+
+class Galaxy3DExplorer:
+    """
+    Interactive widget for exploring 3D galaxy visualization with multi-layer controls.
+
+    Provides checkboxes to toggle visualization layers:
+    - Background star field
+    - Active civilizations (Kardashev colored)
+    - Extinct civilizations
+    - Death location markers
+    - Hazard events (supernovae, GRBs)
+    """
+
+    def __init__(self, runner: NotebookSimulationRunner):
+        """
+        Initialize 3D explorer widget.
+
+        Args:
+            runner: NotebookSimulationRunner with completed simulation
+        """
+        if runner.simulation is None:
+            raise ValueError("Runner must have completed simulation")
+
+        self.runner = runner
+        self.current_fig = None
+        self._create_widgets()
+
+    def _create_widgets(self):
+        """Create control widgets."""
+        # Layer toggles
+        self.show_stars = widgets.Checkbox(
+            value=True,
+            description='Show background stars',
+            style={'description_width': 'initial'}
+        )
+
+        self.show_active = widgets.Checkbox(
+            value=True,
+            description='Show active civilizations (Kardashev colored)',
+            style={'description_width': 'initial'}
+        )
+
+        self.show_extinct = widgets.Checkbox(
+            value=True,
+            description='Show extinct civilizations',
+            style={'description_width': 'initial'}
+        )
+
+        self.show_deaths = widgets.Checkbox(
+            value=False,
+            description='Show death markers (grouped by cause)',
+            style={'description_width': 'initial'}
+        )
+
+        self.show_hazards = widgets.Checkbox(
+            value=False,
+            description='Show hazard events (supernovae, GRBs)',
+            style={'description_width': 'initial'}
+        )
+
+        # Subsample control
+        self.subsample_stars = widgets.IntSlider(
+            value=10000,
+            min=1000,
+            max=100000,
+            step=1000,
+            description='Star subsample:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='500px'),
+            readout_format=',d'
+        )
+
+        # Generate button
+        self.generate_button = widgets.Button(
+            description='Generate Visualization',
+            button_style='primary',
+            icon='eye',
+            layout=widgets.Layout(width='250px', height='40px')
+        )
+        self.generate_button.on_click(self._on_generate)
+
+        # Export button
+        self.export_button = widgets.Button(
+            description='Export to HTML',
+            button_style='info',
+            icon='download',
+            layout=widgets.Layout(width='200px'),
+            disabled=True
+        )
+        self.export_button.on_click(self._on_export)
+
+        self.export_path = widgets.Text(
+            value='output/galaxy_3d.html',
+            description='Export path:',
+            style={'description_width': '100px'},
+            layout=widgets.Layout(width='400px')
+        )
+
+        # Output area
+        self.output = widgets.Output()
+
+    def _on_generate(self, button):
+        """Generate visualization with selected layers."""
+        with self.output:
+            clear_output(wait=True)
+            display(HTML("<p>Generating visualization...</p>"))
+
+            try:
+                # Create figure with selected layers
+                self.current_fig = self.runner.plot_interactive_3d_galaxy(
+                    subsample_stars=self.subsample_stars.value,
+                    show_stars=self.show_stars.value,
+                    show_active=self.show_active.value,
+                    show_extinct=self.show_extinct.value,
+                    show_deaths=self.show_deaths.value,
+                    show_hazards=self.show_hazards.value
+                )
+
+                # Display figure
+                clear_output(wait=True)
+                display(self.current_fig)
+
+                # Enable export button
+                self.export_button.disabled = False
+
+                # Show layer info
+                active_layers = []
+                if self.show_stars.value:
+                    active_layers.append(f"Stars ({self.subsample_stars.value:,})")
+                if self.show_active.value:
+                    active_layers.append("Active civilizations")
+                if self.show_extinct.value:
+                    active_layers.append("Extinct civilizations")
+                if self.show_deaths.value:
+                    active_layers.append("Death markers")
+                if self.show_hazards.value:
+                    active_layers.append("Hazard events")
+
+                display(HTML(f"<p style='color: green;'>✓ Active layers: {', '.join(active_layers)}</p>"))
+
+            except Exception as e:
+                clear_output()
+                display(HTML(f"<p style='color: red;'><b>Error:</b> {str(e)}</p>"))
+
+    def _on_export(self, button):
+        """Export current figure to HTML."""
+        if self.current_fig is None:
+            with self.output:
+                display(HTML("<p style='color: orange;'>⚠ Generate visualization first</p>"))
+            return
+
+        try:
+            path = export_interactive_plot(self.current_fig, self.export_path.value, auto_open=False)
+            with self.output:
+                display(HTML(f"<p style='color: green;'>✓ Exported to: {path}</p>"))
+        except Exception as e:
+            with self.output:
+                display(HTML(f"<p style='color: red;'><b>Export failed:</b> {str(e)}</p>"))
+
+    def display(self):
+        """Display the 3D explorer interface."""
+        # Layer controls section
+        layer_controls = widgets.VBox([
+            widgets.HTML("<h3>Visualization Layers</h3>"),
+            self.show_stars,
+            self.show_active,
+            self.show_extinct,
+            self.show_deaths,
+            self.show_hazards,
+        ])
+
+        # Settings section
+        settings = widgets.VBox([
+            widgets.HTML("<br><h3>Settings</h3>"),
+            self.subsample_stars,
+        ])
+
+        # Controls section
+        controls = widgets.VBox([
+            widgets.HTML("<br>"),
+            self.generate_button,
+            widgets.HTML("<br><h3>Export</h3>"),
+            self.export_path,
+            self.export_button,
+        ])
+
+        # Main layout
+        main_layout = widgets.VBox([
+            widgets.HTML("<h2 style='color: #2e86de;'>Interactive 3D Galaxy Explorer</h2>"),
+            widgets.HTML("<hr>"),
+            layer_controls,
+            settings,
+            controls,
+            widgets.HTML("<hr>"),
+            self.output
+        ], layout=widgets.Layout(padding='20px'))
+
+        display(main_layout)
+        return None

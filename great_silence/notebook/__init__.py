@@ -1,6 +1,6 @@
 """Jupyter notebook interface for Great Silence simulations."""
 
-from .widgets import SimulationWidget, ResultsExplorer, AnimationBuilder
+from .widgets import SimulationWidget, ResultsExplorer, AnimationBuilder, Galaxy3DExplorer
 from .runners import NotebookSimulationRunner
 from .helpers import (
     configure_notebook_display,
@@ -16,6 +16,7 @@ __all__ = [
     "SimulationWidget",
     "ResultsExplorer",
     "AnimationBuilder",
+    "Galaxy3DExplorer",
     # Runner
     "NotebookSimulationRunner",
     # Helper functions
