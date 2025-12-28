@@ -264,10 +264,12 @@ class ResultsExplorer:
         self.results_path = results_path
         self.data = None
 
+        # Create widgets first
+        self._create_widgets()
+
+        # Then load data if path provided
         if results_path:
             self.load(results_path)
-
-        self._create_widgets()
 
     @classmethod
     def from_directory(cls, directory: str):

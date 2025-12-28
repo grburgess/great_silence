@@ -100,12 +100,13 @@ def save_simulation_hdf5(simulation, path: str, compress: bool = True):
             snap_grp = f.create_group('snapshots')
             for i, snapshot in enumerate(simulation.snapshots):
                 s_grp = snap_grp.create_group(f'snapshot_{i}')
-                s_grp.attrs['time_gyr'] = snapshot.get('time_gyr', 0.0)
-                s_grp.attrs['active_civilizations'] = snapshot.get('active_civilizations', 0)
-                # Store snapshot data efficiently
-                if 'positions' in snapshot and snapshot['positions'] is not None:
-                    s_grp.create_dataset('positions', data=snapshot['positions'],
-                                       compression=compression)
+                # Handle both dict and object snapshots
+                if hasattr(snapshot, 'time_gyr'):
+                    s_grp.attrs['time_gyr'] = snapshot.time_gyr
+                    s_grp.attrs['active_civilizations'] = snapshot.active_civilizations
+                elif isinstance(snapshot, dict):
+                    s_grp.attrs['time_gyr'] = snapshot.get('time_gyr', 0.0)
+                    s_grp.attrs['active_civilizations'] = snapshot.get('active_civilizations', 0)
 
     return h5_path
 
@@ -139,23 +140,28 @@ def load_simulation(path: str) -> Dict[str, Any]:
         # Load civilization data
         if 'civilizations' in f:
             civ_grp = f['civilizations']
-            n_civs = len(civ_grp['parent_star_idx'])
             data['civilizations'] = []
 
-            for i in range(n_civs):
-                civ = {
-                    'parent_star_idx': int(civ_grp['parent_star_idx'][i]),
-                    'emergence_time_gyr': float(civ_grp['emergence_time_gyr'][i]),
-                    'is_active': bool(civ_grp['is_active'][i]),
-                    'extinction_time_gyr': float(civ_grp['extinction_time_gyr'][i])
-                                          if civ_grp['extinction_time_gyr'][i] >= 0 else None,
-                    'kardashev_level': float(civ_grp['kardashev_level'][i])
-                                      if 'kardashev_level' in civ_grp else 0.7,
-                    'death_cause': civ_grp['death_cause'][i].decode()
-                                  if 'death_cause' in civ_grp and civ_grp['death_cause'][i]
-                                  else None,
-                }
-                data['civilizations'].append(civ)
+            # Check if there are any civilizations
+            if 'parent_star_idx' in civ_grp:
+                n_civs = len(civ_grp['parent_star_idx'])
+
+                for i in range(n_civs):
+                    civ = {
+                        'parent_star_idx': int(civ_grp['parent_star_idx'][i]),
+                        'emergence_time_gyr': float(civ_grp['emergence_time_gyr'][i]),
+                        'is_active': bool(civ_grp['is_active'][i]),
+                        'extinction_time_gyr': float(civ_grp['extinction_time_gyr'][i])
+                                              if civ_grp['extinction_time_gyr'][i] >= 0 else None,
+                        'kardashev_level': float(civ_grp['kardashev_level'][i])
+                                          if 'kardashev_level' in civ_grp else 0.7,
+                        'death_cause': civ_grp['death_cause'][i].decode()
+                                      if 'death_cause' in civ_grp and civ_grp['death_cause'][i]
+                                      else None,
+                    }
+                    data['civilizations'].append(civ)
+        else:
+            data['civilizations'] = []
 
         # Load statistics
         if 'statistics' in f:

@@ -91,8 +91,12 @@ class NotebookSimulationRunner:
         # Create Monte Carlo runner
         mc_runner = MonteCarloRunner(self.config)
 
-        # Run ensemble
-        results = mc_runner.run(verbose=verbose)
+        # Run ensemble (sequential for simplicity in notebook)
+        if verbose:
+            print(f"Running {self.config.simulation.num_realizations} realizations...")
+
+        mc_runner.run_sequential()
+        results = mc_runner.analyze_results()
 
         # Store results
         self.results = {
@@ -234,7 +238,9 @@ class NotebookSimulationRunner:
         positions = self.simulation.galaxy.positions
 
         if backend == 'matplotlib':
-            return viz.plot_galaxy_structure(positions, save_path=None)
+            import matplotlib.pyplot as plt
+            viz.plot_galaxy_structure(positions, save_path=None)
+            return plt.gcf()  # Return current figure
 
         elif backend == 'plotly':
             import plotly.graph_objects as go
@@ -304,7 +310,17 @@ class NotebookSimulationRunner:
         from great_silence.visualization import TimelineAnimator
 
         animator = TimelineAnimator(self.simulation)
-        return animator.plot_timeline_statistics()
+
+        # Extract data from simulation
+        if hasattr(self.simulation, 'snapshots') and self.simulation.snapshots:
+            times_gyr = [s.time_gyr for s in self.simulation.snapshots]
+            n_active = [s.active_civilizations for s in self.simulation.snapshots]
+            n_total = [len([c for c in self.simulation.civilizations if c.emergence_time_gyr <= t])
+                      for t in times_gyr]
+            return animator.plot_timeline_statistics(times_gyr, n_active, n_total)
+        else:
+            print("No snapshots available for timeline visualization.")
+            return None
 
     def plot_extinction_causes(self):
         """Create extinction cause breakdown."""
@@ -314,4 +330,15 @@ class NotebookSimulationRunner:
         from great_silence.visualization import TimelineAnimator
 
         animator = TimelineAnimator(self.simulation)
-        return animator.plot_extinction_causes()
+
+        # Count extinction causes
+        causes = {}
+        for civ in self.simulation.civilizations:
+            if not civ.is_active and hasattr(civ, 'death_cause') and civ.death_cause:
+                causes[civ.death_cause] = causes.get(civ.death_cause, 0) + 1
+
+        if causes:
+            return animator.plot_extinction_causes(causes)
+        else:
+            print("No extinction data available.")
+            return None
