@@ -32,9 +32,9 @@ class VisualizationConfig:
     plot_bgcolor: str = "rgb(0, 0, 0)"
 
     # Star field rendering
-    star_size: float = 1.0
-    star_opacity: float = 0.15
-    star_color: str = "rgb(200, 200, 200)"
+    star_size: float = 1.5  # Increased from 1.0 for better visibility
+    star_opacity: float = 0.35  # Increased from 0.15 for better visibility
+    star_color: str = "rgb(220, 220, 220)"  # Slightly brighter gray
 
     # Civilization markers
     civ_active_size: float = 6.0
