@@ -66,7 +66,26 @@ Check memory usage (simulations can be memory-intensive):
 - Use shorter simulation duration (1-5 Gyr)
 - Close other applications
 
-### Widget not displaying
+### Widget showing as "VBox(children=..." instead of rendering
+
+This means the widget object is being displayed instead of rendered. **Fix:** Add a semicolon:
+
+```python
+# Wrong (shows VBox object):
+widget.display()
+
+# Correct (renders widget):
+widget.display();  # <-- semicolon suppresses output
+```
+
+**Or** just return the widget directly:
+```python
+widget.main_layout  # Returns widget, Jupyter renders it
+```
+
+All notebooks have been updated with the correct syntax.
+
+### Widget extension not enabled
 
 Enable widget extension (if not already done):
 ```bash
