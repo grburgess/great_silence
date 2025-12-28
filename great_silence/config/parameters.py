@@ -96,12 +96,12 @@ class CivilizationParameters:
     mean_civilization_lifetime_myr: float = 1.0  # Million years
     lifetime_stddev_myr: float = 0.5
 
-    # Expansion parameters
+    # Self-replicating probe expansion parameters
     expansion_enabled: bool = True
-    expansion_velocity_fraction_c: float = 0.01  # Fraction of light speed (1% c)
-    colonization_probability: float = 0.8
-    min_habitable_distance_pc: float = 1.0  # Minimum distance to habitable stars
-    max_expansion_range_pc: float = 1000.0  # Maximum colonization range
+    min_kardashev_for_expansion: float = 0.85  # Minimum tech level for interstellar probes
+    # NOTE: Velocity, range, offspring count, and replication delay are now
+    # calculated dynamically based on Kardashev level at expansion start
+    # See great_silence/civilization/probe_design.py for scaling functions
 
     # Self-destruction model
     self_destruction_model_type: str = "kardashev_dependent"  # "flat" or "kardashev_dependent"

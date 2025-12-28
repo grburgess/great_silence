@@ -8,6 +8,40 @@ from tqdm import tqdm
 from ..config.parameters import SimulationConfig
 from ..galaxy.structure import GalaxyModel
 from ..galaxy.star_formation import StarFormationHistory, InitialMassFunction
+from ..civilization.probe_design import (
+    probe_velocity_from_kardashev,
+    per_hop_range_from_kardashev,
+    offspring_count,
+    replication_delay_years,
+    MIN_KARDASHEV_FOR_EXPANSION,
+    C_PC_YR
+)
+
+
+@dataclass
+class ProbeState:
+    """State of a single self-replicating probe."""
+
+    probe_id: int
+    parent_probe_id: Optional[int]  # None for home-world-launched probes
+    generation: int  # 0 = launched from home world
+
+    launch_star_idx: int
+    target_star_idx: int
+
+    launch_time_myr: float
+    arrival_time_myr: float
+
+    # Inherited from parent civilization (locked at launch)
+    velocity_c: float
+    per_hop_range_pc: float
+    offspring_count: int
+    replication_delay_yr: float
+
+    # Replication status (fields with defaults must come after required fields)
+    has_arrived: bool = False
+    has_replicated: bool = False
+    replication_complete_time_myr: Optional[float] = None
 
 
 @dataclass
@@ -24,6 +58,17 @@ class CivilizationState:
     is_active: bool = True
     death_time_myr: Optional[float] = None
     death_cause: Optional[str] = None  # 'extinction_event', 'self_destruction', 'old_age', 'supernova', 'grb'
+
+    # Self-replicating probe expansion parameters (locked at first launch)
+    expansion_program_started: bool = False
+    expansion_start_kardashev: Optional[float] = None
+    probe_velocity_c: Optional[float] = None
+    probe_per_hop_range_pc: Optional[float] = None
+    probe_offspring_count: Optional[int] = None
+    probe_replication_delay_yr: Optional[float] = None
+
+    # Probe tracking
+    active_probes: List['ProbeState'] = field(default_factory=list)
 
 
 @dataclass
@@ -81,13 +126,8 @@ class GalaxySimulation:
         self.sfh = StarFormationHistory(config.astrophysics)
         self.imf = InitialMassFunction(config.astrophysics.imf_type)
 
-        # Civilization expansion model
-        from ..civilization.expansion import ExpansionModel
-        self.expansion_model = ExpansionModel(
-            expansion_velocity_c=config.civilization.expansion_velocity_fraction_c,
-            colonization_probability=config.civilization.colonization_probability,
-            max_range_pc=config.civilization.max_expansion_range_pc
-        )
+        # Probe tracking (for self-replicating expansion)
+        self.next_probe_id = 0
 
         # Extinction model
         from ..civilization.extinction import ExtinctionModel, CrisisPeak
@@ -444,79 +484,165 @@ class GalaxySimulation:
 
     def _attempt_expansion(self, civ: CivilizationState) -> None:
         """
-        Attempt to expand civilization to nearby stars with wavefront propagation.
+        Self-replicating probe expansion with branching tree model.
 
         Implements:
-        - Light cone constraints (can only reach observable stars)
-        - Sub-light travel times
-        - Wavefront propagation from all arrived colonies
+        - Minimum Kardashev threshold (0.85) to start expansion
+        - Probe characteristics locked at launch based on tech level
+        - Branching tree expansion (not wavefront)
+        - Per-hop range targeting (nearest uncolonized stars)
+        - Replication delays at each destination
         """
-        if len(civ.colonized_stars) >= 1000:  # Cap expansion to prevent runaway
+        # Cap total colonies to prevent runaway
+        if len(civ.colonized_stars) >= 1000:
             return
 
-        # Get positions of colonies that have already arrived
-        arrived_colonies = [
-            idx for idx, arrival_time in civ.colony_arrival_times.items()
-            if arrival_time <= self.current_time_myr
-        ]
+        # Check if civilization can start expansion program
+        if not civ.expansion_program_started:
+            if civ.kardashev_scale >= MIN_KARDASHEV_FOR_EXPANSION:
+                # Lock in probe design parameters at current tech level
+                civ.expansion_program_started = True
+                civ.expansion_start_kardashev = civ.kardashev_scale
+                civ.probe_velocity_c = probe_velocity_from_kardashev(civ.kardashev_scale)
+                civ.probe_per_hop_range_pc = per_hop_range_from_kardashev(civ.kardashev_scale)
+                civ.probe_offspring_count = offspring_count(civ.kardashev_scale)
+                civ.probe_replication_delay_yr = replication_delay_years(civ.kardashev_scale)
 
-        if not arrived_colonies:
+                # Launch initial wave from home world
+                self._launch_initial_probes(civ)
             return
 
-        colony_positions = self.galaxy.positions[arrived_colonies]
-        colonized_set = set(civ.colonized_stars)
+        # Process existing probes
+        for probe in civ.active_probes:
+            # Check if probe has arrived
+            if not probe.has_arrived and probe.arrival_time_myr <= self.current_time_myr:
+                probe.has_arrived = True
+                probe.replication_complete_time_myr = (
+                    self.current_time_myr + probe.replication_delay_yr / 1e6
+                )
 
-        # Find colonization candidates using expansion model
-        candidates = self.expansion_model.find_colonization_candidates(
-            colony_positions=colony_positions,
-            stellar_positions=self.galaxy.positions,
-            habitable_mask=self.galaxy.stellar_types == 1,
-            colonized_indices=colonized_set,
-            current_time_myr=self.current_time_myr
+                # Mark target as colonized
+                if probe.target_star_idx not in civ.colonized_stars:
+                    civ.colonized_stars.append(probe.target_star_idx)
+                    civ.colony_arrival_times[probe.target_star_idx] = probe.arrival_time_myr
+                    self._colonized_mask[probe.target_star_idx] = True
+
+            # Check if replication is complete
+            if (probe.has_arrived and not probe.has_replicated and
+                probe.replication_complete_time_myr <= self.current_time_myr):
+                probe.has_replicated = True
+
+                # Launch offspring probes
+                self._launch_offspring_probes(civ, probe)
+
+    def _launch_initial_probes(self, civ: CivilizationState) -> None:
+        """Launch initial wave of probes from home world."""
+        home_idx = civ.parent_star_idx
+        home_pos = self.galaxy.positions[home_idx]
+
+        # Find nearest uncolonized habitable stars within range
+        targets = self._find_nearest_targets(
+            source_pos=home_pos,
+            max_range_pc=civ.probe_per_hop_range_pc,
+            max_targets=civ.probe_offspring_count,
+            colonized_set=set(civ.colonized_stars),
+            exclude_idx=home_idx
         )
 
-        if not candidates:
-            return
-
-        # Apply light cone constraints
-        from ..simulation.physics import LightTravelCalculator
-
-        # Filter candidates to only those within observable light cone
-        civ_age_yr = (self.current_time_myr - civ.birth_time_myr) * 1e6
-        observable_candidates = []
-
-        for star_idx, arrival_time in candidates:
-            star_pos = self.galaxy.positions[star_idx]
-            home_pos = self.galaxy.positions[civ.parent_star_idx]
-
-            # Check if star is within light cone from home world
-            distance_kpc = np.linalg.norm(star_pos - home_pos)
+        # Launch probes
+        for target_idx in targets:
+            target_pos = self.galaxy.positions[target_idx]
+            distance_kpc = np.linalg.norm(target_pos - home_pos)
             distance_pc = distance_kpc * 1000.0
-            light_time_yr = LightTravelCalculator.light_travel_time(distance_pc)
 
-            # Observable if light has had time to reach home world
-            if light_time_yr <= civ_age_yr:
-                observable_candidates.append((star_idx, arrival_time))
+            # Calculate travel time
+            travel_time_yr = distance_pc / (civ.probe_velocity_c * C_PC_YR)
+            arrival_time_myr = self.current_time_myr + travel_time_yr / 1e6
 
-        if not observable_candidates:
-            return
+            # Create probe
+            probe = ProbeState(
+                probe_id=self.next_probe_id,
+                parent_probe_id=None,  # Launched from home world
+                generation=0,
+                launch_star_idx=home_idx,
+                target_star_idx=target_idx,
+                launch_time_myr=self.current_time_myr,
+                arrival_time_myr=arrival_time_myr,
+                velocity_c=civ.probe_velocity_c,
+                per_hop_range_pc=civ.probe_per_hop_range_pc,
+                offspring_count=civ.probe_offspring_count,
+                replication_delay_yr=civ.probe_replication_delay_yr
+            )
+            self.next_probe_id += 1
+            civ.active_probes.append(probe)
 
-        # Select colonies to establish
-        selected_indices = self.expansion_model.select_colonies(
-            observable_candidates,
-            self.rng,
-            max_new_colonies=10  # Limit colonies per timestep
+    def _launch_offspring_probes(self, civ: CivilizationState, parent_probe: ProbeState) -> None:
+        """Launch offspring probes from arrived parent probe."""
+        source_idx = parent_probe.target_star_idx
+        source_pos = self.galaxy.positions[source_idx]
+
+        # Find nearest uncolonized habitable stars within range
+        targets = self._find_nearest_targets(
+            source_pos=source_pos,
+            max_range_pc=civ.probe_per_hop_range_pc,
+            max_targets=civ.probe_offspring_count,
+            colonized_set=set(civ.colonized_stars),
+            exclude_idx=source_idx
         )
 
-        # Add new colonies with arrival times
-        for star_idx in selected_indices:
-            if star_idx not in colonized_set:
-                # Find arrival time for this star
-                arrival_time = next(t for idx, t in observable_candidates if idx == star_idx)
+        # Launch offspring probes
+        for target_idx in targets:
+            target_pos = self.galaxy.positions[target_idx]
+            distance_kpc = np.linalg.norm(target_pos - source_pos)
+            distance_pc = distance_kpc * 1000.0
 
-                civ.colonized_stars.append(star_idx)
-                civ.colony_arrival_times[star_idx] = arrival_time
-                self._colonized_mask[star_idx] = True
+            # Calculate travel time
+            travel_time_yr = distance_pc / (civ.probe_velocity_c * C_PC_YR)
+            arrival_time_myr = self.current_time_myr + travel_time_yr / 1e6
+
+            # Create offspring probe
+            probe = ProbeState(
+                probe_id=self.next_probe_id,
+                parent_probe_id=parent_probe.probe_id,
+                generation=parent_probe.generation + 1,
+                launch_star_idx=source_idx,
+                target_star_idx=target_idx,
+                launch_time_myr=self.current_time_myr,
+                arrival_time_myr=arrival_time_myr,
+                velocity_c=civ.probe_velocity_c,
+                per_hop_range_pc=civ.probe_per_hop_range_pc,
+                offspring_count=civ.probe_offspring_count,
+                replication_delay_yr=civ.probe_replication_delay_yr
+            )
+            self.next_probe_id += 1
+            civ.active_probes.append(probe)
+
+    def _find_nearest_targets(self, source_pos: np.ndarray, max_range_pc: float,
+                              max_targets: int, colonized_set: Set[int],
+                              exclude_idx: int) -> List[int]:
+        """Find nearest uncolonized habitable stars within range."""
+        # Calculate distances to all stars
+        distances_kpc = np.linalg.norm(self.galaxy.positions - source_pos, axis=1)
+        distances_pc = distances_kpc * 1000.0
+
+        # Filter: habitable, uncolonized, within range, not source
+        habitable_mask = self.galaxy.stellar_types == 1
+        range_mask = distances_pc <= max_range_pc
+        not_colonized = ~np.isin(np.arange(len(self.galaxy.positions)), list(colonized_set))
+        not_source = np.arange(len(self.galaxy.positions)) != exclude_idx
+
+        candidate_mask = habitable_mask & range_mask & not_colonized & not_source
+        candidate_indices = np.where(candidate_mask)[0]
+
+        if len(candidate_indices) == 0:
+            return []
+
+        # Sort by distance and take nearest N
+        candidate_distances = distances_pc[candidate_indices]
+        sorted_indices = np.argsort(candidate_distances)
+        nearest_indices = candidate_indices[sorted_indices[:max_targets]]
+
+        return nearest_indices.tolist()
 
     def _apply_hazards(self) -> None:
         """
