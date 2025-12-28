@@ -357,6 +357,53 @@ class NotebookSimulationRunner:
             **layer_toggles
         )
 
+    def plot_animated_3d_galaxy(self, subsample_stars=10000,
+                                show_stars=True, show_hazards=True):
+        """
+        Create animated 3D galaxy visualization with time slider.
+
+        Shows civilization evolution over simulation time with
+        play/pause controls and timeline slider.
+
+        Args:
+            subsample_stars: Number of background stars to show (default: 10000)
+            show_stars: Show background star field (default: True)
+            show_hazards: Show hazard events (default: True)
+
+        Returns:
+            plotly Figure object with animation frames
+
+        Raises:
+            ValueError: If simulation doesn't have snapshots enabled
+
+        Example:
+            >>> fig = runner.plot_animated_3d_galaxy(
+            ...     subsample_stars=20000,
+            ...     show_hazards=True
+            ... )
+            >>> fig.show()
+
+        Note:
+            Requires simulation to be run with save_snapshots=True in config.
+        """
+        if self.simulation is None:
+            raise ValueError("No simulation available. Run simulation first.")
+
+        if not hasattr(self.simulation, 'snapshots') or not self.simulation.snapshots:
+            raise ValueError(
+                "No snapshots available for animation. "
+                "Run simulation with config.simulation.save_snapshots = True"
+            )
+
+        from great_silence.visualization.interactive_3d import Interactive3DVisualizer
+
+        viz = Interactive3DVisualizer(self.simulation)
+        return viz.create_animated_figure(
+            subsample_stars=subsample_stars,
+            show_stars=show_stars,
+            show_hazards=show_hazards
+        )
+
     def plot_timeline(self):
         """Create timeline visualization."""
         if self.simulation is None:

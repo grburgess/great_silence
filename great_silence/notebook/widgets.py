@@ -588,6 +588,13 @@ class Galaxy3DExplorer:
             readout_format=',d'
         )
 
+        # Animation controls
+        self.enable_animation = widgets.Checkbox(
+            value=False,
+            description='Enable Animation (requires snapshots)',
+            style={'description_width': 'initial'}
+        )
+
         # Generate button
         self.generate_button = widgets.Button(
             description='Generate Visualization',
@@ -596,6 +603,15 @@ class Galaxy3DExplorer:
             layout=widgets.Layout(width='250px', height='40px')
         )
         self.generate_button.on_click(self._on_generate)
+
+        # Animate button
+        self.animate_button = widgets.Button(
+            description='Create Animation',
+            button_style='success',
+            icon='play',
+            layout=widgets.Layout(width='200px', height='40px')
+        )
+        self.animate_button.on_click(self._on_animate)
 
         # Export button
         self.export_button = widgets.Button(
@@ -675,6 +691,49 @@ class Galaxy3DExplorer:
             with self.output:
                 display(HTML(f"<p style='color: red;'><b>Export failed:</b> {str(e)}</p>"))
 
+    def _on_animate(self, button):
+        """Create animated visualization with time slider."""
+        with self.output:
+            clear_output(wait=True)
+
+            if not self.enable_animation.value:
+                display(HTML("<p style='color: orange;'>⚠ Enable animation checkbox first</p>"))
+                return
+
+            display(HTML("<p>Creating animation... (this may take a moment)</p>"))
+
+            try:
+                # Create animated figure
+                self.current_fig = self.runner.plot_animated_3d_galaxy(
+                    subsample_stars=self.subsample_stars.value,
+                    show_stars=self.show_stars.value,
+                    show_hazards=self.show_hazards.value
+                )
+
+                # Display figure
+                clear_output(wait=True)
+                display(self.current_fig)
+
+                # Enable export button
+                self.export_button.disabled = False
+
+                # Show info
+                display(HTML(
+                    "<p style='color: green;'>✓ Animation created!</p>"
+                    "<p><b>Controls:</b> Use Play/Pause buttons and timeline slider to explore simulation evolution</p>"
+                ))
+
+            except ValueError as e:
+                clear_output()
+                display(HTML(
+                    f"<p style='color: red;'><b>Error:</b> {str(e)}</p>"
+                    "<p>Make sure your simulation was run with snapshots enabled:</p>"
+                    "<pre>config.simulation.save_snapshots = True</pre>"
+                ))
+            except Exception as e:
+                clear_output()
+                display(HTML(f"<p style='color: red;'><b>Error:</b> {str(e)}</p>"))
+
     def display(self):
         """Display the 3D explorer interface."""
         # Layer controls section
@@ -693,6 +752,13 @@ class Galaxy3DExplorer:
             self.subsample_stars,
         ])
 
+        # Animation section
+        animation_controls = widgets.VBox([
+            widgets.HTML("<br><h3>Animation</h3>"),
+            self.enable_animation,
+            self.animate_button,
+        ])
+
         # Controls section
         controls = widgets.VBox([
             widgets.HTML("<br>"),
@@ -708,6 +774,7 @@ class Galaxy3DExplorer:
             widgets.HTML("<hr>"),
             layer_controls,
             settings,
+            animation_controls,
             controls,
             widgets.HTML("<hr>"),
             self.output
