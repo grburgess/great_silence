@@ -68,6 +68,7 @@ class CivilizationState:
     probe_offspring_count: Optional[int] = None
     probe_replication_delay_yr: Optional[float] = None
     probe_min_metallicity: Optional[float] = None
+    probe_sensor_range_pc: Optional[float] = None
 
     # Probe tracking
     active_probes: List['ProbeState'] = field(default_factory=list)
@@ -511,7 +512,17 @@ class GalaxySimulation:
                 civ.probe_per_hop_range_pc = per_hop_range_from_kardashev(civ.kardashev_scale)
                 civ.probe_offspring_count = offspring_count(civ.kardashev_scale)
                 civ.probe_replication_delay_yr = replication_delay_years(civ.kardashev_scale)
-                civ.probe_min_metallicity = min_metallicity_for_replication(civ.kardashev_scale)
+
+                # Use config metallicity thresholds (configurable per scenario)
+                civ.probe_min_metallicity = min_metallicity_for_replication(
+                    civ.kardashev_scale,
+                    threshold_k085=self.config.civilization.metallicity_threshold_k085,
+                    threshold_k095=self.config.civilization.metallicity_threshold_k095,
+                    threshold_k120=self.config.civilization.metallicity_threshold_k120
+                )
+
+                # Store sensor range for mid-flight course corrections
+                civ.probe_sensor_range_pc = self.config.civilization.probe_sensor_range_pc
 
                 # Launch initial wave from home world
                 self._launch_initial_probes(civ)
@@ -519,6 +530,12 @@ class GalaxySimulation:
 
         # Process existing probes
         for probe in civ.active_probes:
+            # Mid-flight sensor-based course correction (if enabled)
+            if (not probe.has_arrived and
+                self.config.civilization.enable_mid_flight_retargeting and
+                civ.probe_sensor_range_pc is not None):
+                self._check_sensor_retargeting(civ, probe)
+
             # Check if probe has arrived
             if not probe.has_arrived and probe.arrival_time_myr <= self.current_time_myr:
                 probe.has_arrived = True
@@ -684,6 +701,109 @@ class GalaxySimulation:
             targets.extend(res_sorted[:remaining].tolist())
 
         return targets
+
+    def _check_sensor_retargeting(self, civ: CivilizationState, probe: 'ProbeState') -> None:
+        """
+        Check if probe sensors detect a more favorable target and adjust course.
+
+        Probes can scan within sensor range during flight and retarget to:
+        - Habitable planets (always preferred)
+        - Higher metallicity systems (better resources)
+
+        Only retargets once per probe to avoid computational overhead.
+
+        Args:
+            civ: Civilization state
+            probe: Probe in transit
+        """
+        # Only retarget once to avoid repeated course changes
+        if hasattr(probe, '_has_retargeted') and probe._has_retargeted:
+            return
+
+        # Calculate probe's current position along trajectory
+        elapsed_time_myr = self.current_time_myr - probe.launch_time_myr
+        total_time_myr = probe.arrival_time_myr - probe.launch_time_myr
+
+        if total_time_myr <= 0:
+            return  # Avoid division by zero
+
+        fraction_complete = min(elapsed_time_myr / total_time_myr, 1.0)
+
+        # Interpolate position
+        source_idx = probe.source_star_idx if hasattr(probe, 'source_star_idx') else civ.parent_star_idx
+        source_pos = self.galaxy.positions[source_idx]
+        target_pos = self.galaxy.positions[probe.target_star_idx]
+        current_pos = source_pos + fraction_complete * (target_pos - source_pos)
+
+        # Scan for better targets within sensor range
+        distances_kpc = np.linalg.norm(self.galaxy.positions - current_pos, axis=1)
+        distances_pc = distances_kpc * 1000.0
+
+        # Filter: within sensor range, meets metallicity, uncolonized
+        sensor_mask = distances_pc <= civ.probe_sensor_range_pc
+        metallicity_mask = self.galaxy.metallicities >= civ.probe_min_metallicity
+        not_colonized = ~np.isin(np.arange(len(self.galaxy.positions)), list(civ.colonized_stars))
+        not_current_target = np.arange(len(self.galaxy.positions)) != probe.target_star_idx
+
+        candidate_mask = sensor_mask & metallicity_mask & not_colonized & not_current_target
+        candidate_indices = np.where(candidate_mask)[0]
+
+        if len(candidate_indices) == 0:
+            return
+
+        # Prioritize habitable planets
+        habitable_mask = self.galaxy.stellar_types == 1
+        habitable_candidates = candidate_indices[habitable_mask[candidate_indices]]
+
+        current_target_habitable = self.galaxy.stellar_types[probe.target_star_idx] == 1
+        current_target_metallicity = self.galaxy.metallicities[probe.target_star_idx]
+
+        # Retarget if we find a habitable planet and current target isn't habitable
+        if len(habitable_candidates) > 0 and not current_target_habitable:
+            # Choose nearest habitable candidate
+            hab_distances = distances_pc[habitable_candidates]
+            nearest_idx = habitable_candidates[np.argmin(hab_distances)]
+
+            # Retarget probe
+            self._retarget_probe(probe, nearest_idx, current_pos)
+            probe._has_retargeted = True  # type: ignore
+            return
+
+        # Otherwise, check for significantly better metallicity (at least 0.2 dex improvement)
+        candidate_metallicities = self.galaxy.metallicities[candidate_indices]
+        metallicity_improvements = candidate_metallicities - current_target_metallicity
+
+        better_candidates = candidate_indices[metallicity_improvements >= 0.2]
+        if len(better_candidates) > 0:
+            # Choose nearest candidate with better metallicity
+            better_distances = distances_pc[better_candidates]
+            nearest_idx = better_candidates[np.argmin(better_distances)]
+
+            # Retarget probe
+            self._retarget_probe(probe, nearest_idx, current_pos)
+            probe._has_retargeted = True  # type: ignore
+
+    def _retarget_probe(self, probe: 'ProbeState', new_target_idx: int, current_pos: np.ndarray) -> None:
+        """
+        Retarget probe to new destination from current position.
+
+        Args:
+            probe: Probe to retarget
+            new_target_idx: New target star index
+            current_pos: Probe's current position (kpc)
+        """
+        new_target_pos = self.galaxy.positions[new_target_idx]
+        distance_kpc = np.linalg.norm(new_target_pos - current_pos)
+        distance_pc = distance_kpc * 1000.0
+
+        # Calculate new travel time from current position
+        travel_time_yr = distance_pc / (probe.velocity_c * C_PC_YR)
+        travel_time_myr = travel_time_yr / 1e6
+
+        # Update probe parameters
+        probe.target_star_idx = new_target_idx
+        probe.arrival_time_myr = self.current_time_myr + travel_time_myr
+        # Note: launch_time_myr stays the same (original launch), but arrival time updated
 
     def _apply_hazards(self) -> None:
         """

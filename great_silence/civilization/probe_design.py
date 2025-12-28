@@ -152,7 +152,12 @@ def replication_delay_years(kardashev_level: float) -> float:
         return 50.0   # Fast, Type I coordination
 
 
-def min_metallicity_for_replication(kardashev_level: float) -> float:
+def min_metallicity_for_replication(
+    kardashev_level: float,
+    threshold_k085: float = -0.3,
+    threshold_k095: float = -0.5,
+    threshold_k120: float = -1.0
+) -> float:
     """
     Minimum stellar metallicity [Fe/H] required for probe replication.
 
@@ -162,6 +167,9 @@ def min_metallicity_for_replication(kardashev_level: float) -> float:
 
     Args:
         kardashev_level: Civilization's Kardashev scale
+        threshold_k085: Metallicity threshold for K=0.85-0.95 (default: -0.3)
+        threshold_k095: Metallicity threshold for K=0.95-1.20 (default: -0.5)
+        threshold_k120: Metallicity threshold for K>1.20 (default: -1.0)
 
     Returns:
         Minimum [Fe/H] metallicity (solar = 0.0, metal-poor < -1.0)
@@ -172,26 +180,26 @@ def min_metallicity_for_replication(kardashev_level: float) -> float:
         - Metal-poor stars ([Fe/H] < -1.0) have few rocky bodies
         - Solar metallicity ([Fe/H] = 0.0) has abundant resources
 
-        K=0.85-0.95: Need metal-rich systems ([Fe/H] > -0.3)
+        K=0.85-0.95: Need metal-rich systems (default: [Fe/H] > -0.3)
             - Limited refining/processing capability
             - Require abundant, easily accessible metals
 
-        K=0.95-1.20: Can use solar-metallicity systems ([Fe/H] > -0.5)
+        K=0.95-1.20: Can use solar-metallicity systems (default: [Fe/H] > -0.5)
             - Better resource extraction technology
             - More efficient manufacturing
 
-        K>1.20: Can utilize metal-poor systems ([Fe/H] > -1.0)
+        K>1.20: Can utilize metal-poor systems (default: [Fe/H] > -1.0)
             - Advanced transmutation or matter replication
             - Can extract trace metals efficiently
     """
     if kardashev_level < 0.85:
         return float('inf')  # Cannot replicate
     elif kardashev_level < 0.95:
-        return -0.3  # Need metal-rich systems
+        return threshold_k085  # Need metal-rich systems
     elif kardashev_level < 1.20:
-        return -0.5  # Solar-metallicity acceptable
+        return threshold_k095  # Solar-metallicity acceptable
     else:
-        return -1.0  # Can use metal-poor systems
+        return threshold_k120  # Can use metal-poor systems
 
 
 # Constants

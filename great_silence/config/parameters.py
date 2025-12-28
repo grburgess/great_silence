@@ -103,6 +103,17 @@ class CivilizationParameters:
     # calculated dynamically based on Kardashev level at expansion start
     # See great_silence/civilization/probe_design.py for scaling functions
 
+    # Metallicity-based targeting (probes need resources for replication)
+    # Override these to customize metallicity thresholds; None = use Kardashev-based defaults
+    metallicity_threshold_k085: float = -0.3  # K=0.85-0.95: Metal-rich systems required
+    metallicity_threshold_k095: float = -0.5  # K=0.95-1.20: Solar metallicity acceptable
+    metallicity_threshold_k120: float = -1.0  # K>1.20: Can use metal-poor systems
+
+    # Probe sensor capabilities for mid-flight course corrections
+    # Probes can detect and retarget to favorable planets within sensor range
+    probe_sensor_range_pc: float = 10.0  # Sensor range in parsecs (default: 10 pc)
+    enable_mid_flight_retargeting: bool = True  # Allow probes to change course to better targets
+
     # Self-destruction model
     self_destruction_model_type: str = "kardashev_dependent"  # "flat" or "kardashev_dependent"
     self_destruction_probability_per_myr: float = 0.1  # 10% per Myr (for flat model)

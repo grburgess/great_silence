@@ -94,6 +94,59 @@ class SimulationWidget:
 
         self.monte_carlo_checkbox.observe(toggle_realizations, names='value')
 
+        # Probe expansion parameters (metallicity-based targeting)
+        self.metallicity_k085_slider = widgets.FloatSlider(
+            value=-0.3,
+            min=-1.5,
+            max=0.5,
+            step=0.1,
+            description='K=0.85-0.95 [Fe/H]:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='500px'),
+            tooltip='Metallicity threshold for early expansion (K=0.85-0.95)'
+        )
+
+        self.metallicity_k095_slider = widgets.FloatSlider(
+            value=-0.5,
+            min=-1.5,
+            max=0.5,
+            step=0.1,
+            description='K=0.95-1.20 [Fe/H]:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='500px'),
+            tooltip='Metallicity threshold for intermediate tech (K=0.95-1.20)'
+        )
+
+        self.metallicity_k120_slider = widgets.FloatSlider(
+            value=-1.0,
+            min=-1.5,
+            max=0.5,
+            step=0.1,
+            description='K>1.20 [Fe/H]:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='500px'),
+            tooltip='Metallicity threshold for advanced tech (K>1.20)'
+        )
+
+        self.sensor_range_slider = widgets.FloatSlider(
+            value=10.0,
+            min=0.0,
+            max=50.0,
+            step=5.0,
+            description='Sensor Range (pc):',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='500px'),
+            tooltip='Probe sensor range for mid-flight course corrections'
+        )
+
+        self.enable_retargeting_checkbox = widgets.Checkbox(
+            value=True,
+            description='Enable mid-flight retargeting',
+            style={'description_width': 'initial'},
+            layout=widgets.Layout(width='300px'),
+            tooltip='Allow probes to change course to better targets detected by sensors'
+        )
+
         # Run button
         self.run_button = widgets.Button(
             description='Run Simulation',
@@ -119,6 +172,15 @@ class SimulationWidget:
             self.num_stars_slider,
             self.duration_slider,
             self.seed_input,
+            widgets.HTML("<br><b>Probe Expansion (Metallicity-Based Targeting):</b>"),
+            widgets.HTML("<p style='font-size: 12px; color: #666;'>Probes need metal-rich systems for replication. Lower Kardashev levels need richer systems.</p>"),
+            self.metallicity_k085_slider,
+            self.metallicity_k095_slider,
+            self.metallicity_k120_slider,
+            widgets.HTML("<br><b>Probe Sensors (Mid-Flight Course Correction):</b>"),
+            widgets.HTML("<p style='font-size: 12px; color: #666;'>Probes can detect and retarget to better planets within sensor range.</p>"),
+            self.sensor_range_slider,
+            self.enable_retargeting_checkbox,
             widgets.HTML("<br><b>Monte Carlo Options:</b>"),
             self.monte_carlo_checkbox,
             self.num_realizations_slider,
@@ -204,6 +266,15 @@ class SimulationWidget:
         # Override parameters
         config.galaxy.total_stars = self.num_stars_slider.value
         config.simulation.simulation_duration_gyr = self.duration_slider.value
+
+        # Probe expansion metallicity thresholds
+        config.civilization.metallicity_threshold_k085 = self.metallicity_k085_slider.value
+        config.civilization.metallicity_threshold_k095 = self.metallicity_k095_slider.value
+        config.civilization.metallicity_threshold_k120 = self.metallicity_k120_slider.value
+
+        # Probe sensor capabilities
+        config.civilization.probe_sensor_range_pc = self.sensor_range_slider.value
+        config.civilization.enable_mid_flight_retargeting = self.enable_retargeting_checkbox.value
 
         # Enable snapshots for visualization
         config.simulation.save_snapshots = True
