@@ -6,6 +6,8 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
 from .plotly_3d_viz import VisualizationConfig, ColorMapper
+from .trajectory_builder import TrajectoryBuilder
+from .sphere_builder import SphereBuilder
 
 
 class TimelineData:
@@ -125,6 +127,8 @@ class Interactive3DVisualizer:
                             show_extinct: bool = True,
                             show_deaths: bool = False,
                             show_hazards: bool = False,
+                            show_trajectories: bool = False,
+                            show_spheres: bool = False,
                             subsample_stars: int = 10000) -> go.Figure:
         """
         Create static multi-layer visualization.
@@ -135,6 +139,8 @@ class Interactive3DVisualizer:
             show_extinct: Show extinct civilizations
             show_deaths: Show death location markers
             show_hazards: Show hazard events (supernova/GRB)
+            show_trajectories: Show expansion trajectory lines
+            show_spheres: Show influence spheres
             subsample_stars: Number of stars to display (for performance)
 
         Returns:
@@ -146,19 +152,27 @@ class Interactive3DVisualizer:
         if show_stars:
             self._add_star_layer(fig, subsample_stars)
 
-        # Layer 2: Active civilizations
+        # Layer 2: Expansion trajectories
+        if show_trajectories:
+            self._add_trajectory_layer(fig)
+
+        # Layer 3: Influence spheres
+        if show_spheres:
+            self._add_sphere_layer(fig)
+
+        # Layer 4: Active civilizations
         if show_active:
             self._add_active_civilization_layer(fig)
 
-        # Layer 3: Extinct civilizations
+        # Layer 5: Extinct civilizations
         if show_extinct:
             self._add_extinct_civilization_layer(fig)
 
-        # Layer 4: Death markers
+        # Layer 6: Death markers
         if show_deaths:
             self._add_death_marker_layer(fig)
 
-        # Layer 5: Hazard events
+        # Layer 7: Hazard events
         if show_hazards:
             self._add_hazard_event_layer(fig)
 
@@ -170,7 +184,9 @@ class Interactive3DVisualizer:
     def create_animated_figure(self,
                                subsample_stars: int = 10000,
                                show_stars: bool = True,
-                               show_hazards: bool = True) -> go.Figure:
+                               show_hazards: bool = True,
+                               show_trajectories: bool = False,
+                               show_spheres: bool = False) -> go.Figure:
         """
         Create animated 3D figure with time slider.
 
@@ -181,6 +197,8 @@ class Interactive3DVisualizer:
             subsample_stars: Number of background stars to display
             show_stars: Show background star field
             show_hazards: Show hazard events
+            show_trajectories: Show expansion trajectory lines (grows over time)
+            show_spheres: Show influence spheres (expands over time)
 
         Returns:
             Plotly Figure with animation frames
@@ -192,12 +210,12 @@ class Interactive3DVisualizer:
         timeline = TimelineData(self.simulation)
 
         # Create base figure with first frame
-        fig = self._build_frame_figure(timeline.frames[0], subsample_stars, show_stars, show_hazards)
+        fig = self._build_frame_figure(timeline.frames[0], subsample_stars, show_stars, show_hazards, show_trajectories, show_spheres)
 
         # Add animation frames
         frames = []
         for i, frame_data in enumerate(timeline.frames):
-            frame_traces = self._build_frame_traces(frame_data, subsample_stars, show_stars, show_hazards)
+            frame_traces = self._build_frame_traces(frame_data, subsample_stars, show_stars, show_hazards, show_trajectories, show_spheres)
             frames.append(go.Frame(
                 data=frame_traces,
                 name=f't_{i}',
@@ -291,7 +309,9 @@ class Interactive3DVisualizer:
     def _build_frame_figure(self, frame_data: Dict[str, Any],
                             subsample_stars: int,
                             show_stars: bool,
-                            show_hazards: bool) -> go.Figure:
+                            show_hazards: bool,
+                            show_trajectories: bool,
+                            show_spheres: bool) -> go.Figure:
         """Build initial figure for animation from frame data."""
         fig = go.Figure()
 
@@ -300,7 +320,7 @@ class Interactive3DVisualizer:
             self._add_star_layer(fig, subsample_stars)
 
         # Add civilization and hazard layers for this frame
-        traces = self._build_frame_traces(frame_data, subsample_stars, show_stars, show_hazards)
+        traces = self._build_frame_traces(frame_data, subsample_stars, show_stars, show_hazards, show_trajectories, show_spheres)
         for trace in traces:
             # Skip stars trace since we already added it
             if trace.name != 'Stars':
@@ -314,7 +334,9 @@ class Interactive3DVisualizer:
     def _build_frame_traces(self, frame_data: Dict[str, Any],
                             subsample_stars: int,
                             show_stars: bool,
-                            show_hazards: bool) -> List[go.Scatter3d]:
+                            show_hazards: bool,
+                            show_trajectories: bool,
+                            show_spheres: bool) -> List:
         """Build traces for a single animation frame."""
         traces = []
 
@@ -433,6 +455,35 @@ class Interactive3DVisualizer:
                     hovertemplate='%{text}<extra></extra>',
                     name=f'Hazard: {event_type}'
                 ))
+
+        # Expansion trajectories
+        if show_trajectories:
+            trajectory_builder = TrajectoryBuilder(self.simulation, self.color_mapper)
+            trajectory_data = trajectory_builder.get_trajectory_lines(frame_data['time_myr'])
+
+            if trajectory_data['x']:
+                traces.append(go.Scatter3d(
+                    x=trajectory_data['x'],
+                    y=trajectory_data['y'],
+                    z=trajectory_data['z'],
+                    mode='lines',
+                    line=dict(
+                        color=trajectory_data['color'],
+                        width=2
+                    ),
+                    name=f"Expansion Lines ({trajectory_data['num_lines']})",
+                    hoverinfo='skip'
+                ))
+
+        # Influence spheres
+        if show_spheres:
+            sphere_builder = SphereBuilder(self.color_mapper)
+            spheres = sphere_builder.build_influence_spheres(
+                self.simulation.civilizations,
+                self.simulation.galaxy.positions,
+                frame_data['time_myr']
+            )
+            traces.extend(spheres)
 
         return traces
 
@@ -619,6 +670,45 @@ class Interactive3DVisualizer:
                 hovertemplate='%{text}<extra></extra>',
                 name=f'Hazard: {event_type}'
             ))
+
+    def _add_trajectory_layer(self, fig: go.Figure):
+        """Add expansion trajectory lines from parent to colonies."""
+        # Build trajectories at current (final) simulation time
+        current_time_myr = self.simulation.current_time_myr
+
+        trajectory_builder = TrajectoryBuilder(self.simulation, self.color_mapper)
+        trajectory_data = trajectory_builder.get_trajectory_lines(current_time_myr)
+
+        if not trajectory_data['x']:
+            return  # No trajectories to show
+
+        fig.add_trace(go.Scatter3d(
+            x=trajectory_data['x'],
+            y=trajectory_data['y'],
+            z=trajectory_data['z'],
+            mode='lines',
+            line=dict(
+                color=trajectory_data['color'],
+                width=2
+            ),
+            name=f"Expansion Lines ({trajectory_data['num_lines']})",
+            hoverinfo='skip'
+        ))
+
+    def _add_sphere_layer(self, fig: go.Figure):
+        """Add translucent influence spheres centered at home worlds."""
+        # Build spheres at current (final) simulation time
+        current_time_myr = self.simulation.current_time_myr
+
+        sphere_builder = SphereBuilder(self.color_mapper)
+        spheres = sphere_builder.build_influence_spheres(
+            self.simulation.civilizations,
+            self.simulation.galaxy.positions,
+            current_time_myr
+        )
+
+        for sphere in spheres:
+            fig.add_trace(sphere)
 
     def _build_civilization_tooltip(self, civ) -> str:
         """Build HTML tooltip for civilization marker."""

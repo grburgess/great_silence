@@ -576,6 +576,18 @@ class Galaxy3DExplorer:
             style={'description_width': 'initial'}
         )
 
+        self.show_trajectories = widgets.Checkbox(
+            value=False,
+            description='Show expansion trajectories (parent→colony lines)',
+            style={'description_width': 'initial'}
+        )
+
+        self.show_spheres = widgets.Checkbox(
+            value=False,
+            description='Show influence spheres (translucent)',
+            style={'description_width': 'initial'}
+        )
+
         # Subsample control
         self.subsample_stars = widgets.IntSlider(
             value=10000,
@@ -647,7 +659,9 @@ class Galaxy3DExplorer:
                     show_active=self.show_active.value,
                     show_extinct=self.show_extinct.value,
                     show_deaths=self.show_deaths.value,
-                    show_hazards=self.show_hazards.value
+                    show_hazards=self.show_hazards.value,
+                    show_trajectories=self.show_trajectories.value,
+                    show_spheres=self.show_spheres.value
                 )
 
                 # Display figure
@@ -669,6 +683,10 @@ class Galaxy3DExplorer:
                     active_layers.append("Death markers")
                 if self.show_hazards.value:
                     active_layers.append("Hazard events")
+                if self.show_trajectories.value:
+                    active_layers.append("Expansion trajectories")
+                if self.show_spheres.value:
+                    active_layers.append("Influence spheres")
 
                 display(HTML(f"<p style='color: green;'>✓ Active layers: {', '.join(active_layers)}</p>"))
 
@@ -707,7 +725,9 @@ class Galaxy3DExplorer:
                 self.current_fig = self.runner.plot_animated_3d_galaxy(
                     subsample_stars=self.subsample_stars.value,
                     show_stars=self.show_stars.value,
-                    show_hazards=self.show_hazards.value
+                    show_hazards=self.show_hazards.value,
+                    show_trajectories=self.show_trajectories.value,
+                    show_spheres=self.show_spheres.value
                 )
 
                 # Display figure
@@ -718,10 +738,12 @@ class Galaxy3DExplorer:
                 self.export_button.disabled = False
 
                 # Show info
-                display(HTML(
-                    "<p style='color: green;'>✓ Animation created!</p>"
-                    "<p><b>Controls:</b> Use Play/Pause buttons and timeline slider to explore simulation evolution</p>"
-                ))
+                info_parts = ["<p style='color: green;'>✓ Animation created!</p>"]
+                if self.show_trajectories.value or self.show_spheres.value:
+                    info_parts.append("<p><i>Note: Trajectories and spheres grow over time as civilizations expand</i></p>")
+                info_parts.append("<p><b>Controls:</b> Use Play/Pause buttons and timeline slider to explore simulation evolution</p>")
+
+                display(HTML(''.join(info_parts)))
 
             except ValueError as e:
                 clear_output()
@@ -744,6 +766,8 @@ class Galaxy3DExplorer:
             self.show_extinct,
             self.show_deaths,
             self.show_hazards,
+            self.show_trajectories,
+            self.show_spheres,
         ])
 
         # Settings section

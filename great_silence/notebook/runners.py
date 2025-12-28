@@ -358,7 +358,8 @@ class NotebookSimulationRunner:
         )
 
     def plot_animated_3d_galaxy(self, subsample_stars=10000,
-                                show_stars=True, show_hazards=True):
+                                show_stars=True, show_hazards=True,
+                                show_trajectories=False, show_spheres=False):
         """
         Create animated 3D galaxy visualization with time slider.
 
@@ -369,6 +370,8 @@ class NotebookSimulationRunner:
             subsample_stars: Number of background stars to show (default: 10000)
             show_stars: Show background star field (default: True)
             show_hazards: Show hazard events (default: True)
+            show_trajectories: Show expansion trajectory lines (default: False)
+            show_spheres: Show civilization influence spheres (default: False)
 
         Returns:
             plotly Figure object with animation frames
@@ -379,7 +382,8 @@ class NotebookSimulationRunner:
         Example:
             >>> fig = runner.plot_animated_3d_galaxy(
             ...     subsample_stars=20000,
-            ...     show_hazards=True
+            ...     show_hazards=True,
+            ...     show_trajectories=True
             ... )
             >>> fig.show()
 
@@ -401,7 +405,9 @@ class NotebookSimulationRunner:
         return viz.create_animated_figure(
             subsample_stars=subsample_stars,
             show_stars=show_stars,
-            show_hazards=show_hazards
+            show_hazards=show_hazards,
+            show_trajectories=show_trajectories,
+            show_spheres=show_spheres
         )
 
     def plot_timeline(self):
