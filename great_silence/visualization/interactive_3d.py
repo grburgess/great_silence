@@ -456,23 +456,25 @@ class Interactive3DVisualizer:
                     name=f'Hazard: {event_type}'
                 ))
 
-        # Expansion trajectories
+        # Expansion trajectories (color-coded by civilization)
         if show_trajectories:
             trajectory_builder = TrajectoryBuilder(self.simulation, self.color_mapper)
-            trajectory_data = trajectory_builder.get_trajectory_lines(frame_data['time_myr'])
+            civ_traces = trajectory_builder.get_trajectory_traces_by_civilization(frame_data['time_myr'])
 
-            if trajectory_data['x']:
+            # Create separate trace for each civilization
+            for civ_id, traj_data in civ_traces.items():
                 traces.append(go.Scatter3d(
-                    x=trajectory_data['x'],
-                    y=trajectory_data['y'],
-                    z=trajectory_data['z'],
+                    x=traj_data['x'],
+                    y=traj_data['y'],
+                    z=traj_data['z'],
                     mode='lines',
                     line=dict(
-                        color=trajectory_data['color'],
+                        color=traj_data['color'],
                         width=2
                     ),
-                    name=f"Expansion Lines ({trajectory_data['num_lines']})",
-                    hoverinfo='skip'
+                    name=f"Civ {civ_id}",
+                    hoverinfo='skip',
+                    showlegend=False
                 ))
 
         # Influence spheres
@@ -481,7 +483,9 @@ class Interactive3DVisualizer:
             spheres = sphere_builder.build_influence_spheres(
                 self.simulation.civilizations,
                 self.simulation.galaxy.positions,
-                frame_data['time_myr']
+                frame_data['time_myr'],
+                skip_extinct=True,  # Skip extinct in animations (they grow over time)
+                opacity=0.2  # Translucent for animations
             )
             traces.extend(spheres)
 
@@ -672,28 +676,31 @@ class Interactive3DVisualizer:
             ))
 
     def _add_trajectory_layer(self, fig: go.Figure):
-        """Add expansion trajectory lines from parent to colonies."""
+        """Add expansion trajectory lines from parent to colonies, color-coded by civilization."""
         # Build trajectories at current (final) simulation time
         current_time_myr = self.simulation.current_time_myr
 
         trajectory_builder = TrajectoryBuilder(self.simulation, self.color_mapper)
-        trajectory_data = trajectory_builder.get_trajectory_lines(current_time_myr)
+        civ_traces = trajectory_builder.get_trajectory_traces_by_civilization(current_time_myr)
 
-        if not trajectory_data['x']:
+        if not civ_traces:
             return  # No trajectories to show
 
-        fig.add_trace(go.Scatter3d(
-            x=trajectory_data['x'],
-            y=trajectory_data['y'],
-            z=trajectory_data['z'],
-            mode='lines',
-            line=dict(
-                color=trajectory_data['color'],
-                width=2
-            ),
-            name=f"Expansion Lines ({trajectory_data['num_lines']})",
-            hoverinfo='skip'
-        ))
+        # Create separate trace for each civilization (for proper color-coding)
+        for civ_id, traj_data in civ_traces.items():
+            fig.add_trace(go.Scatter3d(
+                x=traj_data['x'],
+                y=traj_data['y'],
+                z=traj_data['z'],
+                mode='lines',
+                line=dict(
+                    color=traj_data['color'],
+                    width=2
+                ),
+                name=f"Civ {civ_id} Expansion",
+                hoverinfo='skip',
+                showlegend=False  # Don't clutter legend with individual civs
+            ))
 
     def _add_sphere_layer(self, fig: go.Figure):
         """Add translucent influence spheres centered at home worlds."""
@@ -704,7 +711,9 @@ class Interactive3DVisualizer:
         spheres = sphere_builder.build_influence_spheres(
             self.simulation.civilizations,
             self.simulation.galaxy.positions,
-            current_time_myr
+            current_time_myr,
+            skip_extinct=False,  # Show all spheres in static view
+            opacity=0.3  # More visible than default
         )
 
         for sphere in spheres:

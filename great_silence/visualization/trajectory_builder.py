@@ -134,3 +134,36 @@ class TrajectoryBuilder:
             'color': color,
             'num_lines': len(trajectories)
         }
+
+    def get_trajectory_traces_by_civilization(self, current_time_myr: float) -> Dict[int, Dict[str, Any]]:
+        """
+        Get trajectory data grouped by civilization for proper color-coding.
+
+        Args:
+            current_time_myr: Current simulation time in Myr
+
+        Returns:
+            Dictionary mapping civ_id to trajectory data dict with x/y/z/color
+        """
+        trajectories = self.build_trajectories_for_time(current_time_myr)
+
+        if not trajectories:
+            return {}
+
+        # Group by civilization
+        civ_traces = {}
+        for traj in trajectories:
+            civ_id = traj['civ_id']
+            if civ_id not in civ_traces:
+                civ_traces[civ_id] = {
+                    'x': [],
+                    'y': [],
+                    'z': [],
+                    'color': traj['color']
+                }
+
+            civ_traces[civ_id]['x'].extend(traj['x'])
+            civ_traces[civ_id]['y'].extend(traj['y'])
+            civ_traces[civ_id]['z'].extend(traj['z'])
+
+        return civ_traces

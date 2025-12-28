@@ -73,7 +73,9 @@ class SphereBuilder:
 
     def build_influence_spheres(self, civilizations: List,
                                 galaxy_positions: np.ndarray,
-                                current_time_myr: float) -> List[go.Mesh3d]:
+                                current_time_myr: float,
+                                skip_extinct: bool = True,
+                                opacity: float = 0.2) -> List[go.Mesh3d]:
         """
         Build influence spheres for all civilizations at current time.
 
@@ -81,6 +83,9 @@ class SphereBuilder:
             civilizations: List of CivilizationState objects
             galaxy_positions: Galaxy star positions array
             current_time_myr: Current simulation time in Myr
+            skip_extinct: If True, skip extinct civilizations (for animations).
+                         If False, show all spheres (for static final view)
+            opacity: Sphere opacity (0-1), default 0.2
 
         Returns:
             List of Mesh3d sphere objects
@@ -92,8 +97,8 @@ class SphereBuilder:
             if civ.birth_time_myr > current_time_myr:
                 continue
 
-            # Skip if extinct before current time
-            if not civ.is_active and civ.death_time_myr is not None and civ.death_time_myr < current_time_myr:
+            # Skip if extinct before current time (only if skip_extinct is True)
+            if skip_extinct and not civ.is_active and civ.death_time_myr is not None and civ.death_time_myr < current_time_myr:
                 continue
 
             # Calculate influence radius
@@ -108,10 +113,10 @@ class SphereBuilder:
             center = galaxy_positions[civ.parent_star_idx]
 
             # Get color for this civilization (rgba format with opacity)
-            color = self.color_mapper.civ_id_to_rgba(civ.civ_id, opacity=0.1)
+            color = self.color_mapper.civ_id_to_rgba(civ.civ_id, opacity=opacity)
 
             # Build sphere
-            sphere = self.build_sphere(center, radius, color, opacity=0.1, resolution=12)
+            sphere = self.build_sphere(center, radius, color, opacity=opacity, resolution=12)
             spheres.append(sphere)
 
         return spheres
