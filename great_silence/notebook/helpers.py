@@ -94,6 +94,18 @@ def save_simulation_hdf5(simulation, path: str, compress: bool = True):
                           for c in civ_data]
             civ_grp.create_dataset('death_cause', data=np.array(death_causes, dtype='S50'))
 
+            # Save colonized stars for each civilization (for expansion visualization)
+            max_colonies = max(len(civ.colonized_stars) for civ in simulation.civilizations)
+            if max_colonies > 0:
+                # Pad with -1 to create fixed-size array
+                colonized_arrays = []
+                for civ in simulation.civilizations:
+                    padded = list(civ.colonized_stars) + [-1] * (max_colonies - len(civ.colonized_stars))
+                    colonized_arrays.append(padded)
+                civ_grp.create_dataset('colonized_stars',
+                                      data=np.array(colonized_arrays, dtype=np.int32),
+                                      compression=compression)
+
         # Save statistics
         stats = simulation.get_statistics()
         stats_grp = f.create_group('statistics')
@@ -197,6 +209,15 @@ def load_simulation(path: str) -> Dict[str, Any]:
                                       if 'death_cause' in civ_grp and civ_grp['death_cause'][i]
                                       else None,
                     }
+
+                    # Load colonized stars if available
+                    if 'colonized_stars' in civ_grp:
+                        colonized = civ_grp['colonized_stars'][i]
+                        # Remove padding (-1 values)
+                        civ['colonized_stars'] = [int(idx) for idx in colonized if idx >= 0]
+                    else:
+                        civ['colonized_stars'] = [civ['parent_star_idx']]  # At least home world
+
                     data['civilizations'].append(civ)
         else:
             data['civilizations'] = []
@@ -340,8 +361,11 @@ def reconstruct_simulation_from_hdf5(path: str):
             civ.death_time_myr = civ_data['extinction_time_gyr'] * 1000.0
         civ.death_cause = civ_data.get('death_cause')
 
-        # Add home world as colonized
-        civ.colonized_stars = [civ.parent_star_idx]
+        # Load colonized stars if available
+        if 'colonized_stars' in civ_data:
+            civ.colonized_stars = civ_data['colonized_stars']
+        else:
+            civ.colonized_stars = [civ.parent_star_idx]
 
         sim.civilizations.append(civ)
 
@@ -372,7 +396,10 @@ def reconstruct_simulation_from_hdf5(path: str):
             snapshot = SimulationSnapshot(
                 time_myr=snap_data['time_gyr'] * 1000.0,
                 active_civilizations=snap_data['active_civilizations'],
-                active_civ_positions=None  # Not stored in current format
+                total_civilizations_ever=len(sim.civilizations),
+                colonized_systems=sum(len(c.colonized_stars) for c in sim.civilizations),
+                civilization_states=[],  # Not stored in snapshots
+                stellar_positions=galaxy.positions  # Use current galaxy positions
             )
             sim.snapshots.append(snapshot)
 
