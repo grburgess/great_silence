@@ -124,11 +124,11 @@ class NotebookSimulationRunner:
             'civilizations': [
                 {
                     'parent_star_idx': civ.parent_star_idx,
-                    'emergence_time_gyr': civ.emergence_time_gyr,
+                    'emergence_time_gyr': civ.birth_time_myr / 1000.0,  # Convert Myr to Gyr
                     'is_active': civ.is_active,
-                    'extinction_time_gyr': getattr(civ, 'extinction_time_gyr', None),
-                    'kardashev_level': getattr(civ, 'kardashev_level', 0.7),
-                    'death_cause': getattr(civ, 'death_cause', None),
+                    'extinction_time_gyr': civ.death_time_myr / 1000.0 if civ.death_time_myr else None,
+                    'kardashev_level': civ.kardashev_scale,
+                    'death_cause': civ.death_cause,
                 }
                 for civ in self.simulation.civilizations
             ] if self.simulation.civilizations else [],
@@ -256,8 +256,8 @@ class NotebookSimulationRunner:
                 mode='markers',
                 marker=dict(
                     size=1,
-                    color='white',
-                    opacity=0.3
+                    color='rgb(200, 200, 200)',
+                    opacity=0.15
                 ),
                 name='Stars'
             ))
@@ -273,24 +273,44 @@ class NotebookSimulationRunner:
                         z=civ_pos[:, 2],
                         mode='markers',
                         marker=dict(
-                            size=4,
-                            color='red',
+                            size=6,
+                            color='rgb(255, 100, 100)',
                             opacity=1.0
                         ),
                         name='Civilizations'
                     ))
 
+            # Pure black background, no grids or axes
             fig.update_layout(
-                title='Galaxy Structure',
                 scene=dict(
-                    xaxis_title='X (kpc)',
-                    yaxis_title='Y (kpc)',
-                    zaxis_title='Z (kpc)',
-                    bgcolor='black'
+                    bgcolor='rgb(0, 0, 0)',
+                    xaxis=dict(
+                        visible=False,
+                        showgrid=False,
+                        showticklabels=False,
+                        showbackground=False
+                    ),
+                    yaxis=dict(
+                        visible=False,
+                        showgrid=False,
+                        showticklabels=False,
+                        showbackground=False
+                    ),
+                    zaxis=dict(
+                        visible=False,
+                        showgrid=False,
+                        showticklabels=False,
+                        showbackground=False
+                    ),
+                    camera=dict(
+                        eye=dict(x=1.5, y=1.5, z=1.3)
+                    )
                 ),
+                paper_bgcolor='rgb(0, 0, 0)',
+                plot_bgcolor='rgb(0, 0, 0)',
                 showlegend=True,
-                width=900,
-                height=700
+                width=1200,
+                height=800
             )
 
             return fig
@@ -313,9 +333,9 @@ class NotebookSimulationRunner:
 
         # Extract data from simulation
         if hasattr(self.simulation, 'snapshots') and self.simulation.snapshots:
-            times_gyr = [s.time_gyr for s in self.simulation.snapshots]
+            times_gyr = [s.time_myr / 1000.0 for s in self.simulation.snapshots]
             n_active = [s.active_civilizations for s in self.simulation.snapshots]
-            n_total = [len([c for c in self.simulation.civilizations if c.emergence_time_gyr <= t])
+            n_total = [len([c for c in self.simulation.civilizations if c.birth_time_myr / 1000.0 <= t])
                       for t in times_gyr]
             return animator.plot_timeline_statistics(times_gyr, n_active, n_total)
         else:
