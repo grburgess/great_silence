@@ -13,6 +13,7 @@ from ..civilization.probe_design import (
     per_hop_range_from_kardashev,
     offspring_count,
     replication_delay_years,
+    min_metallicity_for_replication,
     MIN_KARDASHEV_FOR_EXPANSION,
     C_PC_YR
 )
@@ -66,6 +67,7 @@ class CivilizationState:
     probe_per_hop_range_pc: Optional[float] = None
     probe_offspring_count: Optional[int] = None
     probe_replication_delay_yr: Optional[float] = None
+    probe_min_metallicity: Optional[float] = None
 
     # Probe tracking
     active_probes: List['ProbeState'] = field(default_factory=list)
@@ -490,7 +492,9 @@ class GalaxySimulation:
         - Minimum Kardashev threshold (0.85) to start expansion
         - Probe characteristics locked at launch based on tech level
         - Branching tree expansion (not wavefront)
-        - Per-hop range targeting (nearest uncolonized stars)
+        - Metallicity-based targeting (probes need resources, not habitable planets)
+        - Preferential targeting of habitable worlds (for potential contact)
+        - Per-hop range targeting (nearest uncolonized metal-rich stars)
         - Replication delays at each destination
         """
         # Cap total colonies to prevent runaway
@@ -507,6 +511,7 @@ class GalaxySimulation:
                 civ.probe_per_hop_range_pc = per_hop_range_from_kardashev(civ.kardashev_scale)
                 civ.probe_offspring_count = offspring_count(civ.kardashev_scale)
                 civ.probe_replication_delay_yr = replication_delay_years(civ.kardashev_scale)
+                civ.probe_min_metallicity = min_metallicity_for_replication(civ.kardashev_scale)
 
                 # Launch initial wave from home world
                 self._launch_initial_probes(civ)
@@ -540,13 +545,14 @@ class GalaxySimulation:
         home_idx = civ.parent_star_idx
         home_pos = self.galaxy.positions[home_idx]
 
-        # Find nearest uncolonized habitable stars within range
+        # Find nearest uncolonized stars with sufficient metallicity
         targets = self._find_nearest_targets(
             source_pos=home_pos,
             max_range_pc=civ.probe_per_hop_range_pc,
             max_targets=civ.probe_offspring_count,
             colonized_set=set(civ.colonized_stars),
-            exclude_idx=home_idx
+            exclude_idx=home_idx,
+            min_metallicity=civ.probe_min_metallicity
         )
 
         # Launch probes
@@ -581,13 +587,14 @@ class GalaxySimulation:
         source_idx = parent_probe.target_star_idx
         source_pos = self.galaxy.positions[source_idx]
 
-        # Find nearest uncolonized habitable stars within range
+        # Find nearest uncolonized stars with sufficient metallicity
         targets = self._find_nearest_targets(
             source_pos=source_pos,
             max_range_pc=civ.probe_per_hop_range_pc,
             max_targets=civ.probe_offspring_count,
             colonized_set=set(civ.colonized_stars),
-            exclude_idx=source_idx
+            exclude_idx=source_idx,
+            min_metallicity=civ.probe_min_metallicity
         )
 
         # Launch offspring probes
@@ -619,30 +626,64 @@ class GalaxySimulation:
 
     def _find_nearest_targets(self, source_pos: np.ndarray, max_range_pc: float,
                               max_targets: int, colonized_set: Set[int],
-                              exclude_idx: int) -> List[int]:
-        """Find nearest uncolonized habitable stars within range."""
+                              exclude_idx: int, min_metallicity: float) -> List[int]:
+        """
+        Find nearest uncolonized stars with sufficient metallicity for replication.
+
+        Probes target any star with enough metals to extract resources and replicate.
+        Habitable stars are preferred (potential for life contact), but probes will
+        settle for any metal-rich system to continue expansion.
+
+        Args:
+            source_pos: Source position (kpc)
+            max_range_pc: Maximum targeting range (parsecs)
+            max_targets: Maximum number of targets to return
+            colonized_set: Set of already-colonized star indices
+            exclude_idx: Source star index to exclude
+            min_metallicity: Minimum [Fe/H] metallicity for replication
+
+        Returns:
+            List of target star indices (habitable preferred, then metal-rich)
+        """
         # Calculate distances to all stars
         distances_kpc = np.linalg.norm(self.galaxy.positions - source_pos, axis=1)
         distances_pc = distances_kpc * 1000.0
 
-        # Filter: habitable, uncolonized, within range, not source
-        habitable_mask = self.galaxy.stellar_types == 1
+        # Filter: sufficient metallicity, within range, uncolonized, not source
+        metallicity_mask = self.galaxy.metallicities >= min_metallicity
         range_mask = distances_pc <= max_range_pc
         not_colonized = ~np.isin(np.arange(len(self.galaxy.positions)), list(colonized_set))
         not_source = np.arange(len(self.galaxy.positions)) != exclude_idx
 
-        candidate_mask = habitable_mask & range_mask & not_colonized & not_source
+        # Base candidates: any star meeting resource requirements
+        candidate_mask = metallicity_mask & range_mask & not_colonized & not_source
         candidate_indices = np.where(candidate_mask)[0]
 
         if len(candidate_indices) == 0:
             return []
 
-        # Sort by distance and take nearest N
-        candidate_distances = distances_pc[candidate_indices]
-        sorted_indices = np.argsort(candidate_distances)
-        nearest_indices = candidate_indices[sorted_indices[:max_targets]]
+        # Split into habitable vs resource-only targets
+        habitable_mask = self.galaxy.stellar_types == 1
+        habitable_candidates = candidate_indices[habitable_mask[candidate_indices]]
+        resource_candidates = candidate_indices[~habitable_mask[candidate_indices]]
 
-        return nearest_indices.tolist()
+        # Sort each group by distance
+        targets = []
+
+        # Prefer habitable planets (potential for life contact)
+        if len(habitable_candidates) > 0:
+            hab_distances = distances_pc[habitable_candidates]
+            hab_sorted = habitable_candidates[np.argsort(hab_distances)]
+            targets.extend(hab_sorted[:max_targets].tolist())
+
+        # Fill remaining quota with nearest resource-rich systems
+        remaining = max_targets - len(targets)
+        if remaining > 0 and len(resource_candidates) > 0:
+            res_distances = distances_pc[resource_candidates]
+            res_sorted = resource_candidates[np.argsort(res_distances)]
+            targets.extend(res_sorted[:remaining].tolist())
+
+        return targets
 
     def _apply_hazards(self) -> None:
         """

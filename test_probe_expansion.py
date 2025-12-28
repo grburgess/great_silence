@@ -106,7 +106,10 @@ print("="*70)
 
 if expanding_civs:
     # Check probe velocities match Kardashev level
-    from great_silence.civilization.probe_design import probe_velocity_from_kardashev
+    from great_silence.civilization.probe_design import (
+        probe_velocity_from_kardashev,
+        min_metallicity_for_replication
+    )
 
     print("\n1. VELOCITY CONSISTENCY")
     for civ in expanding_civs[:3]:
@@ -116,7 +119,15 @@ if expanding_civs:
         print(f"  Civ {civ.civ_id}: K={civ.expansion_start_kardashev:.2f} → "
               f"v={actual_v:.4f}c (expected {expected_v:.4f}c) {match}")
 
-    print("\n2. BRANCHING STRUCTURE")
+    print("\n2. METALLICITY THRESHOLD")
+    for civ in expanding_civs[:3]:
+        expected_met = min_metallicity_for_replication(civ.expansion_start_kardashev)
+        actual_met = civ.probe_min_metallicity
+        match = "✓" if abs(expected_met - actual_met) < 1e-6 else "✗"
+        print(f"  Civ {civ.civ_id}: K={civ.expansion_start_kardashev:.2f} → "
+              f"min[Fe/H]={actual_met:.2f} (expected {expected_met:.2f}) {match}")
+
+    print("\n3. BRANCHING STRUCTURE")
     for civ in expanding_civs[:3]:
         if len(civ.active_probes) > 0:
             # Check if we have branching (multiple generations)
@@ -126,7 +137,7 @@ if expanding_civs:
             else:
                 print(f"  Civ {civ.civ_id}: Single generation (may need more time)")
 
-    print("\n3. COLONIZATION PATTERN")
+    print("\n4. COLONIZATION PATTERN")
     for civ in expanding_civs[:3]:
         if len(civ.colonized_stars) > 1:
             home_pos = sim.galaxy.positions[civ.parent_star_idx]
@@ -149,6 +160,35 @@ if expanding_civs:
             actual_count = len(civ.colonized_stars)
             if actual_count < expected_dense_count * 0.1:
                 print(f"    ✓ Sparse branching pattern ({actual_count} << {expected_dense_count})")
+
+    print("\n5. METALLICITY-BASED TARGETING")
+    for civ in expanding_civs[:3]:
+        if len(civ.colonized_stars) > 1:
+            # Analyze colonies
+            colony_indices = civ.colonized_stars
+            colony_metallicities = sim.galaxy.metallicities[colony_indices]
+            colony_habitable = sim.galaxy.stellar_types[colony_indices]
+
+            n_habitable = np.sum(colony_habitable == 1)
+            n_resource_only = len(colony_indices) - n_habitable
+
+            min_met = np.min(colony_metallicities)
+            avg_met = np.mean(colony_metallicities)
+
+            print(f"  Civ {civ.civ_id}:")
+            print(f"    Min metallicity threshold: {civ.probe_min_metallicity:.2f} [Fe/H]")
+            print(f"    Actual min colony [Fe/H]: {min_met:.2f}")
+            print(f"    Avg colony [Fe/H]: {avg_met:.2f}")
+            print(f"    Habitable colonies: {n_habitable}")
+            print(f"    Resource-only colonies: {n_resource_only}")
+
+            if min_met >= civ.probe_min_metallicity - 0.01:
+                print(f"    ✓ All colonies meet metallicity threshold")
+            else:
+                print(f"    ✗ ERROR: Colony below threshold!")
+
+            if n_resource_only > 0:
+                print(f"    ✓ Probes using metal-rich non-habitable systems")
 
 print("\n" + "="*70)
 print("TEST COMPLETE")

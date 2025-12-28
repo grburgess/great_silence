@@ -152,6 +152,48 @@ def replication_delay_years(kardashev_level: float) -> float:
         return 50.0   # Fast, Type I coordination
 
 
+def min_metallicity_for_replication(kardashev_level: float) -> float:
+    """
+    Minimum stellar metallicity [Fe/H] required for probe replication.
+
+    Self-replicating probes need sufficient heavy elements (metals) in the
+    target system for resource extraction and manufacturing. Lower-tech
+    civilizations need richer systems; advanced civs can use metal-poor stars.
+
+    Args:
+        kardashev_level: Civilization's Kardashev scale
+
+    Returns:
+        Minimum [Fe/H] metallicity (solar = 0.0, metal-poor < -1.0)
+
+    Physical basis:
+        - Need metals for: structures, electronics, propulsion, energy systems
+        - Found in: asteroids, planetary cores, gas giant atmospheres
+        - Metal-poor stars ([Fe/H] < -1.0) have few rocky bodies
+        - Solar metallicity ([Fe/H] = 0.0) has abundant resources
+
+        K=0.85-0.95: Need metal-rich systems ([Fe/H] > -0.3)
+            - Limited refining/processing capability
+            - Require abundant, easily accessible metals
+
+        K=0.95-1.20: Can use solar-metallicity systems ([Fe/H] > -0.5)
+            - Better resource extraction technology
+            - More efficient manufacturing
+
+        K>1.20: Can utilize metal-poor systems ([Fe/H] > -1.0)
+            - Advanced transmutation or matter replication
+            - Can extract trace metals efficiently
+    """
+    if kardashev_level < 0.85:
+        return float('inf')  # Cannot replicate
+    elif kardashev_level < 0.95:
+        return -0.3  # Need metal-rich systems
+    elif kardashev_level < 1.20:
+        return -0.5  # Solar-metallicity acceptable
+    else:
+        return -1.0  # Can use metal-poor systems
+
+
 # Constants
 MIN_KARDASHEV_FOR_EXPANSION = 0.85
 
