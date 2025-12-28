@@ -39,6 +39,14 @@ viz = [
     "mayavi>=4.8.0",
     "pyvista>=0.40.0",
 ]
+notebook = [
+    "jupyter>=1.0.0",
+    "jupyterlab>=4.0.0",
+    "ipywidgets>=8.1.0",
+    "ipympl>=0.9.0",
+    "pythreejs>=2.4.0",
+    "h5py>=3.9.0",
+]
 dev = [
     "pytest>=7.3.0",
     "pytest-cov>=4.1.0",
@@ -51,7 +59,7 @@ dev = [
 great-silence = "great_silence.cli:main"
 
 [tool.setuptools]
-packages = ["great_silence", "great_silence.galaxy", "great_silence.astrophysics", "great_silence.civilization", "great_silence.simulation", "great_silence.visualization", "great_silence.config", "great_silence.utils"]
+packages = ["great_silence", "great_silence.galaxy", "great_silence.astrophysics", "great_silence.civilization", "great_silence.simulation", "great_silence.visualization", "great_silence.config", "great_silence.utils", "great_silence.notebook"]
 
 [tool.black]
 line-length = 100
