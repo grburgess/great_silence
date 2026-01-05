@@ -237,7 +237,7 @@ class GalaxySimulation:
         radii = np.sqrt(x**2 + y**2)
 
         # Generate stellar ages (with radial gradient if enabled)
-        max_age_gyr = 13.0  # Age of universe
+        max_age_gyr = self.config.galaxy.max_stellar_age_gyr
         if self.config.galaxy.use_age_gradient:
             self.galaxy.ages = self.sfh.generate_stellar_ages_with_gradient(
                 self.config.galaxy.total_stars,
@@ -270,9 +270,10 @@ class GalaxySimulation:
             self.galaxy.metallicities = np.zeros(self.config.galaxy.total_stars)
 
         # Determine stellar types (simplified: 0=unsuitable, 1=potentially habitable)
-        # Stars between 0.5 and 1.5 solar masses are considered potentially habitable
+        # Stars within configured mass range are considered potentially habitable
         self.galaxy.stellar_types = (
-            (self.galaxy.masses >= 0.5) & (self.galaxy.masses <= 1.5)
+            (self.galaxy.masses >= self.config.galaxy.habitable_mass_min_msun) &
+            (self.galaxy.masses <= self.config.galaxy.habitable_mass_max_msun)
         ).astype(int)
 
         # Cache habitable star indices

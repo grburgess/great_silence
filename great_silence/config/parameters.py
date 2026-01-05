@@ -49,6 +49,11 @@ class GalaxyParameters:
 
     # Star population
     total_stars: int = 100_000_000  # Total stars in simulation
+    max_stellar_age_gyr: float = 13.0  # Maximum stellar age / age of universe (Gyr)
+
+    # Habitable star mass range (solar masses)
+    habitable_mass_min_msun: float = 0.5  # Minimum mass for habitable zone stability
+    habitable_mass_max_msun: float = 1.5  # Maximum mass (main sequence lifetime constraint)
 
 
 @dataclass
