@@ -513,6 +513,77 @@ class Plotly3DGalaxyViz:
             visible=visible
         )
 
+    def create_probe_trail_trace(
+        self,
+        probe_snapshots: List,
+        stellar_positions: np.ndarray,
+        name: str = "Active Probes",
+        visible: bool = True
+    ) -> go.Scatter3d:
+        """
+        Create animated trails showing in-flight probes.
+
+        Renders gradient lines from launch position to current probe position,
+        creating expanding wavefront effect as civilizations colonize.
+
+        Args:
+            probe_snapshots: List of ProbeSnapshot objects from simulation
+            stellar_positions: Galaxy stellar positions for lookups
+            name: Legend name
+            visible: Whether trace is initially visible
+
+        Returns:
+            go.Scatter3d trace with probe trails
+        """
+        if len(probe_snapshots) == 0:
+            return go.Scatter3d(x=[], y=[], z=[], name=name, visible=visible)
+
+        all_x, all_y, all_z = [], [], []
+        hover_texts = []
+
+        for probe in probe_snapshots:
+            # Get source and current positions
+            source_pos = stellar_positions[probe.launch_star_idx]
+            current_pos = probe.current_position
+
+            # Create line from source to current position (trail)
+            all_x.extend([source_pos[0], current_pos[0], None])
+            all_y.extend([source_pos[1], current_pos[1], None])
+            all_z.extend([source_pos[2], current_pos[2], None])
+
+            # Hover text for the trail
+            travel_time = probe.arrival_time_myr - probe.launch_time_myr
+            hover_text = (
+                f"<b>Probe {probe.probe_id}</b> (Civ {probe.civ_id})<br>"
+                f"Progress: {probe.progress_fraction*100:.1f}%<br>"
+                f"Velocity: {probe.velocity_c*100:.2f}% c<br>"
+                f"Generation: {probe.generation}<br>"
+                f"Travel time: {travel_time:.2f} Myr<br>"
+                f"From: Star {probe.launch_star_idx}<br>"
+                f"To: Star {probe.target_star_idx}"
+            )
+            hover_texts.extend([hover_text, hover_text, None])
+
+        # Get color from configuration (cyan/blue for probes)
+        probe_color = 'rgba(0, 200, 255, 0.6)'  # Cyan with transparency
+
+        return go.Scatter3d(
+            x=all_x,
+            y=all_y,
+            z=all_z,
+            mode='lines',
+            line=dict(
+                color=probe_color,
+                width=2
+            ),
+            text=hover_texts,
+            hovertemplate="%{text}<extra></extra>",
+            name=name,
+            visible=visible,
+            legendgroup="probes",
+            showlegend=True
+        )
+
     @staticmethod
     def _create_sphere_mesh(
         center: np.ndarray,

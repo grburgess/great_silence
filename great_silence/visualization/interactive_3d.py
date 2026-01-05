@@ -221,6 +221,7 @@ class Interactive3DVisualizer:
                                show_hazards: bool = True,
                                show_trajectories: bool = False,
                                show_spheres: bool = False,
+                               show_probes: bool = True,
                                interpolation_factor: int = 5) -> go.Figure:
         """
         Create animated 3D figure with time slider.
@@ -234,6 +235,7 @@ class Interactive3DVisualizer:
             show_hazards: Show hazard events
             show_trajectories: Show expansion trajectory lines (grows over time)
             show_spheres: Show influence spheres (expands over time)
+            show_probes: Show in-flight probes as animated trails (default True)
             interpolation_factor: Number of interpolated frames between snapshots.
                                  1 = no interpolation (choppy, fast)
                                  5 = 5x smoother (recommended, default)
@@ -249,12 +251,12 @@ class Interactive3DVisualizer:
         timeline = TimelineData(self.simulation, interpolation_factor=interpolation_factor)
 
         # Create base figure with first frame
-        fig = self._build_frame_figure(timeline.frames[0], subsample_stars, show_stars, show_hazards, show_trajectories, show_spheres)
+        fig = self._build_frame_figure(timeline.frames[0], subsample_stars, show_stars, show_hazards, show_trajectories, show_spheres, show_probes)
 
         # Add animation frames
         frames = []
         for i, frame_data in enumerate(timeline.frames):
-            frame_traces = self._build_frame_traces(frame_data, subsample_stars, show_stars, show_hazards, show_trajectories, show_spheres)
+            frame_traces = self._build_frame_traces(frame_data, subsample_stars, show_stars, show_hazards, show_trajectories, show_spheres, show_probes)
             frames.append(go.Frame(
                 data=frame_traces,
                 name=f't_{i}',
@@ -355,7 +357,8 @@ class Interactive3DVisualizer:
                             show_stars: bool,
                             show_hazards: bool,
                             show_trajectories: bool,
-                            show_spheres: bool) -> go.Figure:
+                            show_spheres: bool,
+                            show_probes: bool) -> go.Figure:
         """Build initial figure for animation from frame data."""
         fig = go.Figure()
 
@@ -364,7 +367,7 @@ class Interactive3DVisualizer:
             self._add_star_layer(fig, subsample_stars)
 
         # Add civilization and hazard layers for this frame
-        traces = self._build_frame_traces(frame_data, subsample_stars, show_stars, show_hazards, show_trajectories, show_spheres)
+        traces = self._build_frame_traces(frame_data, subsample_stars, show_stars, show_hazards, show_trajectories, show_spheres, show_probes)
         for trace in traces:
             # Skip stars trace since we already added it
             if trace.name != 'Stars':
@@ -380,7 +383,8 @@ class Interactive3DVisualizer:
                             show_stars: bool,
                             show_hazards: bool,
                             show_trajectories: bool,
-                            show_spheres: bool) -> List:
+                            show_spheres: bool,
+                            show_probes: bool) -> List:
         """Build traces for a single animation frame."""
         traces = []
 
@@ -532,6 +536,27 @@ class Interactive3DVisualizer:
                 opacity=0.2  # Translucent for animations
             )
             traces.extend(spheres)
+
+        # Active probes (animated trails showing expansion wavefront)
+        if show_probes:
+            # Get probe snapshots from frame data
+            # Frame data doesn't have this yet - need to get from snapshot
+            snapshot_idx = None
+            for idx, snapshot in enumerate(self.simulation.snapshots):
+                if abs(snapshot.time_myr - frame_data['time_myr']) < 0.1:
+                    snapshot_idx = idx
+                    break
+
+            if snapshot_idx is not None:
+                snapshot = self.simulation.snapshots[snapshot_idx]
+                if hasattr(snapshot, 'active_probes_in_flight') and snapshot.active_probes_in_flight:
+                    probe_trace = self.viz.create_probe_trail_trace(
+                        snapshot.active_probes_in_flight,
+                        self.simulation.galaxy.positions,
+                        name="Active Probes",
+                        visible=True
+                    )
+                    traces.append(probe_trace)
 
         return traces
 
