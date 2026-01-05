@@ -504,7 +504,7 @@ class Interactive3DVisualizer:
                     name=f'Hazard: {event_type}'
                 ))
 
-        # Expansion trajectories (color-coded by civilization)
+        # Expansion trajectories (LIME GREEN for visibility)
         if show_trajectories:
             trajectory_builder = TrajectoryBuilder(self.simulation, self.color_mapper)
             civ_traces = trajectory_builder.get_trajectory_traces_by_civilization(frame_data['time_myr'])
@@ -517,12 +517,14 @@ class Interactive3DVisualizer:
                     z=traj_data['z'],
                     mode='lines',
                     line=dict(
-                        color=traj_data['color'],
-                        width=4  # Increased from 2 for better visibility
+                        color='lime',  # Bright lime green for visibility
+                        width=6  # Increased from 4 for maximum visibility
                     ),
-                    name=f"Civ {civ_id}",
-                    hoverinfo='skip',
-                    showlegend=False
+                    name=f"TRAJECTORY: Civ {civ_id}",
+                    hovertemplate=f"<b>Expansion Trajectory</b><br>Civ {civ_id}<br>Parent → Colony<extra></extra>",
+                    showlegend=True,  # Show in legend for visibility
+                    legendgroup='trajectories',
+                    legendgrouptitle_text='Expansion Trajectories'
                 ))
 
         # Influence spheres
