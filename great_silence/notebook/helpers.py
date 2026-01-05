@@ -106,6 +106,31 @@ def save_simulation_hdf5(simulation, path: str, compress: bool = True):
                                       data=np.array(colonized_arrays, dtype=np.int32),
                                       compression=compression)
 
+            # Save colony arrival times for trajectory/sphere visualization
+            # Store as parallel arrays: colony indices and arrival times
+            if max_colonies > 0:
+                arrival_indices = []
+                arrival_times = []
+
+                for civ in simulation.civilizations:
+                    # Extract (star_idx, arrival_time_myr) pairs from dict
+                    indices = list(civ.colony_arrival_times.keys())
+                    times = [civ.colony_arrival_times[idx] for idx in indices]
+
+                    # Pad to max_colonies length
+                    padded_indices = indices + [-1] * (max_colonies - len(indices))
+                    padded_times = times + [-1.0] * (max_colonies - len(times))
+
+                    arrival_indices.append(padded_indices)
+                    arrival_times.append(padded_times)
+
+                civ_grp.create_dataset('colony_arrival_indices',
+                                      data=np.array(arrival_indices, dtype=np.int32),
+                                      compression=compression)
+                civ_grp.create_dataset('colony_arrival_times_myr',
+                                      data=np.array(arrival_times, dtype=np.float32),
+                                      compression=compression)
+
         # Save statistics
         stats = simulation.get_statistics()
         stats_grp = f.create_group('statistics')
@@ -218,6 +243,18 @@ def load_simulation(path: str) -> Dict[str, Any]:
                     else:
                         civ['colonized_stars'] = [civ['parent_star_idx']]  # At least home world
 
+                    # Load colony arrival times if available
+                    if 'colony_arrival_indices' in civ_grp and 'colony_arrival_times_myr' in civ_grp:
+                        indices = civ_grp['colony_arrival_indices'][i]
+                        times = civ_grp['colony_arrival_times_myr'][i]
+
+                        # Reconstruct dict, removing padding (-1 values)
+                        civ['colony_arrival_times'] = {}
+                        for idx, time in zip(indices, times):
+                            if idx >= 0 and time >= 0:
+                                civ['colony_arrival_times'][int(idx)] = float(time)
+                    # Don't set key if data doesn't exist - let reconstruct function handle fallback
+
                     data['civilizations'].append(civ)
         else:
             data['civilizations'] = []
@@ -234,7 +271,11 @@ def load_simulation(path: str) -> Dict[str, Any]:
         # Load snapshots
         if 'snapshots' in f:
             data['snapshots'] = []
-            for snap_name in sorted(f['snapshots'].keys()):
+            # Sort snapshot names numerically (snapshot_0, snapshot_1, snapshot_2, ...)
+            # Not alphabetically (which would give snapshot_0, snapshot_1, snapshot_10, ...)
+            snap_names = sorted(f['snapshots'].keys(),
+                               key=lambda x: int(x.split('_')[1]) if '_' in x else 0)
+            for snap_name in snap_names:
                 s_grp = f['snapshots'][snap_name]
                 snapshot = {
                     'time_gyr': s_grp.attrs.get('time_gyr', 0.0),
@@ -363,9 +404,21 @@ def reconstruct_simulation_from_hdf5(path: str):
 
         # Load colonized stars if available
         if 'colonized_stars' in civ_data:
-            civ.colonized_stars = civ_data['colonized_stars']
+            civ.colonized_stars = set(civ_data['colonized_stars'])
         else:
-            civ.colonized_stars = [civ.parent_star_idx]
+            civ.colonized_stars = {civ.parent_star_idx}
+
+        # Load colony arrival times if available
+        if 'colony_arrival_times' in civ_data:
+            civ.colony_arrival_times = civ_data['colony_arrival_times']
+        else:
+            # Fallback for old h5 files: assume all colonies arrived shortly after birth
+            # This allows old files to show trajectories/spheres
+            # Use birth time + small offset for each colony
+            civ.colony_arrival_times = {}
+            for idx, star_idx in enumerate(sorted(civ.colonized_stars)):
+                # Stagger arrival times slightly to avoid all at once
+                civ.colony_arrival_times[star_idx] = civ.birth_time_myr + (idx * 10.0)
 
         sim.civilizations.append(civ)
 

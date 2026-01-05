@@ -18,20 +18,56 @@ class TimelineData:
     filtering civilizations and hazard events by time.
     """
 
-    def __init__(self, simulation):
+    def __init__(self, simulation, interpolation_factor: int = 1):
         """
         Initialize timeline data from simulation.
 
         Args:
             simulation: GalaxySimulation instance with snapshots
+            interpolation_factor: Number of interpolated frames between snapshots.
+                                 1 = no interpolation (one frame per snapshot)
+                                 5 = 5x frames (4 interpolated + 1 snapshot)
         """
         self.simulation = simulation
+        self.interpolation_factor = interpolation_factor
 
         if not hasattr(simulation, 'snapshots') or not simulation.snapshots:
             raise ValueError("Simulation must have snapshots enabled for animation")
 
-        self.time_points_gyr = [s.time_myr / 1000.0 for s in simulation.snapshots]
+        self.time_points_gyr = self._build_interpolated_times()
         self.frames = self._build_frames()
+
+    def _build_interpolated_times(self) -> List[float]:
+        """
+        Build interpolated time points for smooth animation.
+
+        If interpolation_factor = 1, returns snapshot times.
+        If > 1, generates intermediate times between snapshots.
+
+        Returns:
+            List of time points in Gyr
+        """
+        snapshot_times_myr = [s.time_myr for s in self.simulation.snapshots]
+
+        if self.interpolation_factor == 1:
+            return [t / 1000.0 for t in snapshot_times_myr]
+
+        # Generate interpolated times
+        interpolated_times = []
+
+        for i in range(len(snapshot_times_myr) - 1):
+            t_start = snapshot_times_myr[i]
+            t_end = snapshot_times_myr[i + 1]
+
+            # Add interpolated points between snapshots
+            for j in range(self.interpolation_factor):
+                t = t_start + (t_end - t_start) * j / self.interpolation_factor
+                interpolated_times.append(t / 1000.0)  # Convert to Gyr
+
+        # Add final snapshot time
+        interpolated_times.append(snapshot_times_myr[-1] / 1000.0)
+
+        return interpolated_times
 
     def _build_frames(self) -> List[Dict[str, Any]]:
         """
@@ -41,25 +77,23 @@ class TimelineData:
             List of frame data dictionaries
         """
         frames = []
-        for snapshot in self.simulation.snapshots:
-            frame_data = self._build_frame_data(snapshot)
+        for time_gyr in self.time_points_gyr:
+            frame_data = self._build_frame_data_for_time(time_gyr * 1000.0)  # Convert to Myr
             frames.append(frame_data)
         return frames
 
-    def _build_frame_data(self, snapshot) -> Dict[str, Any]:
+    def _build_frame_data_for_time(self, current_time_myr: float) -> Dict[str, Any]:
         """
-        Build visualization data for a single time point.
+        Build visualization data for a specific time point.
 
-        Filters civilizations and hazard events based on snapshot time.
+        Filters civilizations and hazard events based on time.
 
         Args:
-            snapshot: SimulationSnapshot object
+            current_time_myr: Current time in million years
 
         Returns:
             Dictionary with frame data
         """
-        current_time_myr = snapshot.time_myr
-
         # Filter civilizations by birth/death times
         # Active at this time: born before this time and either still alive or died after
         active_civs = [
@@ -186,7 +220,8 @@ class Interactive3DVisualizer:
                                show_stars: bool = True,
                                show_hazards: bool = True,
                                show_trajectories: bool = False,
-                               show_spheres: bool = False) -> go.Figure:
+                               show_spheres: bool = False,
+                               interpolation_factor: int = 5) -> go.Figure:
         """
         Create animated 3D figure with time slider.
 
@@ -199,6 +234,10 @@ class Interactive3DVisualizer:
             show_hazards: Show hazard events
             show_trajectories: Show expansion trajectory lines (grows over time)
             show_spheres: Show influence spheres (expands over time)
+            interpolation_factor: Number of interpolated frames between snapshots.
+                                 1 = no interpolation (choppy, fast)
+                                 5 = 5x smoother (recommended, default)
+                                 10 = 10x smoother (very smooth but slower)
 
         Returns:
             Plotly Figure with animation frames
@@ -206,8 +245,8 @@ class Interactive3DVisualizer:
         Raises:
             ValueError: If simulation doesn't have snapshots
         """
-        # Build timeline data
-        timeline = TimelineData(self.simulation)
+        # Build timeline data with interpolation
+        timeline = TimelineData(self.simulation, interpolation_factor=interpolation_factor)
 
         # Create base figure with first frame
         fig = self._build_frame_figure(timeline.frames[0], subsample_stars, show_stars, show_hazards, show_trajectories, show_spheres)
@@ -230,6 +269,11 @@ class Interactive3DVisualizer:
 
         fig.frames = frames
 
+        # Calculate frame duration based on interpolation factor
+        # Base duration is 100ms, divide by interpolation to maintain playback speed
+        frame_duration = max(20, 100 // interpolation_factor)  # Min 20ms to avoid too fast
+        transition_duration = max(10, frame_duration // 2)
+
         # Add playback controls
         fig.update_layout(
             title=dict(
@@ -246,10 +290,10 @@ class Interactive3DVisualizer:
                         'label': '▶ Play',
                         'method': 'animate',
                         'args': [None, {
-                            'frame': {'duration': 100, 'redraw': True},
+                            'frame': {'duration': frame_duration, 'redraw': True},
                             'fromcurrent': True,
                             'mode': 'immediate',
-                            'transition': {'duration': 50}
+                            'transition': {'duration': transition_duration}
                         }]
                     },
                     {
