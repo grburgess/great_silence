@@ -150,6 +150,35 @@ def save_simulation_hdf5(simulation, path: str, compress: bool = True):
                     # SimulationSnapshot object with time in Myr
                     s_grp.attrs['time_gyr'] = snapshot.time_myr / 1000.0
                     s_grp.attrs['active_civilizations'] = snapshot.active_civilizations
+
+                    # Save probe data if available
+                    if hasattr(snapshot, 'active_probes_in_flight') and snapshot.active_probes_in_flight:
+                        probes = snapshot.active_probes_in_flight
+
+                        # Convert probe snapshots to arrays
+                        probe_ids = np.array([p.probe_id for p in probes], dtype=np.int32)
+                        civ_ids = np.array([p.civ_id for p in probes], dtype=np.int32)
+                        launch_star_idxs = np.array([p.launch_star_idx for p in probes], dtype=np.int32)
+                        target_star_idxs = np.array([p.target_star_idx for p in probes], dtype=np.int32)
+                        current_positions = np.array([p.current_position for p in probes], dtype=np.float32)
+                        launch_times = np.array([p.launch_time_myr for p in probes], dtype=np.float32)
+                        arrival_times = np.array([p.arrival_time_myr for p in probes], dtype=np.float32)
+                        progress_fractions = np.array([p.progress_fraction for p in probes], dtype=np.float32)
+                        velocities = np.array([p.velocity_c for p in probes], dtype=np.float32)
+                        generations = np.array([p.generation for p in probes], dtype=np.int32)
+
+                        # Store probe datasets
+                        s_grp.create_dataset('probe_ids', data=probe_ids, compression=compression)
+                        s_grp.create_dataset('probe_civ_ids', data=civ_ids, compression=compression)
+                        s_grp.create_dataset('probe_launch_star_idxs', data=launch_star_idxs, compression=compression)
+                        s_grp.create_dataset('probe_target_star_idxs', data=target_star_idxs, compression=compression)
+                        s_grp.create_dataset('probe_current_positions', data=current_positions, compression=compression)
+                        s_grp.create_dataset('probe_launch_times_myr', data=launch_times, compression=compression)
+                        s_grp.create_dataset('probe_arrival_times_myr', data=arrival_times, compression=compression)
+                        s_grp.create_dataset('probe_progress_fractions', data=progress_fractions, compression=compression)
+                        s_grp.create_dataset('probe_velocities_c', data=velocities, compression=compression)
+                        s_grp.create_dataset('probe_generations', data=generations, compression=compression)
+
                 elif isinstance(snapshot, dict):
                     # Dict with time already in Gyr
                     s_grp.attrs['time_gyr'] = snapshot.get('time_gyr', 0.0)
@@ -282,6 +311,29 @@ def load_simulation(path: str) -> Dict[str, Any]:
                     'active_civilizations': s_grp.attrs.get('active_civilizations', 0),
                     'positions': s_grp['positions'][:] if 'positions' in s_grp else None,
                 }
+
+                # Load probe data if available
+                if 'probe_ids' in s_grp:
+                    n_probes = len(s_grp['probe_ids'])
+                    probes = []
+
+                    for i in range(n_probes):
+                        probe = {
+                            'probe_id': int(s_grp['probe_ids'][i]),
+                            'civ_id': int(s_grp['probe_civ_ids'][i]),
+                            'launch_star_idx': int(s_grp['probe_launch_star_idxs'][i]),
+                            'target_star_idx': int(s_grp['probe_target_star_idxs'][i]),
+                            'current_position': s_grp['probe_current_positions'][i].tolist(),
+                            'launch_time_myr': float(s_grp['probe_launch_times_myr'][i]),
+                            'arrival_time_myr': float(s_grp['probe_arrival_times_myr'][i]),
+                            'progress_fraction': float(s_grp['probe_progress_fractions'][i]),
+                            'velocity_c': float(s_grp['probe_velocities_c'][i]),
+                            'generation': int(s_grp['probe_generations'][i]),
+                        }
+                        probes.append(probe)
+
+                    snapshot['probes'] = probes
+
                 data['snapshots'].append(snapshot)
 
         # Load hazard events
@@ -443,16 +495,36 @@ def reconstruct_simulation_from_hdf5(path: str):
 
     # Reconstruct snapshots if available
     if 'snapshots' in data and data['snapshots']:
-        from ..simulation.engine import SimulationSnapshot
+        from ..simulation.engine import SimulationSnapshot, ProbeSnapshot
         sim.snapshots = []
         for snap_data in data['snapshots']:
+            # Reconstruct probe snapshots if available
+            probe_snapshots = []
+            if 'probes' in snap_data:
+                for probe_data in snap_data['probes']:
+                    probe = ProbeSnapshot(
+                        probe_id=probe_data['probe_id'],
+                        civ_id=probe_data['civ_id'],
+                        launch_star_idx=probe_data['launch_star_idx'],
+                        target_star_idx=probe_data['target_star_idx'],
+                        current_position=np.array(probe_data['current_position']),
+                        launch_time_myr=probe_data['launch_time_myr'],
+                        arrival_time_myr=probe_data['arrival_time_myr'],
+                        progress_fraction=probe_data['progress_fraction'],
+                        velocity_c=probe_data['velocity_c'],
+                        generation=probe_data['generation']
+                    )
+                    probe_snapshots.append(probe)
+
             snapshot = SimulationSnapshot(
                 time_myr=snap_data['time_gyr'] * 1000.0,
                 active_civilizations=snap_data['active_civilizations'],
                 total_civilizations_ever=len(sim.civilizations),
                 colonized_systems=sum(len(c.colonized_stars) for c in sim.civilizations),
                 civilization_states=[],  # Not stored in snapshots
-                stellar_positions=galaxy.positions  # Use current galaxy positions
+                stellar_positions=galaxy.positions,  # Use current galaxy positions
+                active_probes_in_flight=probe_snapshots,
+                total_active_probes=len(probe_snapshots)
             )
             sim.snapshots.append(snapshot)
 
