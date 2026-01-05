@@ -34,8 +34,8 @@ class CivilizationEmergence:
         Returns:
             Probability of emergence
         """
-        # Stars must be old enough (> 1 Gyr for complex life)
-        if stellar_age_gyr < 1.0:
+        # Stars must be old enough for complex life
+        if stellar_age_gyr < self.params.min_stellar_age_for_life_gyr:
             return 0.0
 
         # Drake equation terms

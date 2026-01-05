@@ -15,7 +15,6 @@ from ..civilization.probe_design import (
     offspring_count,
     replication_delay_years,
     min_metallicity_for_replication,
-    MIN_KARDASHEV_FOR_EXPANSION,
     C_PC_YR
 )
 
@@ -377,8 +376,8 @@ class GalaxySimulation:
         params = self.config.civilization
 
         # Check each habitable star
-        # Only consider stars old enough to have developed life (> 1 Gyr)
-        old_enough = self.galaxy.ages[self.habitable_star_indices] > 1.0
+        # Only consider stars old enough to have developed life
+        old_enough = self.galaxy.ages[self.habitable_star_indices] > self.config.civilization.min_stellar_age_for_life_gyr
         not_colonized = ~self._colonized_mask[self.habitable_star_indices]
 
         eligible_mask = old_enough & not_colonized
@@ -520,12 +519,12 @@ class GalaxySimulation:
         - Replication delays at each destination
         """
         # Cap total colonies to prevent runaway
-        if len(civ.colonized_stars) >= 1000:
+        if len(civ.colonized_stars) >= self.config.civilization.max_colonies_per_civilization:
             return
 
         # Check if civilization can start expansion program
         if not civ.expansion_program_started:
-            if civ.kardashev_scale >= MIN_KARDASHEV_FOR_EXPANSION:
+            if civ.kardashev_scale >= self.config.civilization.min_kardashev_for_expansion:
                 # Lock in probe design parameters at current tech level
                 civ.expansion_program_started = True
                 civ.expansion_start_kardashev = civ.kardashev_scale

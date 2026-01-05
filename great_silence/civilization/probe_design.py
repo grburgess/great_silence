@@ -203,7 +203,5 @@ def min_metallicity_for_replication(
 
 
 # Constants
-MIN_KARDASHEV_FOR_EXPANSION = 0.85
-
 # Speed of light constant (for travel time calculations)
 C_PC_YR = 0.306601  # Speed of light in parsecs/year

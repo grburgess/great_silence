@@ -112,7 +112,13 @@ class CivilizationParameters:
     # Probe sensor capabilities for mid-flight course corrections
     # Probes can detect and retarget to favorable planets within sensor range
     probe_sensor_range_pc: float = 10.0  # Sensor range in parsecs (default: 10 pc)
-    enable_mid_flight_retargeting: bool = True  # Allow probes to change course to better targets
+    enable_mid_flight_retargeting: bool = False  # PRIORITY 1D: Disabled (O(N) brute force, needs spatial index fix)
+
+    # Expansion limits
+    max_colonies_per_civilization: int = 1000  # Cap to prevent runaway expansion
+
+    # Emergence constraints
+    min_stellar_age_for_life_gyr: float = 1.0  # Minimum stellar age for complex life (Gyr)
 
     # Self-destruction model
     self_destruction_model_type: str = "kardashev_dependent"  # "flat" or "kardashev_dependent"
