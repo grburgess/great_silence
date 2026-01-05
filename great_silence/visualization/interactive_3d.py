@@ -518,7 +518,7 @@ class Interactive3DVisualizer:
                     mode='lines',
                     line=dict(
                         color=traj_data['color'],
-                        width=2
+                        width=4  # Increased from 2 for better visibility
                     ),
                     name=f"Civ {civ_id}",
                     hoverinfo='skip',
