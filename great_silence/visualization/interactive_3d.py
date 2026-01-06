@@ -251,6 +251,7 @@ class Interactive3DVisualizer:
         timeline = TimelineData(self.simulation, interpolation_factor=interpolation_factor)
 
         # Create base figure with first frame
+        # All frames now have consistent trace structure (trajectories added as empty if not present yet)
         fig = self._build_frame_figure(timeline.frames[0], subsample_stars, show_stars, show_hazards, show_trajectories, show_spheres, show_probes)
 
         # Add animation frames
@@ -504,27 +505,35 @@ class Interactive3DVisualizer:
                     name=f'Hazard: {event_type}'
                 ))
 
-        # Expansion trajectories (LIME GREEN for visibility)
+        # Expansion trajectories
         if show_trajectories:
             trajectory_builder = TrajectoryBuilder(self.simulation, self.color_mapper)
             civ_traces = trajectory_builder.get_trajectory_traces_by_civilization(frame_data['time_myr'])
 
-            # Create separate trace for each civilization
-            for civ_id, traj_data in civ_traces.items():
+            # Get all civilizations that will ever expand (for consistent trace structure)
+            all_expanding_civs = [c.civ_id for c in self.simulation.civilizations
+                                  if hasattr(c, 'colony_arrival_times') and len(c.colony_arrival_times) > 1]
+
+            # Create trace for each expanding civilization (empty if no expansion yet at this time)
+            for civ_id in sorted(all_expanding_civs):
+                if civ_id in civ_traces:
+                    traj_data = civ_traces[civ_id]
+                else:
+                    # Empty trace for civilizations that haven't expanded yet
+                    traj_data = {'x': [], 'y': [], 'z': [], 'color': 'rgba(0,0,0,0)'}
+
                 traces.append(go.Scatter3d(
                     x=traj_data['x'],
                     y=traj_data['y'],
                     z=traj_data['z'],
                     mode='lines',
                     line=dict(
-                        color='lime',  # Bright lime green for visibility
-                        width=6  # Increased from 4 for maximum visibility
+                        color=traj_data['color'],
+                        width=2
                     ),
-                    name=f"TRAJECTORY: Civ {civ_id}",
+                    name=f"Expansion: Civ {civ_id}",
                     hovertemplate=f"<b>Expansion Trajectory</b><br>Civ {civ_id}<br>Parent → Colony<extra></extra>",
-                    showlegend=True,  # Show in legend for visibility
-                    legendgroup='trajectories',
-                    legendgrouptitle_text='Expansion Trajectories'
+                    showlegend=False
                 ))
 
         # Influence spheres

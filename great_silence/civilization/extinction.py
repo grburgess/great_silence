@@ -24,11 +24,16 @@ class ExtinctionModel:
     """
     Model various causes of civilization extinction.
 
-    Implements both simple flat-rate extinction and sophisticated Kardashev-dependent
-    self-destruction with crisis peaks representing Great Filter stages.
+    Implements:
+    -----------
+    1. Kardashev-dependent self-destruction with crisis peaks (Great Filter stages)
+    2. Age-based exponential decay with colonization lifetime extension
+    3. Colonial war risk (increases with colonies & K-scale at high tech levels)
+    4. Distributed resilience (colonies provide survival redundancy)
+    5. Home world destruction with temporary fragility period
 
-    Physical Basis:
-    ---------------
+    Physical Basis - Crisis Peaks:
+    ------------------------------
     The Kardashev-dependent model captures the empirical observation that technological
     civilizations face distinct existential risks at specific developmental stages:
 
@@ -43,6 +48,14 @@ class ExtinctionModel:
         λ(K) = λ_base(K) + Σᵢ Aᵢ × exp(-((K - Kᵢ)² / (2σᵢ²)))
 
     where λ_base increases slowly with K (more complex systems, more failure modes).
+
+    Distributed Resilience:
+    -----------------------
+    Multi-colony civilizations have reduced extinction risk from crises:
+    - Crisis probability: p_total = p_single^N_mature (all colonies must fail)
+    - Old-age death: p_total = p_single^N_mature (all colonies must die)
+    - Colonial war risk: increases with colonies at K ≥ 1.5 (coordination breakdown)
+    - Creates U-shaped risk curve: safe at mid-expansion, risky at extremes
     """
 
     def __init__(

@@ -41,7 +41,7 @@ class VisualizationConfig:
     civ_active_opacity: float = 0.9
     civ_extinct_size: float = 4.0
     civ_extinct_opacity: float = 0.5
-    civ_extinct_marker: str = "x"
+    civ_extinct_marker: str = "circle"  # Changed from "x" - use color to distinguish extinct
 
     # Kardashev coloring (for active civilizations)
     kardashev_colorscale: str = "Plasma"  # "Plasma", "Viridis", "Hot", "Turbo"

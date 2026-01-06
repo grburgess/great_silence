@@ -159,6 +159,21 @@ class CivilizationParameters:
     kardashev_breakthrough_multiplier: float = 3.0  # How much faster during breakthrough
     kardashev_max_scale: float = 3.0  # Maximum technological level (Type III)
 
+    # Colony maturation and resilience
+    colony_maturation_time_myr: float = 0.1  # Time colonies need before contributing to resilience (Myr)
+
+    # Colonization lifetime bonus
+    colonization_lifetime_bonus_myr: float = 0.5  # Logarithmic bonus: bonus × log(1 + num_mature_colonies)
+
+    # Home world destruction effects
+    home_world_fragility_period_myr: float = 0.5  # Duration of fragility after home world loss (Myr)
+    home_world_fragility_factor: float = 0.5  # Lifetime multiplier during fragility (0.5 = 50% reduction)
+
+    # Colonial war mechanics
+    colonial_war_colony_threshold: int = 10  # Minimum mature colonies before colonial war risk applies
+    colonial_war_kardashev_threshold: float = 1.5  # Minimum K-scale for colonial war (Type II civs)
+    colonial_war_amplitude: float = 0.05  # Base hazard rate amplitude for colonial war (per Myr)
+
 
 @dataclass
 class SimulationParameters:
@@ -166,7 +181,14 @@ class SimulationParameters:
 
     # Time parameters
     simulation_duration_gyr: float = 10.0  # Billion years
-    time_step_myr: float = 1.0  # Million years per step
+    time_step_myr: float = 1.0  # Million years per step (used as base/medium when adaptive)
+
+    # Adaptive time stepping
+    adaptive_timestepping: bool = True  # Enable adaptive timesteps based on events
+    min_timestep_myr: float = 0.01  # 10,000 years (fine resolution)
+    medium_timestep_myr: float = 0.1  # 100,000 years (active civilizations, default)
+    max_timestep_myr: float = 10.0  # 10 Myr (quiet periods, no events)
+    max_adaptive_step_myr: float = 1.0  # Step to probe events within this range
 
     # Monte Carlo
     num_realizations: int = 100
@@ -184,6 +206,21 @@ class SimulationParameters:
     save_snapshots: bool = True
     snapshot_interval_myr: float = 100.0
     output_directory: str = "output"
+
+    # Progress tracking
+    progress_verbose_level: int = 1  # 0=off, 1=basic, 2=detailed
+    progress_update_interval_pct: float = 0.1  # Time threshold (%)
+    progress_update_interval_steps: int = 10  # Step threshold
+    progress_update_interval_seconds: float = 0.5  # Wall-time threshold (sec)
+    progress_show_iteration_rate: bool = True
+    progress_show_probe_count: bool = True
+
+    # Within-simulation parallelization (causality-preserving)
+    enable_within_sim_parallel: bool = False  # Opt-in for parallelization
+    parallel_worker_threads: int = 8  # Number of worker threads (M1 Max default)
+    parallel_min_civs_threshold: int = 10  # Minimum civs to enable parallelization
+    enable_causality_checks: bool = True  # Validate causality partitioning (debug)
+    parallel_check_shared_colonies: bool = True  # Include colony overlap in causality
 
 
 @dataclass

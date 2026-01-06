@@ -130,7 +130,7 @@ class TestHDF5SaveLoad:
 
                 assert loaded_civ['parent_star_idx'] == original_civ.parent_star_idx
                 assert loaded_civ['emergence_time_gyr'] == pytest.approx(
-                    original_civ.emergence_time_gyr, rel=1e-5
+                    original_civ.birth_time_myr / 1000.0, rel=1e-5
                 )
                 assert loaded_civ['is_active'] == original_civ.is_active
 

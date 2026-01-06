@@ -1,5 +1,14 @@
 # Jupyter Lab Setup for GalaticBot
 
+## ⚠️ Important: Dual Environment Architecture
+
+**This project uses a split setup:**
+- **Jupyter Lab runs in:** `base` conda environment
+- **Code executes in:** `galaticbot` kernel environment
+
+**Extensions (ipywidgets, plotly) must be installed in base conda environment.**
+See `JUPYTER_ARCHITECTURE.md` for full details.
+
 ## Kernel Installation (DONE ✓)
 
 The GalaticBot kernel has been registered with Jupyter. You should now see **"Python (galaticbot)"** as an available kernel when you:
@@ -91,22 +100,93 @@ Check memory usage (simulations can be memory-intensive):
 
 ### Widget showing as "VBox(children=..." instead of rendering
 
-This means the widget object is being displayed instead of rendered. **Fix:** Add a semicolon:
+This means ipywidgets is not properly rendering. The widget object is being displayed as text instead of an interactive UI.
 
-```python
-# Wrong (shows VBox object):
-widget.display()
+**CRITICAL: Extensions must be in BASE conda environment (where Jupyter Lab runs)**
 
-# Correct (renders widget):
-widget.display();  # <-- semicolon suppresses output
+**1. Check if extension is installed in base:**
+```bash
+# Run from base conda environment (where jupyter lab runs)
+jupyter labextension list
 ```
 
-**Or** just return the widget directly:
-```python
-widget.main_layout  # Returns widget, Jupyter renders it
+Look for `@jupyter-widgets/jupyterlab-manager` - it should show as "enabled" and "OK".
+
+**2. If missing, install in BASE:**
+```bash
+# Activate base conda environment first
+conda activate base
+
+# Install ipywidgets (includes extension)
+conda install -c conda-forge ipywidgets
+
+# Rebuild JupyterLab
+jupyter lab build
 ```
 
-All notebooks have been updated with the correct syntax.
+**3. Ensure package is also in KERNEL:**
+```bash
+# The Python package must be in galaticbot kernel
+~/.local/bin/micromamba run -n galaticbot pip install ipywidgets
+```
+
+**3. Restart Jupyter Lab completely:**
+- Stop server (Ctrl+C in terminal)
+- Start fresh: `jupyter lab`
+- Hard refresh browser: Cmd+Shift+R (Mac) or Ctrl+Shift+R (Windows)
+
+**4. Update ipywidgets:**
+```bash
+~/.local/bin/micromamba run -n galaticbot pip install --upgrade ipywidgets
+```
+
+**5. Check kernel is correct:**
+Make sure the notebook is using the "Python (galaticbot)" kernel (see top right of notebook).
+
+### Plotly plots not showing
+
+Plotly interactive plots require the JupyterLab plotly extension in BASE.
+
+**CRITICAL: Plotly extension must be in BASE conda environment**
+
+**1. Check if installed in base:**
+```bash
+# Run from base conda environment
+jupyter labextension list | grep plotly
+```
+
+Should show: `jupyterlab-plotly v6.0.1 enabled OK`
+
+**2. If missing, install in BASE:**
+```bash
+# Activate base conda environment
+conda activate base
+
+# Install plotly (extension comes with it)
+conda install -c plotly plotly
+
+# Rebuild JupyterLab
+jupyter lab build
+```
+
+**3. Ensure package is also in KERNEL:**
+```bash
+# The Python package must be in galaticbot kernel
+~/.local/bin/micromamba run -n galaticbot pip install plotly
+```
+
+**4. Configure renderer in notebook:**
+The `configure_notebook_display()` function automatically sets plotly to use 'jupyterlab' renderer. If plots still don't show, manually set it:
+
+```python
+import plotly.io as pio
+pio.renderers.default = 'jupyterlab'
+```
+
+**5. After installation:**
+1. Restart Jupyter Lab (Ctrl+C, then `jupyter lab`)
+2. Hard refresh browser (Cmd+Shift+R)
+3. Rerun the notebook cells
 
 ### Widget extension not enabled
 

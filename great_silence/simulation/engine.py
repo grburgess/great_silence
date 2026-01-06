@@ -1,12 +1,22 @@
 """Main simulation engine for galactic civilization modeling."""
 
 import heapq
+import time
 import numpy as np
 from typing import Optional, Dict, List, Any, Set, Tuple
 from dataclasses import dataclass, field
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
 
 from ..config.parameters import SimulationConfig
+from ..utils.progress import create_progress_tracker, ProgressMetrics
+from ..utils.parallel import (
+    ThreadLocalProbeBuffer,
+    compute_light_travel_distance,
+    find_causal_groups_simple,
+    find_causal_groups_with_colonies,
+    should_use_parallelization
+)
 from ..galaxy.structure import GalaxyModel
 from ..galaxy.star_formation import StarFormationHistory, InitialMassFunction
 from ..civilization.probe_design import (
@@ -58,7 +68,11 @@ class CivilizationState:
     kardashev_advancement_rate: float = 0.01  # Individual advancement rate (varies per civilization)
     is_active: bool = True
     death_time_myr: Optional[float] = None
-    death_cause: Optional[str] = None  # 'extinction_event', 'self_destruction', 'old_age', 'supernova', 'grb'
+    death_cause: Optional[str] = None  # 'extinction_event', 'self_destruction', 'old_age', 'supernova', 'grb', 'colonial_war'
+
+    # Home world destruction tracking (for distributed resilience)
+    home_world_destroyed: bool = False
+    home_world_destruction_time_myr: Optional[float] = None
 
     # Self-replicating probe expansion parameters (locked at first launch)
     expansion_program_started: bool = False
@@ -72,6 +86,7 @@ class CivilizationState:
 
     # Probe tracking
     active_probes: List['ProbeState'] = field(default_factory=list)
+    archived_probes: List['ProbeState'] = field(default_factory=list)  # Completed probes
 
 
 @dataclass
@@ -153,6 +168,18 @@ class GalaxySimulation:
         # PRIORITY 2: Event queue for probe arrivals/replications (10-50x speedup)
         # Min-heap: (event_time_myr, event_type, civ_id, probe_id)
         self.event_queue: List[Tuple[float, str, int, int]] = []
+
+        # Progress tracking
+        self._progress_tracker = None
+        self._step_count = 0
+        self._last_update_time = 0.0
+        self._last_progress_pct = 0.0
+        self._current_dt_myr = 0.0
+        self._start_time = 0.0
+
+        # Probe archival tracking
+        self._last_archive_time_myr = 0.0
+        self._archive_interval_myr = 1.0  # Archive every 1 Myr
 
         # Extinction model
         from ..civilization.extinction import ExtinctionModel, CrisisPeak
@@ -297,15 +324,56 @@ class GalaxySimulation:
             print(f"  Disk stars: {len(self.galaxy.positions) - n_bulge}")
         print(f"Habitable stars: {len(self.habitable_star_indices)}")
 
-    def _step(self) -> None:
+    def _compute_next_timestep(self) -> float:
+        """
+        Compute adaptive timestep based on upcoming probe events and activity.
+
+        Returns:
+            Next timestep in Myr
+        """
+        cfg = self.config.simulation
+
+        # Check for imminent probe events
+        if self.event_queue:
+            next_event_time = self.event_queue[0][0]  # Peek min-heap
+            time_to_event = next_event_time - self.current_time_myr
+
+            # Step to event if within adaptive window and positive
+            if time_to_event > 0 and time_to_event <= cfg.max_adaptive_step_myr:
+                # Clamp to min timestep for stability
+                return max(time_to_event, cfg.min_timestep_myr)
+
+        # No imminent events - use activity-based logic
+        active_civs = sum(1 for c in self.civilizations if c.is_active)
+
+        if active_civs > 0:
+            # Active civilizations - use medium timestep
+            return cfg.medium_timestep_myr
+        else:
+            # No active civilizations - use max timestep
+            return cfg.max_timestep_myr
+
+    def _step(self, dt_myr: Optional[float] = None) -> float:
         """
         Execute a single simulation timestep.
 
+        Args:
+            dt_myr: Timestep size in Myr. If None, uses config default.
+
+        Returns:
+            Actual timestep used (for adaptive stepping)
+
         This method can be overridden by subclasses for custom stepping logic.
         """
+        if dt_myr is None:
+            dt_myr = self.config.simulation.time_step_myr
+
+        # Store for methods that need it
+        self._current_dt_myr = dt_myr
+
         # Evolve galaxy (stellar motion)
         self.galaxy.evolve_positions(
-            self.config.simulation.time_step_myr,
+            dt_myr,
             use_numba=self.config.simulation.use_numba,
             enable_motion=self.config.simulation.enable_stellar_motion
         )
@@ -319,15 +387,22 @@ class GalaxySimulation:
         # PRIORITY 2: Process probe events (arrival, replication) from event queue
         self._process_probe_events()
 
+        # Archive completed probes periodically to prevent exponential memory/performance issues
+        if (self.current_time_myr - self._last_archive_time_myr) >= self._archive_interval_myr:
+            self._archive_completed_probes()
+            self._last_archive_time_myr = self.current_time_myr
+
         # Apply astrophysical hazards
         self._apply_hazards()
 
         # Advance time
-        self.current_time_myr += self.config.simulation.time_step_myr
+        self.current_time_myr += dt_myr
+
+        return dt_myr
 
     def run(self, verbose: bool = True) -> None:
         """
-        Run the main simulation loop.
+        Run the main simulation loop with adaptive or fixed time stepping.
 
         Args:
             verbose: Whether to show progress bar
@@ -335,45 +410,202 @@ class GalaxySimulation:
         if self.galaxy.positions is None:
             self.initialize()
 
-        total_steps = int(
-            self.config.simulation.simulation_duration_gyr * 1000 /
-            self.config.simulation.time_step_myr
-        )
+        duration_myr = self.config.simulation.simulation_duration_gyr * 1000
+        cfg = self.config.simulation
 
-        # Progress bar
-        pbar = tqdm(total=total_steps, desc="Simulating", disable=not verbose)
+        # Progress tracking setup
+        if verbose:
+            self._progress_tracker = create_progress_tracker(
+                environment='auto',
+                show_iteration_rate=cfg.progress_show_iteration_rate,
+                show_probe_count=cfg.progress_show_probe_count
+            )
+            self._progress_tracker.start(duration_myr)
+
+        self._start_time = time.time()
+        self._step_count = 0
+        self._last_update_time = self._start_time
+        self._last_progress_pct = 0.0
 
         snapshot_counter = 0
         next_snapshot_time = 0.0
 
-        while self.current_time_myr < self.config.simulation.simulation_duration_gyr * 1000:
-            # Execute single timestep
-            self._step()
+        if cfg.adaptive_timestepping:
+            # Adaptive timestep loop
+            while self.current_time_myr < duration_myr:
+                # Compute adaptive timestep
+                dt_myr = self._compute_next_timestep()
 
-            # Save snapshot if needed
-            if self.config.simulation.save_snapshots:
-                if self.current_time_myr >= next_snapshot_time:
-                    self._save_snapshot()
-                    next_snapshot_time += self.config.simulation.snapshot_interval_myr
+                # Don't overshoot simulation end
+                dt_myr = min(dt_myr, duration_myr - self.current_time_myr)
 
-            pbar.update(1)
+                # Store current dt for progress tracking
+                self._current_dt_myr = dt_myr
 
-        pbar.close()
+                # Execute step with adaptive dt
+                self._step(dt_myr)
+
+                # Save snapshot if needed
+                if cfg.save_snapshots:
+                    if self.current_time_myr >= next_snapshot_time:
+                        self._save_snapshot()
+                        next_snapshot_time += cfg.snapshot_interval_myr
+
+                # Update progress tracking
+                self._step_count += 1
+                if self._should_update_progress(duration_myr):
+                    self._update_progress(duration_myr)
+
+        else:
+            # Legacy fixed timestep loop
+            while self.current_time_myr < duration_myr:
+                # Store current dt for progress tracking (fixed timestep)
+                self._current_dt_myr = cfg.time_step_myr
+
+                # Execute step with fixed dt
+                self._step()
+
+                # Save snapshot if needed
+                if cfg.save_snapshots:
+                    if self.current_time_myr >= next_snapshot_time:
+                        self._save_snapshot()
+                        next_snapshot_time += cfg.snapshot_interval_myr
+
+                # Update progress tracking
+                self._step_count += 1
+                if self._should_update_progress(duration_myr):
+                    self._update_progress(duration_myr)
+
+        # Finalize progress tracker
+        if verbose and self._progress_tracker:
+            self._progress_tracker.finish()
 
         # Final snapshot
-        if self.config.simulation.save_snapshots:
+        if cfg.save_snapshots:
             self._save_snapshot()
 
         print(f"\nSimulation complete!")
         print(f"Total civilizations emerged: {self.next_civ_id}")
         print(f"Active civilizations: {sum(c.is_active for c in self.civilizations)}")
 
+    def _should_update_progress(self, duration_myr: float) -> bool:
+        """Check if progress should be updated based on hybrid thresholds."""
+        if not self._progress_tracker:
+            return False
+
+        cfg = self.config.simulation
+
+        # Time threshold: >= 0.1% simulation time progress
+        current_progress_pct = (self.current_time_myr / duration_myr) * 100
+        time_delta = current_progress_pct - self._last_progress_pct
+        if time_delta >= cfg.progress_update_interval_pct:
+            return True
+
+        # Step threshold: >= 10 iterations
+        if self._step_count % cfg.progress_update_interval_steps == 0:
+            return True
+
+        # Wall-time threshold: >= 0.5 seconds
+        current_wall_time = time.time()
+        if current_wall_time - self._last_update_time >= cfg.progress_update_interval_seconds:
+            return True
+
+        return False
+
+    def _update_progress(self, duration_myr: float) -> None:
+        """Collect metrics and update progress display."""
+        if not self._progress_tracker:
+            return
+
+        # Count active civilizations and probes
+        active_civs = sum(1 for c in self.civilizations if c.is_active)
+        active_probes = sum(len(c.active_probes) for c in self.civilizations if c.is_active)
+
+        # Create metrics snapshot
+        metrics = ProgressMetrics(
+            current_time_myr=self.current_time_myr,
+            total_time_myr=duration_myr,
+            step_count=self._step_count,
+            current_dt_myr=self._current_dt_myr,
+            active_civs=active_civs,
+            active_probes=active_probes,
+            event_queue_size=len(self.event_queue),
+            wall_time_elapsed=time.time() - self._start_time
+        )
+
+        # Update tracker
+        self._progress_tracker.update(metrics)
+
+        # Update tracking state
+        self._last_progress_pct = metrics.time_pct
+        self._last_update_time = time.time()
+
+    def _partition_civilizations_by_causality(self) -> List[List['CivilizationState']]:
+        """
+        Partition civilizations into causally independent groups.
+
+        Two civilizations are causally connected if:
+        1. Distance < c × dt (light can travel between them this timestep), OR
+        2. They share colonized systems (if enabled in config)
+
+        Groups are processed in parallel since they cannot interact within this timestep.
+
+        Returns:
+            List of civilization groups, each group can be processed independently
+        """
+        cfg = self.config.simulation
+
+        # Get active civilizations
+        active_civs = [c for c in self.civilizations if c.is_active]
+
+        if len(active_civs) == 0:
+            return []
+
+        if len(active_civs) == 1:
+            return [active_civs]
+
+        # Compute light-travel distance for current timestep
+        max_causal_distance_kpc = compute_light_travel_distance(self._current_dt_myr)
+
+        # Extract civilization positions
+        civ_positions = np.array([
+            self.galaxy.positions[c.parent_star_idx] for c in active_civs
+        ])
+
+        civ_ids = [c.civ_id for c in active_civs]
+
+        # Partition based on causality
+        if cfg.parallel_check_shared_colonies:
+            # Include colony overlap in causality check
+            colonized_systems = [c.colonized_stars for c in active_civs]
+            group_indices = find_causal_groups_with_colonies(
+                civ_positions,
+                civ_ids,
+                colonized_systems,
+                max_causal_distance_kpc
+            )
+        else:
+            # Simple distance-based partitioning
+            group_indices = find_causal_groups_simple(
+                civ_positions,
+                civ_ids,
+                max_causal_distance_kpc
+            )
+
+        # Convert indices to civilization objects
+        groups = []
+        for group_idx_list in group_indices:
+            group_civs = [active_civs[idx] for idx in group_idx_list]
+            groups.append(group_civs)
+
+        return groups
+
     def _check_civilization_emergence(self) -> None:
         """Check for new civilization emergence based on Drake equation."""
         if self.habitable_star_indices is None:
             return
 
-        dt_myr = self.config.simulation.time_step_myr
+        dt_myr = self._current_dt_myr
         params = self.config.civilization
 
         # Check each habitable star
@@ -449,9 +681,106 @@ class GalaxySimulation:
             self._colonized_mask[star_idx_int] = True  # Mark as colonized
             self.next_civ_id += 1
 
+    def _get_mature_colonies(self, civ: CivilizationState) -> int:
+        """
+        Count colonies mature enough to contribute to resilience.
+
+        Colonies need time to become self-sufficient before providing
+        redundancy against extinction events.
+
+        Args:
+            civ: Civilization to check
+
+        Returns:
+            Number of mature colonies (age >= colony_maturation_time_myr)
+        """
+        maturation_threshold = self.config.civilization.colony_maturation_time_myr
+        mature_count = 0
+
+        for star_idx, arrival_time in civ.colony_arrival_times.items():
+            age = self.current_time_myr - arrival_time
+            if age >= maturation_threshold:
+                mature_count += 1
+
+        return mature_count
+
+    def _calculate_colonial_war_risk(
+        self,
+        kardashev_scale: float,
+        num_mature_colonies: int,
+        dt_myr: float
+    ) -> float:
+        """
+        Calculate colonial war extinction probability.
+
+        Risk increases with:
+        - Kardashev scale above threshold (more dangerous weapons)
+        - Number of colonies (more factions, coordination breakdown)
+
+        Only applies when colonies are numerous and technologically advanced.
+
+        Args:
+            kardashev_scale: Current technological level
+            num_mature_colonies: Number of mature colonies
+            dt_myr: Time step in Myr
+
+        Returns:
+            Probability of extinction from colonial war this timestep
+        """
+        cfg = self.config.civilization
+
+        # No risk below thresholds
+        if num_mature_colonies < cfg.colonial_war_colony_threshold:
+            return 0.0
+
+        if kardashev_scale < cfg.colonial_war_kardashev_threshold:
+            return 0.0
+
+        # Hazard rate increases with K-scale and colonies
+        k_factor = (kardashev_scale - cfg.colonial_war_kardashev_threshold)
+        colony_factor = np.log(num_mature_colonies / cfg.colonial_war_colony_threshold)
+
+        lambda_war = cfg.colonial_war_amplitude * k_factor * colony_factor
+
+        # Convert hazard rate to probability
+        p_war = 1.0 - np.exp(-lambda_war * dt_myr)
+
+        return p_war
+
     def _evolve_civilizations(self) -> None:
-        """Evolve existing civilizations (expansion, self-destruction, technological advancement)."""
-        dt_myr = self.config.simulation.time_step_myr
+        """
+        Evolve existing civilizations - dispatcher for parallel vs sequential.
+
+        Chooses between parallel and sequential processing based on:
+        - Config setting (enable_within_sim_parallel)
+        - Number of active civilizations (must exceed threshold)
+        - Causality grouping (must have multiple independent groups)
+        """
+        cfg = self.config.simulation
+
+        # Get active civilizations count
+        active_civs = [c for c in self.civilizations if c.is_active]
+        n_active = len(active_civs)
+
+        # Decide whether to use parallelization
+        if not cfg.enable_within_sim_parallel or n_active < cfg.parallel_min_civs_threshold:
+            # Sequential processing
+            return self._evolve_civilizations_sequential()
+
+        # Partition by causality
+        groups = self._partition_civilizations_by_causality()
+
+        # Check if parallelization is beneficial
+        if not should_use_parallelization(n_active, cfg.parallel_min_civs_threshold, len(groups), cfg.parallel_worker_threads):
+            # Fall back to sequential
+            return self._evolve_civilizations_sequential()
+
+        # Parallel processing
+        return self._evolve_civilizations_parallel(groups)
+
+    def _evolve_civilizations_sequential(self) -> None:
+        """Evolve existing civilizations sequentially (original implementation)."""
+        dt_myr = self._current_dt_myr
 
         for civ in self.civilizations:
             if not civ.is_active:
@@ -478,29 +807,77 @@ class GalaxySimulation:
                 self.config.civilization.kardashev_max_scale
             )
 
-            # Check self-destruction (now Kardashev-dependent)
-            if self.extinction_model.check_self_destruction(
+            # Check self-destruction with distributed resilience and colonial war
+            # Base self-destruction from crises (nuclear, AI, etc.)
+            p_single_crisis = self.extinction_model.check_self_destruction(
                 dt_myr=dt_myr,
                 rng=self.rng,
                 kardashev_scale=civ.kardashev_scale
-            ):
+            )
+
+            # Get mature colonies for resilience calculation
+            num_mature = self._get_mature_colonies(civ)
+
+            # Distributed resilience: crisis must affect all colonies
+            # Each colony independently survives with probability (1 - p)
+            if num_mature > 1:
+                p_crisis_total = p_single_crisis ** num_mature
+            else:
+                p_crisis_total = p_single_crisis
+
+            # Colonial war risk (increases with colonies & K-scale)
+            p_colonial_war = self._calculate_colonial_war_risk(
+                civ.kardashev_scale, num_mature, dt_myr
+            )
+
+            # Combined extinction probability: either crisis OR war
+            # P(A or B) = 1 - (1-P(A))(1-P(B))
+            p_total_extinction = 1.0 - (1.0 - p_crisis_total) * (1.0 - p_colonial_war)
+
+            if self.rng.uniform(0, 1) < p_total_extinction:
                 civ.is_active = False
                 civ.death_time_myr = self.current_time_myr
-                civ.death_cause = 'self_destruction'
+                # Assign cause based on which was more likely
+                civ.death_cause = 'colonial_war' if p_colonial_war > p_crisis_total else 'self_destruction'
                 continue
 
-            # Check age-based death (continuous exponential decay from birth)
-            # Survival probability: S(t) = exp(-t/tau) where tau = mean lifetime
-            # Death rate: lambda = 1/tau
-            # Probability of death in time dt: p = 1 - exp(-lambda * dt)
-            tau = self.config.civilization.mean_civilization_lifetime_myr
-            p_death = 1.0 - np.exp(-dt_myr / tau)
+            # Check age-based death with colonization bonus and distributed resilience
+            # Calculate effective lifetime with logarithmic colonization bonus
+            colonization_bonus = (
+                self.config.civilization.colonization_lifetime_bonus_myr *
+                np.log(1 + num_mature)
+            )
+            effective_lifetime = (
+                self.config.civilization.mean_civilization_lifetime_myr +
+                colonization_bonus
+            )
 
-            if self.rng.uniform(0, 1) < p_death:
-                civ.is_active = False
-                civ.death_time_myr = self.current_time_myr
-                civ.death_cause = 'old_age'
-                continue
+            # Apply home world fragility penalty if applicable
+            if civ.home_world_destroyed:
+                time_since_loss = self.current_time_myr - civ.home_world_destruction_time_myr
+                if time_since_loss < self.config.civilization.home_world_fragility_period_myr:
+                    # Temporary fragility - reduced lifetime during reorganization
+                    effective_lifetime *= self.config.civilization.home_world_fragility_factor
+
+            # Old-age death check with effective lifetime
+            age = self.current_time_myr - civ.birth_time_myr
+            if age >= effective_lifetime:
+                # Exponential decay: lambda = 1/tau
+                decay_rate = 1.0 / effective_lifetime
+                p_death_single = 1.0 - np.exp(-decay_rate * dt_myr)
+
+                # Distributed model: each mature colony rolls independently
+                # Civilization dies only if ALL colonies die
+                if num_mature > 1:
+                    p_all_die = p_death_single ** num_mature
+                else:
+                    p_all_die = p_death_single
+
+                if self.rng.uniform(0, 1) < p_all_die:
+                    civ.is_active = False
+                    civ.death_time_myr = self.current_time_myr
+                    civ.death_cause = 'old_age'
+                    continue
 
             # Expansion (simplified - will be enhanced with proper light travel time)
             if self.config.civilization.expansion_enabled:
@@ -573,11 +950,19 @@ class GalaxySimulation:
             if civ is None or not civ.is_active:
                 continue  # Civilization extinct, ignore event
 
+            # Search for probe in both active and archived lists
+            # (probe may have been archived on arrival but still needs replication processing)
             probe = None
             for p in civ.active_probes:
                 if p.probe_id == probe_id:
                     probe = p
                     break
+
+            if probe is None:
+                for p in civ.archived_probes:
+                    if p.probe_id == probe_id:
+                        probe = p
+                        break
 
             if probe is None:
                 continue  # Probe not found (shouldn't happen)
@@ -586,6 +971,36 @@ class GalaxySimulation:
                 self._handle_probe_arrival(civ, probe)
             elif event_type == 'replication_complete':
                 self._handle_replication_complete(civ, probe)
+
+    def _archive_completed_probes(self) -> None:
+        """
+        Archive completed probes to prevent memory/performance issues.
+
+        A probe is considered "completed" when:
+        - It has arrived at target (has_arrived = True)
+        - It has finished replication (has_replicated = True)
+        - It is no longer needed for active simulation
+
+        This prevents the active_probes list from growing exponentially.
+        """
+        for civ in self.civilizations:
+            if not civ.is_active:
+                continue
+
+            # Separate active from completed probes
+            still_active = []
+            newly_archived = []
+
+            for probe in civ.active_probes:
+                # Probe is completed if it has arrived AND replicated
+                if probe.has_arrived and probe.has_replicated:
+                    newly_archived.append(probe)
+                else:
+                    still_active.append(probe)
+
+            # Update lists
+            civ.active_probes = still_active
+            civ.archived_probes.extend(newly_archived)
 
     def _handle_probe_arrival(self, civ: CivilizationState, probe: ProbeState) -> None:
         """Handle probe arrival at target star."""
@@ -611,6 +1026,284 @@ class GalaxySimulation:
             probe.probe_id
         ))
 
+        # Archive immediately on arrival - probe is now stationary, waiting to replicate
+        # We keep probe data for replication event, but remove from active iteration
+        # This prevents active_probes from accumulating arrived-but-not-yet-replicated probes
+        if probe in civ.active_probes:
+            civ.active_probes.remove(probe)
+            civ.archived_probes.append(probe)
+
+    def _evolve_civilizations_parallel(self, groups: List[List['CivilizationState']]) -> None:
+        """
+        Evolve civilizations in parallel using causality-preserving groups.
+
+        Each group contains civilizations that are causally independent from other groups,
+        allowing safe parallel processing without race conditions.
+
+        Args:
+            groups: List of civilization groups from causality partitioning
+        """
+        cfg = self.config.simulation
+
+        # Process groups in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=cfg.parallel_worker_threads) as executor:
+            # Submit all groups for parallel processing
+            futures = [
+                executor.submit(self._evolve_civilization_group, group)
+                for group in groups
+            ]
+
+            # Collect results (thread-local buffers)
+            buffers = [future.result() for future in futures]
+
+        # Merge thread-local buffers back into shared state (single-threaded)
+        self._merge_probe_buffers(buffers)
+
+    def _evolve_civilization_group(self, group: List['CivilizationState']) -> ThreadLocalProbeBuffer:
+        """
+        Evolve a group of causally-independent civilizations.
+
+        This method is called from worker threads, so it must not modify shared state directly.
+        Instead, it collects changes in a thread-local buffer that is merged later.
+
+        Args:
+            group: List of civilizations to process
+
+        Returns:
+            ThreadLocalProbeBuffer with collected probes and events
+        """
+        buffer = ThreadLocalProbeBuffer()
+        dt_myr = self._current_dt_myr
+
+        for civ in group:
+            # Technological advancement
+            self._advance_civilization_tech(civ, dt_myr)
+
+            # Check extinction (updates civ state directly - safe since civs in group are independent)
+            extinct = self._check_civilization_extinction(civ, dt_myr)
+            if extinct:
+                buffer.extinction_updates.append((
+                    civ.civ_id,
+                    False,  # is_active
+                    self.current_time_myr,  # death_time_myr
+                    civ.death_cause
+                ))
+                continue
+
+            # Expansion - collect probes in buffer instead of modifying shared state
+            if self.config.civilization.expansion_enabled:
+                self._attempt_expansion_buffered(civ, buffer)
+
+        return buffer
+
+    def _advance_civilization_tech(self, civ: 'CivilizationState', dt_myr: float) -> None:
+        """Advance civilization technology (Kardashev scale)."""
+        base_advancement = civ.kardashev_advancement_rate * dt_myr
+
+        # Check for technological breakthrough
+        p_breakthrough = self.config.civilization.kardashev_breakthrough_probability_per_myr * dt_myr
+        if self.rng.uniform(0, 1) < p_breakthrough:
+            advancement = base_advancement * self.config.civilization.kardashev_breakthrough_multiplier
+        # Check for stagnation
+        elif self.rng.uniform(0, 1) < self.config.civilization.kardashev_stagnation_probability_per_myr * dt_myr:
+            advancement = 0.0
+        else:
+            advancement = base_advancement
+
+        civ.kardashev_scale = min(
+            civ.kardashev_scale + advancement,
+            self.config.civilization.kardashev_max_scale
+        )
+
+    def _check_civilization_extinction(self, civ: 'CivilizationState', dt_myr: float) -> bool:
+        """
+        Check if civilization goes extinct this timestep.
+
+        Returns:
+            True if civilization extinct, False otherwise
+        """
+        # Self-destruction check
+        p_single_crisis = self.extinction_model.check_self_destruction(
+            dt_myr=dt_myr,
+            rng=self.rng,
+            kardashev_scale=civ.kardashev_scale
+        )
+
+        # Distributed resilience
+        num_mature = self._get_mature_colonies(civ)
+        if num_mature > 1:
+            p_crisis_total = p_single_crisis ** num_mature
+        else:
+            p_crisis_total = p_single_crisis
+
+        # Colonial war risk
+        p_colonial_war = self._calculate_colonial_war_risk(
+            civ.kardashev_scale, num_mature, dt_myr
+        )
+
+        # Combined extinction probability
+        p_total_extinction = 1.0 - (1.0 - p_crisis_total) * (1.0 - p_colonial_war)
+
+        if self.rng.uniform(0, 1) < p_total_extinction:
+            civ.is_active = False
+            civ.death_time_myr = self.current_time_myr
+            civ.death_cause = 'colonial_war' if p_colonial_war > p_crisis_total else 'self_destruction'
+            return True
+
+        # Age-based death check
+        colonization_bonus = (
+            self.config.civilization.colonization_lifetime_bonus_myr *
+            np.log(1 + num_mature)
+        )
+        effective_lifetime = (
+            self.config.civilization.mean_civilization_lifetime_myr +
+            colonization_bonus
+        )
+
+        # Home world fragility penalty
+        if civ.home_world_destroyed:
+            time_since_loss = self.current_time_myr - civ.home_world_destruction_time_myr
+            if time_since_loss < self.config.civilization.home_world_fragility_period_myr:
+                effective_lifetime *= self.config.civilization.home_world_fragility_factor
+
+        # Old-age death
+        age = self.current_time_myr - civ.birth_time_myr
+        if age >= effective_lifetime:
+            decay_rate = 1.0 / effective_lifetime
+            p_death_single = 1.0 - np.exp(-decay_rate * dt_myr)
+
+            if num_mature > 1:
+                p_all_die = p_death_single ** num_mature
+            else:
+                p_all_die = p_death_single
+
+            if self.rng.uniform(0, 1) < p_all_die:
+                civ.is_active = False
+                civ.death_time_myr = self.current_time_myr
+                civ.death_cause = 'old_age'
+                return True
+
+        return False
+
+    def _attempt_expansion_buffered(self, civ: 'CivilizationState', buffer: ThreadLocalProbeBuffer) -> None:
+        """
+        Attempt expansion using thread-local buffer (parallel-safe version).
+
+        Instead of modifying shared state (event queue, probe lists), this collects
+        new probes and events in a thread-local buffer for later merging.
+
+        Args:
+            civ: Civilization attempting expansion
+            buffer: Thread-local buffer to collect probes/events
+        """
+        # Check colony cap
+        if len(civ.colonized_stars) >= self.config.civilization.max_colonies_per_civilization:
+            return
+
+        # Check if can start expansion
+        if not civ.expansion_program_started:
+            if civ.kardashev_scale >= self.config.civilization.min_kardashev_for_expansion:
+                # Lock in probe design
+                civ.expansion_program_started = True
+                civ.expansion_start_kardashev = civ.kardashev_scale
+                civ.probe_velocity_c = probe_velocity_from_kardashev(civ.kardashev_scale)
+                civ.probe_per_hop_range_pc = per_hop_range_from_kardashev(civ.kardashev_scale)
+                civ.probe_offspring_count = offspring_count(civ.kardashev_scale)
+                civ.probe_replication_delay_yr = replication_delay_years(civ.kardashev_scale)
+                civ.probe_min_metallicity = min_metallicity_for_replication(
+                    civ.kardashev_scale,
+                    threshold_k085=self.config.civilization.metallicity_threshold_k085,
+                    threshold_k095=self.config.civilization.metallicity_threshold_k095,
+                    threshold_k120=self.config.civilization.metallicity_threshold_k120
+                )
+                civ.probe_sensor_range_pc = self.config.civilization.probe_sensor_range_pc
+
+                # Launch initial probes from home world - collect in buffer
+                self._launch_initial_probes_buffered(civ, buffer)
+
+    def _launch_initial_probes_buffered(self, civ: 'CivilizationState', buffer: ThreadLocalProbeBuffer) -> None:
+        """Launch initial probes from home world (buffered version)."""
+        source_pos = self.galaxy.positions[civ.parent_star_idx]
+
+        # Find targets
+        targets = self._find_nearest_targets(
+            source_pos,
+            civ.probe_per_hop_range_pc,
+            civ.probe_min_metallicity,
+            civ.colonized_stars,
+            civ.probe_offspring_count,
+            civ.parent_star_idx
+        )
+
+        if len(targets) == 0:
+            return
+
+        # Create probes and events in buffer
+        for target_idx in targets:
+            probe_id = self.next_probe_id
+            self.next_probe_id += 1
+
+            target_pos = self.galaxy.positions[target_idx]
+            distance_pc = np.linalg.norm(target_pos - source_pos)
+            travel_time_yr = distance_pc / (civ.probe_velocity_c * C_PC_YR)
+            travel_time_myr = travel_time_yr / 1e6
+
+            arrival_time_myr = self.current_time_myr + travel_time_myr
+
+            # Create probe
+            probe = ProbeState(
+                probe_id=probe_id,
+                parent_probe_id=None,
+                generation=0,
+                launch_star_idx=civ.parent_star_idx,
+                target_star_idx=target_idx,
+                launch_time_myr=self.current_time_myr,
+                arrival_time_myr=arrival_time_myr,
+                has_arrived=False,
+                replication_complete_time_myr=arrival_time_myr + (civ.probe_replication_delay_yr / 1e6),
+                has_replicated=False
+            )
+
+            # Add to buffer with civ_id for later merging
+            buffer.new_probes.append((civ.civ_id, probe))
+
+            # Add arrival event to buffer
+            buffer.new_events.append((
+                arrival_time_myr,
+                'probe_arrival',
+                civ.civ_id,
+                probe_id
+            ))
+
+    def _merge_probe_buffers(self, buffers: List[ThreadLocalProbeBuffer]) -> None:
+        """
+        Merge thread-local probe buffers back into shared state (single-threaded).
+
+        Args:
+            buffers: List of thread-local buffers from parallel workers
+        """
+        for buffer in buffers:
+            # Merge probes into civilization lists
+            for civ_id, probe in buffer.new_probes:
+                # Find owning civilization
+                for civ in self.civilizations:
+                    if civ.civ_id == civ_id:
+                        civ.active_probes.append(probe)
+                        break
+
+            # Merge events into global event queue
+            for event in buffer.new_events:
+                heapq.heappush(self.event_queue, event)
+
+            # Apply extinction updates
+            for civ_id, is_active, death_time, death_cause in buffer.extinction_updates:
+                for civ in self.civilizations:
+                    if civ.civ_id == civ_id:
+                        civ.is_active = is_active
+                        civ.death_time_myr = death_time
+                        civ.death_cause = death_cause
+                        break
+
     def _handle_replication_complete(self, civ: CivilizationState, probe: ProbeState) -> None:
         """Handle probe replication completion."""
         if probe.has_replicated:
@@ -619,6 +1312,8 @@ class GalaxySimulation:
         probe.has_replicated = True
 
         # Launch offspring probes
+        # Note: Parent probe was already archived on arrival (see _handle_probe_arrival)
+        # We retrieve it from archived_probes to access its target location for offspring launch
         self._launch_offspring_probes(civ, probe)
 
     def _launch_initial_probes(self, civ: CivilizationState) -> None:
@@ -926,7 +1621,7 @@ class GalaxySimulation:
             from ..astrophysics.hazards import HazardEvaluator
             self.hazard_evaluator = HazardEvaluator(self.config.astrophysics)
 
-        dt_myr = self.config.simulation.time_step_myr
+        dt_myr = self._current_dt_myr
 
         # Check each civilization for hazard destruction
         for civ in self.civilizations:
@@ -954,9 +1649,19 @@ class GalaxySimulation:
             civ.hazard_stats.update(sn_info)
 
             if destroyed_by_sn:
-                civ.is_active = False
-                civ.death_time_myr = self.current_time_myr
-                civ.death_cause = 'supernova'
+                # Home world destroyed - check if civilization can survive from colonies
+                if not civ.home_world_destroyed:
+                    civ.home_world_destroyed = True
+                    civ.home_world_destruction_time_myr = self.current_time_myr
+
+                # Check if civilization has mature colonies to continue from
+                num_mature = self._get_mature_colonies(civ)
+                if num_mature == 0:
+                    # No mature colonies - civilization extinct
+                    civ.is_active = False
+                    civ.death_time_myr = self.current_time_myr
+                    civ.death_cause = 'supernova'
+                # else: civilization continues from colonies with fragility penalty
 
                 # Record hazard event for visualization
                 self.hazard_events.append(HazardEvent(
@@ -967,7 +1672,9 @@ class GalaxySimulation:
                     sterilization_radius_pc=sn_info.get('sn_distance_pc', self.config.astrophysics.sn_sterilization_range_pc),
                     affected_civ_ids=[civ.civ_id]
                 ))
-                continue
+
+                if not civ.is_active:
+                    continue
 
             # Check GRB hazard (now returns tuple with info dict)
             destroyed_by_grb, grb_info = self.hazard_evaluator.evaluate_grb_hazard(
@@ -985,9 +1692,19 @@ class GalaxySimulation:
             civ.hazard_stats.update(grb_info)
 
             if destroyed_by_grb:
-                civ.is_active = False
-                civ.death_time_myr = self.current_time_myr
-                civ.death_cause = 'grb'
+                # Home world destroyed - check if civilization can survive from colonies
+                if not civ.home_world_destroyed:
+                    civ.home_world_destroyed = True
+                    civ.home_world_destruction_time_myr = self.current_time_myr
+
+                # Check if civilization has mature colonies to continue from
+                num_mature = self._get_mature_colonies(civ)
+                if num_mature == 0:
+                    # No mature colonies - civilization extinct
+                    civ.is_active = False
+                    civ.death_time_myr = self.current_time_myr
+                    civ.death_cause = 'grb'
+                # else: civilization continues from colonies with fragility penalty
 
                 # Record hazard event for visualization
                 self.hazard_events.append(HazardEvent(

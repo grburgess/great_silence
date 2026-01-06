@@ -147,6 +147,219 @@ class SimulationWidget:
             tooltip='Allow probes to change course to better targets detected by sensors'
         )
 
+        # ADVANCED PARAMETERS - Civilization Lifetime
+        self.mean_lifetime_slider = widgets.FloatSlider(
+            value=1.0,
+            min=0.1,
+            max=100.0,
+            step=0.5,
+            description='Mean Lifetime (Myr):',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Base civilization lifetime before old-age death kicks in'
+        )
+
+        # ADVANCED PARAMETERS - Colony Resilience
+        self.colony_maturation_slider = widgets.FloatSlider(
+            value=0.1,
+            min=0.01,
+            max=1.0,
+            step=0.05,
+            description='Colony Maturation (Myr):',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Time before colonies contribute to resilience'
+        )
+
+        self.colonization_bonus_slider = widgets.FloatSlider(
+            value=0.5,
+            min=0.0,
+            max=5.0,
+            step=0.1,
+            description='Colonization Bonus:',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Logarithmic lifetime bonus per colony: bonus × log(1 + colonies)'
+        )
+
+        self.home_fragility_period_slider = widgets.FloatSlider(
+            value=0.5,
+            min=0.0,
+            max=2.0,
+            step=0.1,
+            description='Home Fragility (Myr):',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Duration of fragility after home world loss'
+        )
+
+        self.home_fragility_factor_slider = widgets.FloatSlider(
+            value=0.5,
+            min=0.1,
+            max=1.0,
+            step=0.05,
+            description='Fragility Factor:',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Lifetime multiplier during fragility (0.5 = 50% reduction)'
+        )
+
+        # ADVANCED PARAMETERS - Colonial War
+        self.colonial_war_threshold_slider = widgets.IntSlider(
+            value=10,
+            min=5,
+            max=50,
+            step=5,
+            description='War Colony Threshold:',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Min mature colonies before colonial war risk'
+        )
+
+        self.colonial_war_k_threshold_slider = widgets.FloatSlider(
+            value=1.5,
+            min=1.0,
+            max=2.5,
+            step=0.1,
+            description='War K Threshold:',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Min Kardashev scale for colonial war (Type II civs)'
+        )
+
+        self.colonial_war_amplitude_slider = widgets.FloatSlider(
+            value=0.05,
+            min=0.0,
+            max=0.5,
+            step=0.01,
+            description='War Amplitude:',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Base hazard rate for colonial war (per Myr)'
+        )
+
+        # ADVANCED PARAMETERS - Kardashev Progression
+        self.initial_kardashev_slider = widgets.FloatSlider(
+            value=0.7,
+            min=0.5,
+            max=1.2,
+            step=0.05,
+            description='Initial K-Scale:',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Starting Kardashev level (0.7 = modern Earth)'
+        )
+
+        self.kardashev_advancement_slider = widgets.FloatSlider(
+            value=0.01,
+            min=0.001,
+            max=0.1,
+            step=0.005,
+            description='Advancement Rate:',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Mean K-scale advancement per Myr'
+        )
+
+        self.min_k_expansion_slider = widgets.FloatSlider(
+            value=0.85,
+            min=0.7,
+            max=1.2,
+            step=0.05,
+            description='Min K for Expansion:',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Minimum Kardashev level to start probe expansion'
+        )
+
+        # ADVANCED PARAMETERS - Adaptive Timestep
+        self.adaptive_timestep_checkbox = widgets.Checkbox(
+            value=True,
+            description='Enable Adaptive Timesteps',
+            style={'description_width': 'initial'},
+            layout=widgets.Layout(width='300px'),
+            tooltip='Use event-driven adaptive timesteps (recommended)'
+        )
+
+        self.min_timestep_slider = widgets.FloatSlider(
+            value=0.01,
+            min=0.001,
+            max=0.1,
+            step=0.005,
+            description='Min Timestep (Myr):',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Minimum timestep (10k-100k years)',
+            disabled=False
+        )
+
+        self.medium_timestep_slider = widgets.FloatSlider(
+            value=0.1,
+            min=0.01,
+            max=1.0,
+            step=0.05,
+            description='Medium Timestep (Myr):',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Default timestep when civilizations active',
+            disabled=False
+        )
+
+        self.max_timestep_slider = widgets.FloatSlider(
+            value=10.0,
+            min=1.0,
+            max=50.0,
+            step=5.0,
+            description='Max Timestep (Myr):',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Maximum timestep during quiet periods',
+            disabled=False
+        )
+
+        # Link adaptive checkbox to timestep sliders
+        def toggle_timesteps(change):
+            enabled = not change['new']  # Disable sliders when adaptive is OFF
+            self.min_timestep_slider.disabled = enabled
+            self.medium_timestep_slider.disabled = enabled
+            self.max_timestep_slider.disabled = enabled
+
+        self.adaptive_timestep_checkbox.observe(toggle_timesteps, names='value')
+
+        # ADVANCED PARAMETERS - Crisis Amplitudes
+        self.crisis_nuclear_slider = widgets.FloatSlider(
+            value=0.15,
+            min=0.0,
+            max=0.5,
+            step=0.01,
+            description='Nuclear Age (K~0.72):',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Crisis amplitude at nuclear age'
+        )
+
+        self.crisis_ai_slider = widgets.FloatSlider(
+            value=0.20,
+            min=0.0,
+            max=0.5,
+            step=0.01,
+            description='AI Transition (K~1.05):',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Crisis amplitude at AI transition (usually highest)'
+        )
+
+        self.crisis_interplanetary_slider = widgets.FloatSlider(
+            value=0.10,
+            min=0.0,
+            max=0.5,
+            step=0.01,
+            description='Interplanetary (K~1.25):',
+            style={'description_width': '180px'},
+            layout=widgets.Layout(width='550px'),
+            tooltip='Crisis amplitude during interplanetary expansion'
+        )
+
         # Run button
         self.run_button = widgets.Button(
             description='Run Simulation',
@@ -164,26 +377,101 @@ class SimulationWidget:
 
     def _setup_layout(self):
         """Create widget layout."""
-        # Parameter section
-        params_box = widgets.VBox([
-            widgets.HTML("<h3>Simulation Configuration</h3>"),
+        # Basic parameters (always visible)
+        basic_params = widgets.VBox([
+            widgets.HTML("<h3>Basic Configuration</h3>"),
             self.preset_selector,
             widgets.HTML("<br><b>Override Parameters:</b>"),
             self.num_stars_slider,
             self.duration_slider,
             self.seed_input,
-            widgets.HTML("<br><b>Probe Expansion (Metallicity-Based Targeting):</b>"),
-            widgets.HTML("<p style='font-size: 12px; color: #666;'>Probes need metal-rich systems for replication. Lower Kardashev levels need richer systems.</p>"),
-            self.metallicity_k085_slider,
-            self.metallicity_k095_slider,
-            self.metallicity_k120_slider,
-            widgets.HTML("<br><b>Probe Sensors (Mid-Flight Course Correction):</b>"),
-            widgets.HTML("<p style='font-size: 12px; color: #666;'>Probes can detect and retarget to better planets within sensor range.</p>"),
-            self.sensor_range_slider,
-            self.enable_retargeting_checkbox,
             widgets.HTML("<br><b>Monte Carlo Options:</b>"),
             self.monte_carlo_checkbox,
             self.num_realizations_slider,
+        ])
+
+        # Advanced parameters in collapsible accordion
+        civilization_lifetime_section = widgets.VBox([
+            widgets.HTML("<p style='font-size: 13px; color: #666; margin-bottom: 10px;'>Control civilization lifetime and old-age death.</p>"),
+            self.mean_lifetime_slider,
+        ])
+
+        colony_resilience_section = widgets.VBox([
+            widgets.HTML("<p style='font-size: 13px; color: #666; margin-bottom: 10px;'>Distributed resilience: colonies extend lifetime and allow survival after home world loss.</p>"),
+            self.colony_maturation_slider,
+            self.colonization_bonus_slider,
+            self.home_fragility_period_slider,
+            self.home_fragility_factor_slider,
+        ])
+
+        colonial_war_section = widgets.VBox([
+            widgets.HTML("<p style='font-size: 13px; color: #666; margin-bottom: 10px;'>Colonial war risk increases with many colonies at high tech levels.</p>"),
+            self.colonial_war_threshold_slider,
+            self.colonial_war_k_threshold_slider,
+            self.colonial_war_amplitude_slider,
+        ])
+
+        kardashev_section = widgets.VBox([
+            widgets.HTML("<p style='font-size: 13px; color: #666; margin-bottom: 10px;'>Kardashev scale progression (0.7=Earth, 1.0=Type I, 2.0=Type II).</p>"),
+            self.initial_kardashev_slider,
+            self.kardashev_advancement_slider,
+            self.min_k_expansion_slider,
+        ])
+
+        probe_expansion_section = widgets.VBox([
+            widgets.HTML("<p style='font-size: 13px; color: #666; margin-bottom: 10px;'>Probes need metal-rich systems for replication. Lower Kardashev levels need richer systems.</p>"),
+            self.metallicity_k085_slider,
+            self.metallicity_k095_slider,
+            self.metallicity_k120_slider,
+            widgets.HTML("<br><b>Probe Sensors:</b>"),
+            widgets.HTML("<p style='font-size: 12px; color: #666;'>Mid-flight course correction to better targets.</p>"),
+            self.sensor_range_slider,
+            self.enable_retargeting_checkbox,
+        ])
+
+        adaptive_timestep_section = widgets.VBox([
+            widgets.HTML("<p style='font-size: 13px; color: #666; margin-bottom: 10px;'>Adaptive timesteps: fine resolution when needed, coarse during quiet periods.</p>"),
+            self.adaptive_timestep_checkbox,
+            self.min_timestep_slider,
+            self.medium_timestep_slider,
+            self.max_timestep_slider,
+        ])
+
+        crisis_section = widgets.VBox([
+            widgets.HTML("<p style='font-size: 13px; color: #666; margin-bottom: 10px;'>Great Filter crisis peaks at specific Kardashev levels.</p>"),
+            self.crisis_nuclear_slider,
+            self.crisis_ai_slider,
+            self.crisis_interplanetary_slider,
+        ])
+
+        # Create accordion for advanced parameters
+        advanced_accordion = widgets.Accordion([
+            civilization_lifetime_section,
+            colony_resilience_section,
+            colonial_war_section,
+            kardashev_section,
+            probe_expansion_section,
+            adaptive_timestep_section,
+            crisis_section,
+        ])
+
+        advanced_accordion.set_title(0, '⏱️ Civilization Lifetime')
+        advanced_accordion.set_title(1, '🌍 Colony Resilience (NEW!)')
+        advanced_accordion.set_title(2, '⚔️ Colonial War (NEW!)')
+        advanced_accordion.set_title(3, '📈 Kardashev Progression')
+        advanced_accordion.set_title(4, '🚀 Probe Expansion')
+        advanced_accordion.set_title(5, '⚡ Adaptive Timesteps (NEW!)')
+        advanced_accordion.set_title(6, '☠️ Crisis Amplitudes')
+
+        # Collapse all sections by default
+        advanced_accordion.selected_index = None
+
+        # Combine into main params box
+        params_box = widgets.VBox([
+            basic_params,
+            widgets.HTML("<br><h3>Advanced Parameters</h3>"),
+            widgets.HTML("<p style='font-size: 13px; color: #888;'>Click sections below to expand and configure detailed parameters.</p>"),
+            advanced_accordion,
         ])
 
         # Control section
@@ -263,9 +551,28 @@ class SimulationWidget:
         # Start with preset
         config = SimulationConfig.with_preset(self.preset_selector.value)
 
-        # Override parameters
+        # Basic parameters
         config.galaxy.total_stars = self.num_stars_slider.value
         config.simulation.simulation_duration_gyr = self.duration_slider.value
+
+        # Civilization lifetime
+        config.civilization.mean_civilization_lifetime_myr = self.mean_lifetime_slider.value
+
+        # Colony resilience parameters
+        config.civilization.colony_maturation_time_myr = self.colony_maturation_slider.value
+        config.civilization.colonization_lifetime_bonus_myr = self.colonization_bonus_slider.value
+        config.civilization.home_world_fragility_period_myr = self.home_fragility_period_slider.value
+        config.civilization.home_world_fragility_factor = self.home_fragility_factor_slider.value
+
+        # Colonial war parameters
+        config.civilization.colonial_war_colony_threshold = self.colonial_war_threshold_slider.value
+        config.civilization.colonial_war_kardashev_threshold = self.colonial_war_k_threshold_slider.value
+        config.civilization.colonial_war_amplitude = self.colonial_war_amplitude_slider.value
+
+        # Kardashev progression
+        config.civilization.initial_kardashev_scale_mean = self.initial_kardashev_slider.value
+        config.civilization.kardashev_advancement_rate_mean = self.kardashev_advancement_slider.value
+        config.civilization.min_kardashev_for_expansion = self.min_k_expansion_slider.value
 
         # Probe expansion metallicity thresholds
         config.civilization.metallicity_threshold_k085 = self.metallicity_k085_slider.value
@@ -275,6 +582,17 @@ class SimulationWidget:
         # Probe sensor capabilities
         config.civilization.probe_sensor_range_pc = self.sensor_range_slider.value
         config.civilization.enable_mid_flight_retargeting = self.enable_retargeting_checkbox.value
+
+        # Adaptive timestep parameters
+        config.simulation.adaptive_timestepping = self.adaptive_timestep_checkbox.value
+        config.simulation.min_timestep_myr = self.min_timestep_slider.value
+        config.simulation.medium_timestep_myr = self.medium_timestep_slider.value
+        config.simulation.max_timestep_myr = self.max_timestep_slider.value
+
+        # Crisis amplitudes
+        config.civilization.crisis_nuclear_age_amplitude = self.crisis_nuclear_slider.value
+        config.civilization.crisis_ai_transition_amplitude = self.crisis_ai_slider.value
+        config.civilization.crisis_interplanetary_amplitude = self.crisis_interplanetary_slider.value
 
         # Enable snapshots for visualization
         config.simulation.save_snapshots = True
