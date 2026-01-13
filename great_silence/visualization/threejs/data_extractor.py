@@ -9,6 +9,64 @@ import json
 from .config import ThreeJSConfig
 
 
+def _extract_civ_list(snap):
+    """Extract civilization list from snapshot."""
+    if hasattr(snap, 'civilization_states'):
+        return [
+            {
+                'civ_id': c.civ_id,
+                'position': snap.stellar_positions[c.parent_star_idx].tolist() 
+                           if hasattr(snap, 'stellar_positions') and snap.stellar_positions is not None 
+                           else [0.0, 0.0, 0.0],
+                'kardashev': c.kardashev_scale,
+                'age': (snap.time_myr - c.birth_time_myr) / 1000.0 
+                       if hasattr(snap, 'time_myr') else c.birth_time_myr / 1000.0,
+                'is_active': c.is_active
+            }
+            for c in snap.civilization_states
+        ]
+    elif hasattr(snap, 'civilizations'):
+        return snap.civilizations.copy()
+    else:
+        return []
+
+
+def _extract_probe_list(snap):
+    """Extract probe list from snapshot."""
+    if hasattr(snap, 'active_probes_in_flight'):
+        return [
+            {
+                'probe_id': p.probe_id,
+                'position': p.current_position.tolist(),
+                'civ_id': p.civ_id,
+                'progress': p.progress_fraction
+            }
+            for p in snap.active_probes_in_flight
+        ]
+    elif hasattr(snap, 'probes'):
+        return snap.probes.copy()
+    else:
+        return []
+
+
+def _extract_hazard_list(snap):
+    """Extract hazard list from snapshot."""
+    if hasattr(snap, 'hazard_events'):
+        return [
+            {
+                'position': h.position.tolist(),
+                'type': h.event_type,
+                'time': h.time_myr / 1000.0,
+                'lethal_radius': h.sterilization_radius_pc / 1000.0
+            }
+            for h in snap.hazard_events
+        ]
+    elif hasattr(snap, 'hazards'):
+        return snap.hazards.copy()
+    else:
+        return []
+
+
 @dataclass
 class FrameData:
     """Data for a single animation frame."""
@@ -88,16 +146,10 @@ class SimulationDataExtractor:
         if hasattr(self.source, "snapshots"):
             self.snapshots = [
                 {
-                    "time": snap.time_gyr,
-                    "civilizations": snap.civilizations.copy()
-                    if hasattr(snap, "civilizations")
-                    else [],
-                    "probes": snap.probes.copy()
-                    if hasattr(snap, "probes")
-                    else [],
-                    "hazards": snap.hazards.copy()
-                    if hasattr(snap, "hazards")
-                    else [],
+                    "time": snap.time_myr / 1000.0 if hasattr(snap, 'time_myr') else snap.time_gyr,
+                    "civilizations": _extract_civ_list(snap),
+                    "probes": _extract_probe_list(snap),
+                    "hazards": _extract_hazard_list(snap),
                 }
                 for snap in self.source.snapshots
             ]
