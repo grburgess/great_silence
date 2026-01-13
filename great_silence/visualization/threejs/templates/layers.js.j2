@@ -1,15 +1,129 @@
-{# layers.js.j2 - Three.js visualization layers #}
+{# layers.js.j2 - Disaster visualization layers #}
+
 function createDisasterShockwaves() {
+    const geometry = new THREE.RingGeometry(0.1, 0.2, 32);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+    });
+
+    window.disasterShockwaves = [];
+    window.shockwaveMeshes = [];
+
+    return { geometry, material };
 }
 
-function updateShockwaves(frame_index) {
+function updateShockwaves(frame_index, disasters, config) {
+    const currentTime = window.animationData.frames[frame_index].time;
+    const duration = config.shockwave_duration_myr * 1000;
+
+    for (let i = 0; i < disasters.length; i++) {
+        const disaster = disasters[i];
+        const disasterTime = disaster.time * 1000;
+        const elapsed = currentTime - disasterTime;
+
+        if (elapsed >= 0 && elapsed <= duration) {
+            const progress = elapsed / duration;
+            const radius = progress * config.hazard_marker_size * 2;
+            const opacity = (1 - progress) * config.hazard_opacity;
+
+            let mesh = window.shockwaveMeshes[i];
+            if (!mesh) {
+                mesh = new THREE.Mesh(
+                    window.shockwaveGeometry.clone(),
+                    window.shockwaveMaterial.clone()
+                );
+                mesh.rotation.x = Math.PI / 2;
+                window.scene.add(mesh);
+                window.shockwaveMeshes[i] = mesh;
+            }
+
+            mesh.scale.set(radius, radius, 1);
+            mesh.material.opacity = opacity;
+            mesh.position.set(
+                disaster.position[0],
+                disaster.position[1],
+                disaster.position[2]
+            );
+        }
+    }
+
+    for (let i = window.shockwaveMeshes.length - 1; i >= disasters.length; i--) {
+        window.scene.remove(window.shockwaveMeshes[i]);
+        window.shockwaveMeshes.splice(i, 1);
+    }
 }
 
-function getDisasterColor(disaster_type) {
+function getDisasterColor(disaster_type, config) {
+    switch (disaster_type.toLowerCase()) {
+        case 'supernova':
+        case 'sn':
+            return config.hazard_supernova_color;
+        case 'grb':
+        case 'gamma':
+            return config.hazard_grb_color;
+        case 'nsm':
+        case 'merger':
+            return config.hazard_nsm_color;
+        default:
+            return '#ff0000';
+    }
 }
 
 function createSterilizationZones() {
+    const geometry = new THREE.SphereGeometry(1, 16, 16);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+    });
+
+    window.sterilizationZones = [];
+    window.zoneMeshes = [];
+
+    return { geometry, material };
 }
 
-function updateSterilizationZones(frame_index) {
+function updateSterilizationZones(frame_index, disasters, config) {
+    const currentTime = window.animationData.frames[frame_index].time;
+    const fadeTime = config.disaster_fade_time_myr * 1000;
+
+    for (let i = 0; i < disasters.length; i++) {
+        const disaster = disasters[i];
+        const disasterTime = disaster.time * 1000;
+        const elapsed = currentTime - disasterTime;
+
+        if (elapsed >= 0) {
+            const progress = Math.min(elapsed / fadeTime, 1);
+            const opacity = (1 - progress) * config.sterilization_zone_opacity;
+
+            let mesh = window.zoneMeshes[i];
+            if (!mesh) {
+                mesh = new THREE.Mesh(
+                    window.zoneGeometry.clone(),
+                    window.zoneMaterial.clone()
+                );
+                window.scene.add(mesh);
+                window.zoneMeshes[i] = mesh;
+            }
+
+            const radius = disaster.lethal_radius / 1000;
+            mesh.scale.set(radius, radius, radius);
+            mesh.material.opacity = opacity;
+            mesh.position.set(
+                disaster.position[0],
+                disaster.position[1],
+                disaster.position[2]
+            );
+            mesh.material.color.setStyle(getDisasterColor(disaster.type, config));
+        }
+    }
+
+    for (let i = window.zoneMeshes.length - 1; i >= disasters.length; i--) {
+        window.scene.remove(window.zoneMeshes[i]);
+        window.zoneMeshes.splice(i, 1);
+    }
 }
