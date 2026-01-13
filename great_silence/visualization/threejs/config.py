@@ -60,6 +60,9 @@ class ThreeJSConfig:
     sphere_growth_window_myr: float = 50.0
 
     interpolation_factor: int = 10
+    lod_near_distance: float = 5.0
+    lod_far_distance: float = 15.0
+    enable_procedural_civ_models: bool = True
     frame_duration_ms: int = 50
     default_playback_speed: float = 1.0
     min_playback_speed: float = 0.1

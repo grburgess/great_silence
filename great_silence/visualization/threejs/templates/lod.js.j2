@@ -1,0 +1,48 @@
+{# lod.js.j2 - Level of Detail system #}
+
+let lodNearDistance = 5.0;
+let lodFarDistance = 15.0;
+
+function initLOD() {
+    if (window.config.lod_near_distance) {
+        lodNearDistance = window.config.lod_near_distance;
+    }
+    if (window.config.lod_far_distance) {
+        lodFarDistance = window.config.lod_far_distance;
+    }
+}
+
+function updateLOD() {
+    if (!camera) return;
+
+    civSprites.forEach((sprite, index) => {
+        const distance = camera.position.distanceTo(sprite.position);
+        
+        if (distance < lodNearDistance) {
+            sprite.material.opacity = 1.0;
+            sprite.scale.set(0.3, 0.3, 1.0);
+        } else if (distance < lodFarDistance) {
+            sprite.material.opacity = 0.7;
+            sprite.scale.set(0.15, 0.15, 1.0);
+        } else {
+            sprite.material.opacity = 0.4;
+            sprite.scale.set(0.08, 0.08, 1.0);
+        }
+    });
+}
+
+function getLODLevel(position) {
+    if (!camera) return 2;
+    
+    const distance = camera.position.distanceTo(new THREE.Vector3(
+        position[0], position[1], position[2]
+    ));
+    
+    if (distance < lodNearDistance) return 0;
+    if (distance < lodFarDistance) return 1;
+    return 2;
+}
+
+window.initLOD = initLOD;
+window.updateLOD = updateLOD;
+window.getLODLevel = getLODLevel;

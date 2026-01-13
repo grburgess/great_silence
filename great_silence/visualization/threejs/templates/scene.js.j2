@@ -43,6 +43,10 @@ function initScene() {
 
     window.addEventListener('resize', onWindowResize);
 
+    if (window.initLOD) {
+        window.initLOD();
+    }
+
     createStarField();
     createCivilizationSprites();
     createProbeTrails();
@@ -136,7 +140,7 @@ function createHazardMarkers() {
     hazardMeshes = [];
 }
 
-function onWindowResize() {
+function initScene() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -157,6 +161,10 @@ function animate() {
 
     TWEEN.update();
     controls.update();
+
+    if (window.updateLOD) {
+        window.updateLOD();
+    }
 
     if (window.isPlaying) {
         updateAnimation(delta);
