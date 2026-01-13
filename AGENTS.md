@@ -4,6 +4,8 @@
 
 Any useful mistakes made or confusions corrected, document at the end of AGENTS.md. Always add, never delete. Be concise.
 
+Refer to the code_map directory for information on the structure of the coding project
+
 
 ```bash
 # Always run python with micromamba environment galaticbot
@@ -59,6 +61,25 @@ mypy src/
 
 # Run all quality checks
 black src/ tests/ && ruff check src/ tests/ && mypy src/
+```
+
+## Three.js visualization
+```bash
+# Export interactive HTML with all features
+python -c "
+from great_silence import GalaxySimulation, SimulationConfig
+from great_silence.visualization.threejs import export_html
+
+config = SimulationConfig()
+config.simulation.save_snapshots = True
+sim = GalaxySimulation(config)
+sim.initialize()
+sim.run()
+export_html(sim, 'visualization.html', animated=True)
+"
+
+# Open in browser
+open visualization.html
 ```
 
 ## Code style

@@ -1,7 +1,7 @@
 """Configuration for Three.js visualization system."""
 
 from dataclasses import dataclass, field
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List, Any
 
 
 @dataclass
@@ -43,6 +43,8 @@ class ThreeJSConfig:
     hazard_nsm_color: str = "#aa44ff"
     hazard_marker_size: float = 0.3
     hazard_opacity: float = 0.7
+
+    camera_presets: List[Dict[str, Any]] = field(default_factory=list)
 
     shockwave_duration_myr: float = 50.0
     sterilization_zone_opacity: float = 0.3
