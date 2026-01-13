@@ -25,6 +25,7 @@ class RecoveryQueue:
         self.status = np.zeros(n_stars, dtype=int)
         self.recovery_heap: List[tuple[float, int]] = []
         self.in_queue: set[int] = set()
+        self.stale_indices: set[int] = set()
 
     def sterilize_star(
         self,
@@ -49,13 +50,7 @@ class RecoveryQueue:
             )
 
             if star_idx in self.in_queue:
-                new_heap = [
-                    (rt, idx)
-                    for rt, idx in self.recovery_heap
-                    if idx != star_idx
-                ]
-                heapq.heapify(new_heap)
-                self.recovery_heap = new_heap
+                self.stale_indices.add(star_idx)
 
             recovery_time = current_time_myr + recovery_time_myr
             heapq.heappush(self.recovery_heap, (recovery_time, star_idx))
@@ -105,6 +100,9 @@ class RecoveryQueue:
             and self.recovery_heap[0][0] <= current_time_myr
         ):
             recovery_time, star_idx = heapq.heappop(self.recovery_heap)
+            if star_idx in self.stale_indices:
+                self.stale_indices.remove(star_idx)
+                continue
             self.status[star_idx] = SterilizationStatus.HABITABLE
             self.in_queue.discard(star_idx)
             recovered.append(star_idx)

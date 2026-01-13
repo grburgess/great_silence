@@ -10,7 +10,12 @@ try:
 except ImportError:
     HAS_H5PY = False
 
-from .encoding import DisasterBinary, encode_disaster, decode_disaster
+from .encoding import (
+    DisasterBinary,
+    encode_disaster,
+    decode_disaster,
+    EVENT_TYPE_REVERSE,
+)
 
 
 class DisasterArchiver:
@@ -127,13 +132,27 @@ class DisasterArchiver:
             and self.archive_path is not None
             and self.archive_path.exists()
         ):
+            from ..engine import HazardEvent
+
             with h5py.File(self.archive_path, "r") as f:
                 dset = f["disasters"]
                 for row in dset:
                     binary = bytes(row)
                     decoded = decode_disaster(binary)
                     if start_myr <= decoded.time_myr <= end_myr:
-                        events.append(decoded)
+                        event_type = EVENT_TYPE_REVERSE.get(
+                            decoded.event_type, "unknown"
+                        )
+                        hazard = HazardEvent(
+                            time_myr=decoded.time_myr,
+                            event_type=event_type,
+                            position=decoded.position,
+                            energy=decoded.energy,
+                            sterilization_radius_pc=float(
+                                decoded.lethal_radius
+                            ),
+                        )
+                        events.append(hazard)
 
         return events
 
@@ -141,7 +160,7 @@ class DisasterArchiver:
         """Get all archived disasters (for analysis).
 
         Returns:
-            List of all disasters (mix of objects and decoded)
+            List of all disasters as (time, HazardEvent) tuples
         """
         all_events = []
 
@@ -153,12 +172,26 @@ class DisasterArchiver:
             and self.archive_path is not None
             and self.archive_path.exists()
         ):
+            from ..engine import HazardEvent
+
             with h5py.File(self.archive_path, "r") as f:
                 dset = f["disasters"]
                 for row in dset:
                     binary = bytes(row)
                     decoded = decode_disaster(binary)
-                    all_events.append((decoded.time_myr, decoded))
+                    event_type = EVENT_TYPE_REVERSE.get(
+                        decoded.event_type, "unknown"
+                    )
+                    hazard = HazardEvent(
+                        time_myr=decoded.time_myr,
+                        event_type=event_type,
+                        position=decoded.position,
+                        energy=decoded.energy,
+                        sterilization_radius_pc=float(
+                            decoded.lethal_radius
+                        ),
+                    )
+                    all_events.append((decoded.time_myr, hazard))
 
         return all_events
 
