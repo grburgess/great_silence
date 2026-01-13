@@ -1,4 +1,4 @@
-"""Configuration for Three.js visualization."""
+"""Configuration for Three.js visualization system."""
 
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
@@ -70,4 +70,53 @@ class ThreeJSConfig:
 
     def to_dict(self) -> dict:
         """Convert config to dict for JSON serialization."""
-        pass
+        return {
+            "camera_position": self.camera_position,
+            "camera_fov": self.camera_fov,
+            "camera_near": self.camera_near,
+            "camera_far": self.camera_far,
+            "enable_damping": self.enable_damping,
+            "damping_factor": self.damping_factor,
+            "enable_zoom": self.enable_zoom,
+            "auto_rotate": self.auto_rotate,
+            "auto_rotate_speed": self.auto_rotate_speed,
+            "background_color": self.background_color,
+            "star_point_size": self.star_point_size,
+            "star_opacity": self.star_opacity,
+            "civ_active_size": self.civ_active_size,
+            "civ_active_opacity": self.civ_active_opacity,
+            "civ_extinct_size": self.civ_extinct_size,
+            "civ_extinct_opacity": self.civ_extinct_opacity,
+            "civ_extinct_color": self.civ_extinct_color,
+            "kardashev_colorscale": self.kardashev_colorscale,
+            "kardashev_min": self.kardashev_min,
+            "kardashev_max": self.kardashev_max,
+            "glow_threshold": self.glow_threshold,
+            "glow_intensity": self.glow_intensity,
+            "death_marker_size": self.death_marker_size,
+            "death_colors": self.death_colors,
+            "hazard_supernova_color": self.hazard_supernova_color,
+            "hazard_grb_color": self.hazard_grb_color,
+            "hazard_nsm_color": self.hazard_nsm_color,
+            "hazard_marker_size": self.hazard_marker_size,
+            "hazard_opacity": self.hazard_opacity,
+            "shockwave_duration_myr": self.shockwave_duration_myr,
+            "sterilization_zone_opacity": self.sterilization_zone_opacity,
+            "disaster_fade_time_myr": self.disaster_fade_time_myr,
+            "probe_trail_length": self.probe_trail_length,
+            "probe_glow_enabled": self.probe_glow_enabled,
+            "trajectory_width": self.trajectory_width,
+            "trajectory_opacity": self.trajectory_opacity,
+            "trajectory_fade_window_myr": self.trajectory_fade_window_myr,
+            "sphere_opacity": self.sphere_opacity,
+            "sphere_segments": self.sphere_segments,
+            "sphere_color": self.sphere_color,
+            "sphere_growth_window_myr": self.sphere_growth_window_myr,
+            "interpolation_factor": self.interpolation_factor,
+            "frame_duration_ms": self.frame_duration_ms,
+            "default_playback_speed": self.default_playback_speed,
+            "min_playback_speed": self.min_playback_speed,
+            "max_playback_speed": self.max_playback_speed,
+            "include_threejs_bundle": self.include_threejs_bundle,
+            "data_embed_threshold_mb": self.data_embed_threshold_mb,
+        }
