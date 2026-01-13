@@ -65,18 +65,25 @@ This document tracks the progress of restoring lost code from the galactic simul
 - ❌ Add DisasterArchiver calls
 - ❌ Update ProgressMetrics for disaster stats
 
+## GitHub Issues Created
+
+- Phase 1: #32 - Implement Core Disaster Infrastructure
+- Phase 2: #33 - Implement Three.js Data Layer
+- Phase 3: #34 - Implement Three.js Templates
+- Phase 4: #35 - Implement Engine Integration
+
 ## Next Steps
 
-1. Implement Phase 1 encoding.py (lowest level, no dependencies)
-2. Implement Phase 1 spatial_index.py (depends on encoding)
-3. Implement Phase 1 recovery.py (independent)
-4. Implement Phase 1 scheduler.py (depends on stellar_evolution)
-5. Implement Phase 1 archiver.py (depends on encoding and spatial_index)
-6. Implement Phase 2 config.py (independent)
-7. Implement Phase 2 data_extractor.py (largest file)
-8. Implement Phase 2 html_exporter.py (depends on data_extractor)
-9. Implement Phase 3 templates (JavaScript/Jinja2)
-10. Implement Phase 4 engine integration
+1. Work on #32: Implement Phase 1 encoding.py (lowest level, no dependencies)
+2. Work on #32: Implement Phase 1 spatial_index.py (depends on encoding)
+3. Work on #32: Implement Phase 1 recovery.py (independent)
+4. Work on #32: Implement Phase 1 scheduler.py (depends on stellar_evolution)
+5. Work on #32: Implement Phase 1 archiver.py (depends on encoding and spatial_index)
+6. Work on #33: Implement Phase 2 config.py (independent)
+7. Work on #33: Implement Phase 2 data_extractor.py (largest file)
+8. Work on #33: Implement Phase 2 html_exporter.py (depends on data_extractor)
+9. Work on #34: Implement Phase 3 templates (JavaScript/Jinja2)
+10. Work on #35: Implement Phase 4 engine integration
 11. Fix bugs #18-20
 12. Run tests and verify functionality
 
