@@ -3,6 +3,7 @@
 import heapq
 import time
 import numpy as np
+from pathlib import Path
 from typing import Optional, Dict, List, Any, Set, Tuple
 from dataclasses import dataclass, field
 from tqdm import tqdm
@@ -329,13 +330,13 @@ class GalaxySimulation:
             RecoveryQueue,
             DisasterArchiver,
         )
-        from pathlib import Path
+        from ..astrophysics import StellarEvolution
 
         self.supernova_scheduler = SupernovaScheduler(
             self.galaxy.masses,
             self.galaxy.metallicities,
             self.galaxy.ages,
-            self.sfh
+            StellarEvolution()
         )
 
         n_stars = self.config.galaxy.total_stars

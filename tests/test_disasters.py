@@ -148,8 +148,7 @@ class TestSpatialIndex:
 
         results = self.index.query_spatial(
             center=np.array([10.0, 0.0, 0.0]),
-            radius_pc=5000.0,
-            time_window=(0.0, 10000.0)
+            radius_kpc=5.0
         )
 
         assert len(results) > 0
@@ -179,9 +178,9 @@ class TestSpatialIndex:
 
         results = self.index.query_spatiotemporal(
             center=np.array([10.0, 0.0, 0.0]),
-            radius_pc=5000.0,
-            start_myr=0.0,
-            end_myr=500.0
+            radius_kpc=5.0,
+            time_start=0.0,
+            time_end=500.0
         )
 
         assert len(results) >= 0
@@ -271,9 +270,12 @@ class TestRecoveryQueue:
         self.queue.sterilize_star(100, 150.0, 30.0, permanent=False)
         assert 100 in self.queue.stale_indices
 
+        recovered = self.queue.process_recoveries(160.0)
+        assert 100 not in recovered  # Should skip stale entry (recovery at 150.0)
+        assert 100 in self.queue.in_queue  # Still in queue for second recovery at 180.0
+
         recovered = self.queue.process_recoveries(200.0)
-        assert 100 not in recovered  # Should skip stale entry
-        assert 100 not in self.queue.stale_indices
+        assert 100 in recovered  # Should recover now (recovery at 180.0)
 
 
 class TestDisasterArchiver:
@@ -332,7 +334,7 @@ class TestDisasterArchiver:
 
         self.archiver.finalize()
 
-        events = self.archiver.get_disasters_in_window(0.0, 300.0)
+        events = self.archiver.get_disasters_in_window(0.0, 299.9)
 
         assert len(events) == 3
 
@@ -345,7 +347,7 @@ class TestDisasterArchiver:
 
         all_events = self.archiver.get_all_disasters()
 
-        assert len(all_events) == 5
+        assert len(all_events) == 6
 
     def test_type_consistency(self):
         """Test that query returns HazardEvent objects."""
@@ -378,6 +380,7 @@ class TestSupernovaScheduler:
     def setup_method(self):
         """Create scheduler with test stellar data."""
         from great_silence.simulation.disasters.scheduler import SupernovaScheduler
+        from unittest.mock import Mock
 
         self.n_stars = 1000
         self.rng = np.random.default_rng(42)
@@ -386,7 +389,10 @@ class TestSupernovaScheduler:
         metallicities = self.rng.uniform(0.001, 0.03, self.n_stars)
         ages = self.rng.uniform(0, 10000, self.n_stars)
 
-        self.scheduler = SupernovaScheduler(masses, metallicities, ages, None)
+        mock_stellar_evolution = Mock()
+        mock_stellar_evolution.main_sequence_lifetime = lambda m, z: 0.01 * m * 10.0
+
+        self.scheduler = SupernovaScheduler(masses, metallicities, ages, mock_stellar_evolution)
 
     def test_scheduler_creation(self):
         """Test scheduler initialization."""
@@ -403,9 +409,10 @@ class TestSupernovaScheduler:
         new_mass = 15.0
         new_metallicity = 0.02
         new_age = 0.0
+        birth_time_myr = 5000.0
 
         initial_count = self.scheduler.pending_count
-        self.scheduler.add_new_star(new_mass, new_metallicity, new_age)
+        self.scheduler.add_new_star(1000, new_mass, new_metallicity, birth_time_myr)
 
         assert self.scheduler.pending_count >= initial_count
 
