@@ -91,6 +91,30 @@ class CivilizationState:
 
 
 @dataclass
+class HazardEvent:
+    """Record of an astrophysical hazard event."""
+
+    time_myr: float
+    event_type: str  # 'supernova', 'grb'
+    position: np.ndarray  # 3D position in kpc
+    energy: float  # Event energy (ergs)
+    sterilization_radius_pc: float  # Lethal range in parsecs
+    affected_civ_ids: List[int] = field(default_factory=list)  # Civilizations destroyed/affected
+
+
+@dataclass
+class HazardEvent:
+    """Record of an astrophysical hazard event."""
+
+    time_myr: float
+    event_type: str  # 'supernova', 'grb'
+    position: np.ndarray  # 3D position in kpc
+    energy: float  # Event energy (ergs)
+    sterilization_radius_pc: float  # Lethal range in parsecs
+    affected_civ_ids: List[int] = field(default_factory=list)  # Civilizations destroyed/affected
+
+
+@dataclass
 class ProbeSnapshot:
     """Snapshot of a single probe's state for visualization."""
 
@@ -118,18 +142,9 @@ class SimulationSnapshot:
     stellar_positions: np.ndarray  # For visualization
     active_probes_in_flight: List[ProbeSnapshot] = field(default_factory=list)
     total_active_probes: int = 0
-
-
-@dataclass
-class HazardEvent:
-    """Record of an astrophysical hazard event."""
-
-    time_myr: float
-    event_type: str  # 'supernova', 'grb'
-    position: np.ndarray  # 3D position in kpc
-    energy: float  # Event energy (ergs)
-    sterilization_radius_pc: float  # Lethal range in parsecs
-    affected_civ_ids: List[int] = field(default_factory=list)  # Civilizations destroyed/affected
+    hazard_events: List[HazardEvent] = field(default_factory=list)  # Disasters since last snapshot
+    colony_positions: List[Tuple[int, np.ndarray]] = field(default_factory=list)  # (civ_id, position)
+    civ_birth_ages: List[Tuple[int, float]] = field(default_factory=list)  # (civ_id, age_gyr)
 
 
 class GalaxySimulation:
@@ -246,6 +261,7 @@ class GalaxySimulation:
         # History tracking
         self.snapshots: List[SimulationSnapshot] = []
         self.hazard_events: List[HazardEvent] = []
+        self._last_snapshot_time_myr: Optional[float] = None
 
         # Habitable star indices (cached)
         self.habitable_star_indices: Optional[np.ndarray] = None
@@ -1870,6 +1886,25 @@ class GalaxySimulation:
         # Interpolate in-flight probe positions for visualization
         probe_snapshots = self._interpolate_probe_positions(self.current_time_myr)
 
+        # Collect hazard events since last snapshot
+        hazard_events_since_snapshot = []
+        if hasattr(self, 'hazard_events'):
+            hazard_events_since_snapshot = [
+                h for h in self.hazard_events
+                if h.time_myr > self._last_snapshot_time_myr
+                if h.time_myr <= self.current_time_myr
+            ] if hasattr(self, '_last_snapshot_time_myr') and self._last_snapshot_time_myr is not None else []
+
+        # Collect colony positions
+        colony_positions = []
+        civ_birth_ages = []
+        for civ in self.civilizations:
+            civ_birth_ages.append((civ.civ_id, civ.birth_time_myr / 1000.0))
+            if civ.is_active and civ.colonized_stars:
+                for star_idx in civ.colonized_stars:
+                    pos = self.galaxy.positions[star_idx] if self.galaxy.positions is not None else np.array([0.0, 0.0, 0.0])
+                    colony_positions.append((civ.civ_id, pos.copy()))
+
         snapshot = SimulationSnapshot(
             time_myr=self.current_time_myr,
             active_civilizations=active_civs,
@@ -1878,9 +1913,13 @@ class GalaxySimulation:
             civilization_states=[c for c in self.civilizations],
             stellar_positions=self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([]),
             active_probes_in_flight=probe_snapshots,
-            total_active_probes=len(probe_snapshots)
+            total_active_probes=len(probe_snapshots),
+            hazard_events=hazard_events_since_snapshot,
+            colony_positions=colony_positions,
+            civ_birth_ages=civ_birth_ages
         )
 
+        self._last_snapshot_time_myr = self.current_time_myr
         self.snapshots.append(snapshot)
 
     def get_statistics(self) -> Dict[str, Any]:
