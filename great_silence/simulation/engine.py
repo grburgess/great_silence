@@ -252,6 +252,11 @@ class GalaxySimulation:
         # Colonized stars tracking (for performance)
         self._colonized_mask: Optional[np.ndarray] = None
 
+        # Disaster tracking modules (initialized in initialize())
+        self.supernova_scheduler: Optional[Any] = None
+        self.recovery_queue: Optional[Any] = None
+        self.disaster_archiver: Optional[Any] = None
+
     def initialize(self) -> None:
         """Initialize galaxy and stellar population."""
         print("Initializing galaxy...")
@@ -316,6 +321,35 @@ class GalaxySimulation:
             self._spatial_index = SpatialIndex(self.galaxy.positions)
         else:
             self._spatial_index = None
+
+        # Initialize disaster tracking modules
+        print("Initializing disaster tracking...")
+        from .disasters import (
+            SupernovaScheduler,
+            RecoveryQueue,
+            DisasterArchiver,
+        )
+        from pathlib import Path
+
+        self.supernova_scheduler = SupernovaScheduler(
+            self.galaxy.masses,
+            self.galaxy.metallicities,
+            self.galaxy.ages,
+            self.sfh
+        )
+
+        n_stars = self.config.galaxy.total_stars
+        self.recovery_queue = RecoveryQueue(n_stars)
+
+        if self.config.simulation.save_snapshots:
+            archive_path = Path(
+                self.config.simulation.output_directory
+            ) / "disasters.h5"
+            self.disaster_archiver = DisasterArchiver(
+                archive_path=archive_path,
+                recent_window_myr=10.0,
+                buffer_size=1000
+            )
 
         print(f"Galaxy initialized with {len(self.galaxy.positions)} stars")
         if self.config.galaxy.include_bulge:
@@ -483,6 +517,10 @@ class GalaxySimulation:
         # Final snapshot
         if cfg.save_snapshots:
             self._save_snapshot()
+
+        # Finalize disaster archiver
+        if self.disaster_archiver is not None:
+            self.disaster_archiver.finalize()
 
         print(f"\nSimulation complete!")
         print(f"Total civilizations emerged: {self.next_civ_id}")
@@ -1664,14 +1702,32 @@ class GalaxySimulation:
                 # else: civilization continues from colonies with fragility penalty
 
                 # Record hazard event for visualization
-                self.hazard_events.append(HazardEvent(
+                hazard = HazardEvent(
                     time_myr=self.current_time_myr,
                     event_type='supernova',
                     position=civ_pos.copy(),  # Approximate location
                     energy=1e51,  # Typical supernova energy in ergs
                     sterilization_radius_pc=sn_info.get('sn_distance_pc', self.config.astrophysics.sn_sterilization_range_pc),
                     affected_civ_ids=[civ.civ_id]
-                ))
+                )
+                self.hazard_events.append(hazard)
+
+                # Archive disaster
+                if self.disaster_archiver is not None:
+                    self.disaster_archiver.archive_disaster(
+                        hazard, self.current_time_myr
+                    )
+
+                # Sterilize star in recovery queue
+                if self.recovery_queue is not None:
+                    sterilization_radius = hazard.sterilization_radius_pc
+                    recovery_time = sterilization_radius / 10.0  # Recovery rate of 10 pc/Myr
+                    self.recovery_queue.sterilize_star(
+                        civ.parent_star_idx,
+                        self.current_time_myr,
+                        recovery_time,
+                        permanent=(hazard.energy > 1e52)  # Permanent for very energetic events
+                    )
 
                 if not civ.is_active:
                     continue
@@ -1707,14 +1763,41 @@ class GalaxySimulation:
                 # else: civilization continues from colonies with fragility penalty
 
                 # Record hazard event for visualization
-                self.hazard_events.append(HazardEvent(
+                hazard = HazardEvent(
                     time_myr=self.current_time_myr,
                     event_type='grb',
                     position=civ_pos.copy(),  # Approximate location
                     energy=1e54,  # Typical GRB energy in ergs
                     sterilization_radius_pc=grb_info.get('grb_distance_kpc', 1.0) * 1000.0,  # Convert kpc to pc
                     affected_civ_ids=[civ.civ_id]
-                ))
+                )
+                self.hazard_events.append(hazard)
+
+                # Archive disaster
+                if self.disaster_archiver is not None:
+                    self.disaster_archiver.archive_disaster(
+                        hazard, self.current_time_myr
+                    )
+
+                # Sterilize star in recovery queue
+                if self.recovery_queue is not None:
+                    sterilization_radius = hazard.sterilization_radius_pc
+                    recovery_time = sterilization_radius / 10.0  # Recovery rate of 10 pc/Myr
+                    self.recovery_queue.sterilize_star(
+                        civ.parent_star_idx,
+                        self.current_time_myr,
+                        recovery_time,
+                        permanent=(hazard.energy > 1e52)  # Permanent for very energetic events
+                    )
+
+        # Process recoveries after all hazards processed
+        if self.recovery_queue is not None:
+            recovered = self.recovery_queue.process_recoveries(
+                self.current_time_myr
+            )
+            # Log recovery statistics
+            if len(recovered) > 0:
+                pass  # Stars have recovered, habitable status updated
 
     def _interpolate_probe_positions(self, current_time_myr: float) -> List[ProbeSnapshot]:
         """
