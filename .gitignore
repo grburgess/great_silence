@@ -214,3 +214,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Large output files
+*.html
+*.gif
+*.png
+*.mp4
+notebooks/output/
+outputs/
+output/
+
+# macOS
+.DS_Store
