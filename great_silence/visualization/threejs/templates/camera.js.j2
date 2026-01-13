@@ -1,0 +1,207 @@
+{# camera.js.j2 - Camera control system #}
+
+let cameraPresets = [];
+let currentPresetIndex = -1;
+let isAutoRotating = false;
+
+function initCamera() {
+    if (window.cameraPresets) {
+        cameraPresets = window.cameraPresets;
+    } else {
+        cameraPresets = [
+            { name: "Galaxy Top", position: [0, 0, 40], target: [0, 0, 0], duration: 2.0 },
+            { name: "Galaxy Edge", position: [30, 0, 0], target: [0, 0, 0], duration: 2.0 },
+            { name: "Galaxy Angled", position: [25, 25, 15], target: [0, 0, 0], duration: 2.5 }
+        ];
+    }
+
+    document.getElementById('btn-cam-top').addEventListener('click', () => transitionToPreset(0));
+    document.getElementById('btn-cam-edge').addEventListener('click', () => transitionToPreset(1));
+    document.getElementById('btn-cam-angle').addEventListener('click', () => transitionToPreset(2));
+    document.getElementById('btn-cam-autorotate').addEventListener('click', toggleAutoRotate);
+
+    window.addEventListener('keydown', handleKeyboard);
+}
+
+function transitionToPreset(index) {
+    if (index < 0 || index >= cameraPresets.length) return;
+
+    const preset = cameraPresets[index];
+    currentPresetIndex = index;
+    isAutoRotating = false;
+    controls.autoRotate = false;
+    document.getElementById('btn-cam-autorotate').classList.remove('active');
+
+    new TWEEN.Tween(camera.position)
+        .to({
+            x: preset.position[0],
+            y: preset.position[1],
+            z: preset.position[2]
+        }, preset.duration * 1000)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .start();
+
+    new TWEEN.Tween(controls.target)
+        .to({
+            x: preset.target[0],
+            y: preset.target[1],
+            z: preset.target[2]
+        }, preset.duration * 1000)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .start();
+}
+
+function transitionToPosition(position, target, duration = 2.0) {
+    new TWEEN.Tween(camera.position)
+        .to({
+            x: position[0],
+            y: position[1],
+            z: position[2]
+        }, duration * 1000)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .start();
+
+    new TWEEN.Tween(controls.target)
+        .to({
+            x: target[0],
+            y: target[1],
+            z: target[2]
+        }, duration * 1000)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .start();
+}
+
+function toggleAutoRotate() {
+    isAutoRotating = !isAutoRotating;
+    controls.autoRotate = isAutoRotating;
+
+    const btn = document.getElementById('btn-cam-autorotate');
+    if (isAutoRotating) {
+        btn.classList.add('active');
+    } else {
+        btn.classList.remove('active');
+    }
+}
+
+function followCivilization(civId) {
+    if (!window.animationData) return;
+
+    const frame = window.animationData.frames[window.currentFrame];
+    if (!frame) return;
+
+    const civ = frame.civilizations.find(c => c.civ_id === civId);
+    if (!civ) return;
+
+    const position = civ.position;
+    const target = [position[0], position[1], position[2]];
+    const camPos = [
+        position[0] + 5,
+        position[1] + 5,
+        position[2] + 5
+    ];
+
+    transitionToPosition(camPos, target, 1.0);
+}
+
+function followHazard(hazardIndex) {
+    if (!window.animationData) return;
+
+    const frame = window.animationData.frames[window.currentFrame];
+    if (!frame) return;
+
+    const hazard = frame.hazards[hazardIndex];
+    if (!hazard) return;
+
+    const position = hazard.position;
+    const target = [position[0], position[1], position[2]];
+    const camPos = [
+        position[0] + 10,
+        position[1] + 10,
+        position[2] + 10
+    ];
+
+    transitionToPosition(camPos, target, 1.5);
+}
+
+function handleKeyboard(event) {
+    const panSpeed = 0.5;
+    const rotateSpeed = 0.1;
+    const zoomSpeed = 1.0;
+
+    switch (event.key) {
+        case 'w':
+        case 'W':
+            controls.target.y += panSpeed;
+            break;
+        case 's':
+        case 'S':
+            controls.target.y -= panSpeed;
+            break;
+        case 'a':
+        case 'A':
+            controls.target.x -= panSpeed;
+            break;
+        case 'd':
+        case 'D':
+            controls.target.x += panSpeed;
+            break;
+        case 'ArrowLeft':
+            controls.object.position.applyAxisAngle(
+                new THREE.Vector3(0, 1, 0),
+                rotateSpeed
+            );
+            break;
+        case 'ArrowRight':
+            controls.object.position.applyAxisAngle(
+                new THREE.Vector3(0, 1, 0),
+                -rotateSpeed
+            );
+            break;
+        case 'ArrowUp':
+            controls.object.position.applyAxisAngle(
+                new THREE.Vector3(1, 0, 0),
+                rotateSpeed
+            );
+            break;
+        case 'ArrowDown':
+            controls.object.position.applyAxisAngle(
+                new THREE.Vector3(1, 0, 0),
+                -rotateSpeed
+            );
+            break;
+        case '+':
+        case '=':
+            camera.position.multiplyScalar(1 - zoomSpeed * 0.1);
+            break;
+        case '-':
+        case '_':
+            camera.position.multiplyScalar(1 + zoomSpeed * 0.1);
+            break;
+        case ' ':
+            event.preventDefault();
+            togglePlayPause();
+            break;
+    }
+}
+
+function zoomIn() {
+    camera.position.multiplyScalar(0.9);
+}
+
+function zoomOut() {
+    camera.position.multiplyScalar(1.1);
+}
+
+function resetCamera() {
+    transitionToPreset(0);
+}
+
+window.initCamera = initCamera;
+window.transitionToPreset = transitionToPreset;
+window.transitionToPosition = transitionToPosition;
+window.toggleAutoRotate = toggleAutoRotate;
+window.followCivilization = followCivilization;
+window.followHazard = followHazard;
+window.zoomIn = zoomIn;
+window.zoomOut = zoomOut;
+window.resetCamera = resetCamera;
