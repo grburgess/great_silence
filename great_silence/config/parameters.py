@@ -76,6 +76,17 @@ class AstrophysicsParameters:
     grb_rate_per_century: float = 0.01
     grb_lethal_range_kpc: float = 5.0
     grb_beaming_angle_deg: float = 10.0
+    grb_fraction_of_sne: float = 0.01  # Base fraction of massive SNe producing GRBs
+    grb_min_progenitor_mass: float = 20.0  # Minimum mass for GRB progenitor (Msun)
+
+    # Neutron star mergers (kilonovae)
+    ns_merger_rate_per_myr: float = 50.0  # Galactic rate ~10-100/Myr (Abbott+ 2017)
+    ns_sgrb_beaming_angle_deg: float = 5.0  # Short GRB beaming (~3-10 deg)
+    ns_sgrb_lethal_range_kpc: float = 3.0  # sGRB lethal distance in kpc
+    ns_kilonova_lethal_range_pc: float = 30.0  # Kilonova lethal distance in pc
+    ns_kilonova_sterilization_range_pc: float = 100.0  # Partial sterilization range
+    ns_delay_time_min_gyr: float = 0.01  # Minimum NS-NS inspiral time
+    ns_delay_time_max_gyr: float = 10.0  # Maximum NS-NS inspiral time
 
 
 @dataclass

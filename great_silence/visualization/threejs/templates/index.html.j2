@@ -377,6 +377,58 @@
                     <button class="btn" id="btn-export">Export Frame</button>
                 </div>
 
+                <!-- Disaster Visualization Panel -->
+                <div id="disaster-panel" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; padding-top: 5px; border-top: 1px solid #333;">
+                    <div style="font-size: 11px; color: #ff6600; font-weight: bold;">DISASTERS</div>
+                    
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="disaster-history-toggle" checked>
+                        <label for="disaster-history-toggle" style="font-size: 11px; color: #888;" id="history-mode-label">History Mode</label>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="disaster-scale-toggle" checked>
+                        <label for="disaster-scale-toggle" style="font-size: 11px; color: #888;" id="scale-mode-label">Exaggerated</label>
+                    </div>
+                    
+                    <div style="display: flex; gap: 8px;">
+                        <label style="font-size: 11px; display: flex; align-items: center; gap: 3px;">
+                            <input type="checkbox" id="filter-supernova" checked>
+                            <span style="color: #ff4400;">SN</span>
+                        </label>
+                        <label style="font-size: 11px; display: flex; align-items: center; gap: 3px;">
+                            <input type="checkbox" id="filter-grb" checked>
+                            <span style="color: #00ffff;">GRB</span>
+                        </label>
+                        <label style="font-size: 11px; display: flex; align-items: center; gap: 3px;">
+                            <input type="checkbox" id="filter-nsm" checked>
+                            <span style="color: #ff00ff;">NSM</span>
+                        </label>
+                    </div>
+                    
+                    <div style="display: flex; gap: 8px;">
+                        <label style="font-size: 11px; display: flex; align-items: center; gap: 3px;">
+                            <input type="checkbox" id="show-zones" checked>
+                            <span style="color: #aaa;">Zones</span>
+                        </label>
+                        <label style="font-size: 11px; display: flex; align-items: center; gap: 3px;">
+                            <input type="checkbox" id="show-beams" checked>
+                            <span style="color: #aaa;">Beams</span>
+                        </label>
+                        <label style="font-size: 11px; display: flex; align-items: center; gap: 3px;">
+                            <input type="checkbox" id="show-death-markers" checked>
+                            <span style="color: #aaa;">Deaths</span>
+                        </label>
+                    </div>
+                    
+                    <div id="disaster-count" style="font-size: 11px; margin-left: auto;"></div>
+                </div>
+                
+                <!-- Disaster Timeline -->
+                <div id="disaster-timeline" style="width: 100%; height: 20px; margin-top: 5px;">
+                    <canvas id="disaster-timeline-canvas" width="800" height="20" style="width: 100%; height: 100%; border-radius: 3px;"></canvas>
+                </div>
+
                 <div id="downsample-container">
                     <span style="font-size: 12px; color: #888;">Show:</span>
                     <input type="range" id="downsample-slider" min="0" max="90" value="0">
@@ -401,12 +453,13 @@
         window.animated = {{ animated | lower }};
     </script>
 
-    <script src="scene.js"></script>
-    <script src="camera.js"></script>
-    <script src="particles.js"></script>
-    <script src="lod.js"></script>
-    <script src="ui.js"></script>
-    <script src="postprocess.js"></script>
+    <script src="scene.js?v={{ range(1000000) | random }}"></script>
+    <script src="camera.js?v={{ range(1000000) | random }}"></script>
+    <script src="particles.js?v={{ range(1000000) | random }}"></script>
+    <script src="layers.js?v={{ range(1000000) | random }}"></script>
+    <script src="lod.js?v={{ range(1000000) | random }}"></script>
+    <script src="ui.js?v={{ range(1000000) | random }}"></script>
+    <script src="postprocess.js?v={{ range(1000000) | random }}"></script>
 
     <script>
         {% if data.galaxy %}
@@ -438,6 +491,12 @@
             initScene();
             initCamera();
             initParticles();
+            
+            // Initialize disaster visualization layers
+            if (window.initializeDisasterLayers) {
+                window.initializeDisasterLayers(window.config);
+            }
+            
             initUI();
             initPostProcessing();
 

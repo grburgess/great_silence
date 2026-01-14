@@ -19,6 +19,11 @@ from .spatial_index import DisasterSpatialIndex
 from .recovery import SterilizationStatus, RecoveryQueue
 from .scheduler import SupernovaScheduler
 from .archiver import DisasterArchiver
+from .unified_scheduler import (
+    UnifiedDisasterScheduler,
+    DisasterType,
+    ScheduledDisaster,
+)
 
 __all__ = [
     "DisasterBinary",
@@ -34,4 +39,7 @@ __all__ = [
     "RecoveryQueue",
     "SupernovaScheduler",
     "DisasterArchiver",
+    "UnifiedDisasterScheduler",
+    "DisasterType",
+    "ScheduledDisaster",
 ]

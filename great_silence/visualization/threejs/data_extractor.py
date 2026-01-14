@@ -50,17 +50,29 @@ def _extract_probe_list(snap):
 
 
 def _extract_hazard_list(snap):
-    """Extract hazard list from snapshot."""
+    """Extract hazard list from snapshot with full disaster data."""
     if hasattr(snap, 'hazard_events'):
-        return [
-            {
+        hazards = []
+        for h in snap.hazard_events:
+            hazard_data = {
                 'position': h.position.tolist(),
                 'type': h.event_type,
                 'time': h.time_myr / 1000.0,
-                'lethal_radius': h.sterilization_radius_pc / 1000.0
+                'lethal_radius': h.sterilization_radius_pc / 1000.0,
+                'energy': getattr(h, 'energy', 1e51),
+                'affected_civs': getattr(h, 'affected_civ_ids', []),
             }
-            for h in snap.hazard_events
-        ]
+            
+            if hasattr(h, 'grb_jet_theta'):
+                hazard_data['jet_theta'] = h.grb_jet_theta
+                hazard_data['jet_phi'] = h.grb_jet_phi
+                hazard_data['beaming_angle'] = getattr(h, 'grb_beaming_angle_deg', 10.0)
+            
+            if hasattr(h, 'sterilization_radius_pc'):
+                hazard_data['sterilization_radius'] = h.sterilization_radius_pc / 1000.0
+            
+            hazards.append(hazard_data)
+        return hazards
     elif hasattr(snap, 'hazards'):
         return snap.hazards.copy()
     else:

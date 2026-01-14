@@ -382,3 +382,7 @@ window.updateStarsVisible = updateStarsVisible;
 window.updateCivizationsVisible = updateCivizationsVisible;
 window.updateProbesVisible = updateProbesVisible;
 window.updateHazardsVisible = updateHazardsVisible;
+
+// Export scene and camera for other modules
+window.getScene = function() { return scene; };
+window.getCamera = function() { return camera; };

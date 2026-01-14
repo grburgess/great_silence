@@ -1,129 +1,589 @@
 
 
+// Disaster visualization state
+window.disasterState = {
+    showHistory: true,
+    exaggeratedScale: true,
+    showSupernovae: true,
+    showGRBs: true,
+    showNSMergers: true,
+    showZones: true,
+    showBeams: true,
+    showDeathMarkers: true,
+    historyFadeTime: 500,  // Myr before fading in history mode
+    scaleMultiplier: 50.0  // Exaggeration factor for visibility
+};
+
+// Disaster mesh pools for performance
+window.disasterPools = {
+    shockwaves: [],
+    zones: [],
+    beams: [],
+    markers: [],
+    deathMarkers: []
+};
+
 function createDisasterShockwaves() {
-    const geometry = new THREE.RingGeometry(0.1, 0.2, 32);
+    const geometry = new THREE.RingGeometry(0.1, 0.15, 32);
     const material = new THREE.MeshBasicMaterial({
         color: 0xff0000,
         transparent: true,
-        opacity: 0.7,
-        side: THREE.DoubleSide
+        opacity: 0.8,
+        side: THREE.DoubleSide,
+        depthWrite: false
     });
 
-    window.disasterShockwaves = [];
+    window.shockwaveGeometry = geometry;
+    window.shockwaveMaterial = material;
     window.shockwaveMeshes = [];
 
     return { geometry, material };
 }
 
-function updateShockwaves(frame_index, disasters, config) {
-    const currentTime = window.animationData.frames[frame_index].time;
-    const duration = config.shockwave_duration_myr * 1000;
-
-    for (let i = 0; i < disasters.length; i++) {
-        const disaster = disasters[i];
-        const disasterTime = disaster.time * 1000;
-        const elapsed = currentTime - disasterTime;
-
-        if (elapsed >= 0 && elapsed <= duration) {
-            const progress = elapsed / duration;
-            const radius = progress * config.hazard_marker_size * 2;
-            const opacity = (1 - progress) * config.hazard_opacity;
-
-            let mesh = window.shockwaveMeshes[i];
-            if (!mesh) {
-                mesh = new THREE.Mesh(
-                    window.shockwaveGeometry.clone(),
-                    window.shockwaveMaterial.clone()
-                );
-                mesh.rotation.x = Math.PI / 2;
-                window.scene.add(mesh);
-                window.shockwaveMeshes[i] = mesh;
-            }
-
-            mesh.scale.set(radius, radius, 1);
-            mesh.material.opacity = opacity;
-            mesh.position.set(
-                disaster.position[0],
-                disaster.position[1],
-                disaster.position[2]
-            );
-        }
-    }
-
-    for (let i = window.shockwaveMeshes.length - 1; i >= disasters.length; i--) {
-        window.scene.remove(window.shockwaveMeshes[i]);
-        window.shockwaveMeshes.splice(i, 1);
-    }
-}
-
-function getDisasterColor(disaster_type, config) {
-    switch (disaster_type.toLowerCase()) {
-        case 'supernova':
-        case 'sn':
-            return config.hazard_supernova_color;
-        case 'grb':
-        case 'gamma':
-            return config.hazard_grb_color;
-        case 'nsm':
-        case 'merger':
-            return config.hazard_nsm_color;
-        default:
-            return '#ff0000';
-    }
-}
-
 function createSterilizationZones() {
-    const geometry = new THREE.SphereGeometry(1, 16, 16);
+    const geometry = new THREE.SphereGeometry(1, 16, 12);
     const material = new THREE.MeshBasicMaterial({
         color: 0xff0000,
         transparent: true,
-        opacity: 0.3,
-        side: THREE.DoubleSide
+        opacity: 0.25,
+        side: THREE.BackSide,
+        depthWrite: false
     });
 
-    window.sterilizationZones = [];
+    window.zoneGeometry = geometry;
+    window.zoneMaterial = material;
     window.zoneMeshes = [];
 
     return { geometry, material };
 }
 
-function updateSterilizationZones(frame_index, disasters, config) {
+function createGRBBeamCone() {
+    const geometry = new THREE.ConeGeometry(0.5, 2, 16, 1, true);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+    
+    window.beamGeometry = geometry;
+    window.beamMaterial = material;
+    window.beamMeshes = [];
+    
+    return { geometry, material };
+}
+
+function createDeathMarkers() {
+    const shape = new THREE.Shape();
+    const size = 0.15;
+    shape.moveTo(-size, -size * 0.2);
+    shape.lineTo(-size * 0.2, -size);
+    shape.lineTo(0, -size * 0.4);
+    shape.lineTo(size * 0.2, -size);
+    shape.lineTo(size, -size * 0.2);
+    shape.lineTo(size * 0.4, 0);
+    shape.lineTo(size, size * 0.2);
+    shape.lineTo(size * 0.2, size);
+    shape.lineTo(0, size * 0.4);
+    shape.lineTo(-size * 0.2, size);
+    shape.lineTo(-size, size * 0.2);
+    shape.lineTo(-size * 0.4, 0);
+    shape.closePath();
+    
+    const geometry = new THREE.ShapeGeometry(shape);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+    
+    window.deathMarkerGeometry = geometry;
+    window.deathMarkerMaterial = material;
+    window.deathMarkerMeshes = [];
+    
+    return { geometry, material };
+}
+
+function getDisasterColor(disaster_type, config) {
+    const type = disaster_type.toLowerCase();
+    switch (type) {
+        case 'supernova':
+        case 'sn':
+            return config.hazard_supernova_color || '#ff4400';
+        case 'grb':
+        case 'gamma':
+            return config.hazard_grb_color || '#00ffff';
+        case 'nsm':
+        case 'merger':
+        case 'ns_merger':
+        case 'kilonova':
+            return config.hazard_nsm_color || '#ff00ff';
+        default:
+            return '#ff0000';
+    }
+}
+
+function shouldShowDisaster(disaster) {
+    const type = disaster.type.toLowerCase();
+    const state = window.disasterState;
+    
+    if ((type === 'supernova' || type === 'sn') && !state.showSupernovae) {
+        return false;
+    }
+    if ((type === 'grb' || type === 'gamma') && !state.showGRBs) {
+        return false;
+    }
+    if ((type === 'nsm' || type === 'merger' || type === 'ns_merger' || type === 'kilonova') && !state.showNSMergers) {
+        return false;
+    }
+    return true;
+}
+
+function getScaledRadius(radius_kpc, disaster) {
+    if (window.disasterState.exaggeratedScale) {
+        const energyFactor = Math.log10(disaster.energy || 1e51) / 51;
+        return radius_kpc * window.disasterState.scaleMultiplier * energyFactor;
+    }
+    return radius_kpc;
+}
+
+function hideAllDisasterMeshes() {
+    if (window.shockwaveMeshes) {
+        window.shockwaveMeshes.forEach(mesh => mesh.visible = false);
+    }
+    if (window.zoneMeshes) {
+        window.zoneMeshes.forEach(mesh => mesh.visible = false);
+    }
+    if (window.beamMeshes) {
+        window.beamMeshes.forEach(mesh => mesh.visible = false);
+    }
+    if (window.deathMarkerMeshes) {
+        window.deathMarkerMeshes.forEach(mesh => mesh.visible = false);
+    }
+}
+
+function updateDisasterVisualization(frame_index, disasters, config) {
+    if (!disasters || disasters.length === 0) {
+        hideAllDisasterMeshes();
+        return;
+    }
+    
     const currentTime = window.animationData.frames[frame_index].time;
-    const fadeTime = config.disaster_fade_time_myr * 1000;
-
-    for (let i = 0; i < disasters.length; i++) {
-        const disaster = disasters[i];
-        const disasterTime = disaster.time * 1000;
+    const state = window.disasterState;
+    
+    let visibleDisasters = disasters.filter(d => {
+        if (!shouldShowDisaster(d)) return false;
+        
+        const disasterTime = d.time;
         const elapsed = currentTime - disasterTime;
+        
+        if (elapsed < 0) return false;
+        
+        if (state.showHistory) {
+            return true;
+        }
+        
+        const recentWindow = 0.1;
+        return elapsed <= recentWindow;
+    });
+    
+    updateShockwaves(visibleDisasters, currentTime, config);
+    
+    if (state.showZones) {
+        updateSterilizationZones(visibleDisasters, currentTime, config);
+    } else if (window.zoneMeshes) {
+        window.zoneMeshes.forEach(mesh => mesh.visible = false);
+    }
+    
+    if (state.showBeams) {
+        updateGRBBeams(visibleDisasters, currentTime, config);
+    } else if (window.beamMeshes) {
+        window.beamMeshes.forEach(mesh => mesh.visible = false);
+    }
+    
+    if (state.showDeathMarkers) {
+        updateDeathMarkers(visibleDisasters, currentTime, config);
+    } else if (window.deathMarkerMeshes) {
+        window.deathMarkerMeshes.forEach(mesh => mesh.visible = false);
+    }
+}
 
-        if (elapsed >= 0) {
-            const progress = Math.min(elapsed / fadeTime, 1);
-            const opacity = (1 - progress) * config.sterilization_zone_opacity;
+function updateShockwaves(disasters, currentTime, config) {
+    const duration = (config.shockwave_duration_myr || 50) / 1000.0;
+    const scene = window.getScene ? window.getScene() : null;
+    if (!scene) return;
+    
+    const showHistory = window.disasterState.showHistory;
+    
+    while (window.shockwaveMeshes.length < disasters.length) {
+        const mesh = new THREE.Mesh(
+            window.shockwaveGeometry.clone(),
+            window.shockwaveMaterial.clone()
+        );
+        mesh.rotation.x = Math.PI / 2;
+        mesh.visible = false;
+        scene.add(mesh);
+        window.shockwaveMeshes.push(mesh);
+    }
+    
+    for (let i = 0; i < window.shockwaveMeshes.length; i++) {
+        const mesh = window.shockwaveMeshes[i];
+        
+        if (i >= disasters.length) {
+            mesh.visible = false;
+            continue;
+        }
+        
+        const disaster = disasters[i];
+        const elapsed = currentTime - disaster.time;
+        
+        if (elapsed < 0) {
+            mesh.visible = false;
+            continue;
+        }
+        
+        const baseRadius = disaster.lethal_radius || 0.01;
+        const scaledRadius = getScaledRadius(baseRadius, disaster);
+        
+        let radius, opacity;
+        if (elapsed <= duration) {
+            const progress = elapsed / duration;
+            radius = scaledRadius * (1 + progress * 2);
+            opacity = (1 - progress) * (config.hazard_opacity || 0.8);
+        } else if (showHistory) {
+            radius = scaledRadius * 3;
+            opacity = 0.3;
+        } else {
+            mesh.visible = false;
+            continue;
+        }
+        
+        mesh.scale.set(radius * 10, radius * 10, 1);
+        mesh.material.opacity = opacity;
+        mesh.material.color.setStyle(getDisasterColor(disaster.type, config));
+        mesh.position.set(
+            disaster.position[0],
+            disaster.position[1],
+            disaster.position[2]
+        );
+        mesh.visible = true;
+    }
+}
 
-            let mesh = window.zoneMeshes[i];
-            if (!mesh) {
-                mesh = new THREE.Mesh(
+function updateSterilizationZones(disasters, currentTime, config) {
+    const fadeTime = (config.disaster_fade_time_myr || 200) / 1000.0;
+    const scene = window.getScene ? window.getScene() : null;
+    if (!scene) return;
+    
+    const showHistory = window.disasterState.showHistory;
+    
+    while (window.zoneMeshes.length < disasters.length) {
+        const mesh = new THREE.Mesh(
                     window.zoneGeometry.clone(),
                     window.zoneMaterial.clone()
                 );
-                window.scene.add(mesh);
-                window.zoneMeshes[i] = mesh;
-            }
-
-            const radius = disaster.lethal_radius / 1000;
-            mesh.scale.set(radius, radius, radius);
-            mesh.material.opacity = opacity;
-            mesh.position.set(
-                disaster.position[0],
-                disaster.position[1],
-                disaster.position[2]
-            );
-            mesh.material.color.setStyle(getDisasterColor(disaster.type, config));
-        }
+        mesh.visible = false;
+        scene.add(mesh);
+        window.zoneMeshes.push(mesh);
     }
-
-    for (let i = window.zoneMeshes.length - 1; i >= disasters.length; i--) {
-        window.scene.remove(window.zoneMeshes[i]);
-        window.zoneMeshes.splice(i, 1);
+    
+    for (let i = 0; i < window.zoneMeshes.length; i++) {
+        const mesh = window.zoneMeshes[i];
+        
+        if (i >= disasters.length) {
+            mesh.visible = false;
+            continue;
+        }
+        
+        const disaster = disasters[i];
+        const elapsed = currentTime - disaster.time;
+        
+        if (elapsed < 0) {
+            mesh.visible = false;
+            continue;
+        }
+        
+        let opacity;
+        if (elapsed <= fadeTime) {
+            const progress = elapsed / fadeTime;
+            opacity = (1 - progress * 0.7) * (config.sterilization_zone_opacity || 0.25);
+        } else if (showHistory) {
+            opacity = 0.1;
+        } else {
+            mesh.visible = false;
+            continue;
+        }
+        
+        const baseRadius = disaster.sterilization_radius || disaster.lethal_radius || 0.03;
+        const radius = getScaledRadius(baseRadius, disaster);
+        
+        mesh.scale.set(radius, radius, radius);
+        mesh.material.opacity = Math.max(0.05, opacity);
+        mesh.material.color.setStyle(getDisasterColor(disaster.type, config));
+        mesh.position.set(
+            disaster.position[0],
+            disaster.position[1],
+            disaster.position[2]
+        );
+        mesh.visible = true;
     }
 }
+
+function updateGRBBeams(disasters, currentTime, config) {
+    const scene = window.getScene ? window.getScene() : null;
+    if (!scene) return;
+    
+    const jetDisasters = disasters.filter(d => {
+        const type = d.type.toLowerCase();
+        return (type === 'grb' || type === 'gamma' || type === 'nsm' || 
+                type === 'merger' || type === 'ns_merger') && 
+               d.jet_theta !== undefined;
+    });
+    
+    while (window.beamMeshes.length < jetDisasters.length * 2) {
+        const mesh = new THREE.Mesh(
+            window.beamGeometry.clone(),
+            window.beamMaterial.clone()
+        );
+        mesh.visible = false;
+        scene.add(mesh);
+        window.beamMeshes.push(mesh);
+    }
+    
+    const fadeTime = (config.beam_fade_time_myr || 100) / 1000.0;
+    const showHistory = window.disasterState.showHistory;
+    
+    for (let i = 0; i < jetDisasters.length; i++) {
+        const disaster = jetDisasters[i];
+        const elapsed = currentTime - disaster.time;
+        
+        const idx1 = i * 2;
+        const idx2 = i * 2 + 1;
+        const mesh1 = window.beamMeshes[idx1];
+        const mesh2 = window.beamMeshes[idx2];
+        
+        if (elapsed < 0) {
+            mesh1.visible = false;
+            mesh2.visible = false;
+            continue;
+        }
+        
+        let opacity;
+        if (elapsed <= fadeTime) {
+            const progress = elapsed / fadeTime;
+            opacity = (1 - progress) * 0.5;
+        } else if (showHistory) {
+            opacity = 0.15;
+        } else {
+            mesh1.visible = false;
+            mesh2.visible = false;
+            continue;
+        }
+        
+        const theta = disaster.jet_theta || 0;
+        const phi = disaster.jet_phi || 0;
+        
+        const type = disaster.type.toLowerCase();
+        let beamLength;
+        if (type === 'grb' || type === 'gamma') {
+            beamLength = getScaledRadius(disaster.lethal_radius || 5.0, disaster);
+        } else {
+            beamLength = getScaledRadius(3.0, disaster);
+        }
+        
+        const coneAngle = 25 * Math.PI / 180;
+        const coneRadius = Math.tan(coneAngle) * beamLength;
+        
+        const color = getDisasterColor(disaster.type, config);
+        
+        mesh1.scale.set(coneRadius, beamLength, coneRadius);
+        mesh1.material.opacity = opacity;
+        mesh1.material.color.setStyle(color);
+        mesh1.position.set(
+            disaster.position[0],
+            disaster.position[1],
+            disaster.position[2]
+        );
+        
+        const dirX = Math.sin(theta) * Math.cos(phi);
+        const dirY = Math.sin(theta) * Math.sin(phi);
+        const dirZ = Math.cos(theta);
+        mesh1.lookAt(
+            disaster.position[0] + dirX,
+            disaster.position[1] + dirY,
+            disaster.position[2] + dirZ
+        );
+        mesh1.rotateX(Math.PI / 2);
+        mesh1.visible = true;
+        
+        mesh2.scale.set(coneRadius, beamLength, coneRadius);
+        mesh2.material.opacity = opacity;
+        mesh2.material.color.setStyle(color);
+        mesh2.position.set(
+            disaster.position[0],
+            disaster.position[1],
+            disaster.position[2]
+        );
+        mesh2.lookAt(
+            disaster.position[0] - dirX,
+            disaster.position[1] - dirY,
+            disaster.position[2] - dirZ
+        );
+        mesh2.rotateX(Math.PI / 2);
+        mesh2.visible = true;
+    }
+    
+    for (let i = jetDisasters.length * 2; i < window.beamMeshes.length; i++) {
+        window.beamMeshes[i].visible = false;
+    }
+}
+
+function updateDeathMarkers(disasters, currentTime, config) {
+    const scene = window.getScene ? window.getScene() : null;
+    if (!scene) return;
+    
+    const deadlyDisasters = disasters.filter(d => 
+        d.affected_civs && d.affected_civs.length > 0
+    );
+    
+    while (window.deathMarkerMeshes.length < deadlyDisasters.length) {
+        const mesh = new THREE.Mesh(
+            window.deathMarkerGeometry.clone(),
+            window.deathMarkerMaterial.clone()
+        );
+        mesh.visible = false;
+        scene.add(mesh);
+        window.deathMarkerMeshes.push(mesh);
+    }
+    
+    const fadeTime = (config.death_marker_fade_myr || 500) / 1000.0;
+    
+    for (let i = 0; i < deadlyDisasters.length; i++) {
+        const disaster = deadlyDisasters[i];
+        const mesh = window.deathMarkerMeshes[i];
+        const elapsed = currentTime - disaster.time;
+        
+        if (elapsed < 0 || elapsed > fadeTime) {
+            mesh.visible = false;
+            continue;
+        }
+        
+        const progress = elapsed / fadeTime;
+        const opacity = (1 - progress * 0.5) * 0.9;
+        const scale = 0.3 + progress * 0.2;
+        
+        mesh.scale.set(scale, scale, 1);
+        mesh.material.opacity = opacity;
+        mesh.position.set(
+            disaster.position[0],
+            disaster.position[1],
+            disaster.position[2] + 0.1
+        );
+        
+        const camera = window.getCamera ? window.getCamera() : null;
+        if (camera) {
+            mesh.quaternion.copy(camera.quaternion);
+        }
+        
+        mesh.visible = true;
+    }
+    
+    for (let i = deadlyDisasters.length; i < window.deathMarkerMeshes.length; i++) {
+        window.deathMarkerMeshes[i].visible = false;
+    }
+}
+
+function initializeDisasterLayers(config) {
+    createDisasterShockwaves();
+    createSterilizationZones();
+    createGRBBeamCone();
+    createDeathMarkers();
+}
+
+function forceDisasterUpdate() {
+    if (window.animationData) {
+        const frameIndex = window.currentFrame || 0;
+        const frame = window.animationData.frames[frameIndex];
+        
+        // Update new disaster visualization
+        if (window.updateDisasterVisualization && window.allDisasters && window.allDisasters.length > 0) {
+            window.updateDisasterVisualization(frameIndex, window.allDisasters, window.config);
+        }
+        
+        // Also update old hazard markers to respect filters
+        if (window.updateHazards && frame && frame.hazards) {
+            window.updateHazards(frame.hazards);
+        }
+    }
+}
+
+function setDisasterHistoryMode(enabled) {
+    window.disasterState.showHistory = enabled;
+    forceDisasterUpdate();
+}
+
+function setDisasterScaleMode(exaggerated) {
+    window.disasterState.exaggeratedScale = exaggerated;
+    forceDisasterUpdate();
+}
+
+function setDisasterTypeFilter(type, enabled) {
+    switch (type.toLowerCase()) {
+        case 'supernova':
+        case 'sn':
+            window.disasterState.showSupernovae = enabled;
+            break;
+        case 'grb':
+            window.disasterState.showGRBs = enabled;
+            break;
+        case 'nsm':
+        case 'ns_merger':
+            window.disasterState.showNSMergers = enabled;
+            break;
+    }
+    forceDisasterUpdate();
+}
+
+function setDisasterZonesVisible(enabled) {
+    window.disasterState.showZones = enabled;
+    forceDisasterUpdate();
+}
+
+function setDisasterBeamsVisible(enabled) {
+    window.disasterState.showBeams = enabled;
+    forceDisasterUpdate();
+}
+
+function setDeathMarkersVisible(enabled) {
+    window.disasterState.showDeathMarkers = enabled;
+    forceDisasterUpdate();
+}
+
+function getDisasterTimelineData(disasters) {
+    if (!disasters) return [];
+    
+    return disasters.map(d => ({
+        time: d.time,
+        type: d.type,
+        position: d.position,
+        energy: d.energy,
+        affected_count: d.affected_civs ? d.affected_civs.length : 0
+    }));
+}
+
+// Export functions to window for UI access
+window.initializeDisasterLayers = initializeDisasterLayers;
+window.updateDisasterVisualization = updateDisasterVisualization;
+window.setDisasterHistoryMode = setDisasterHistoryMode;
+window.setDisasterScaleMode = setDisasterScaleMode;
+window.setDisasterTypeFilter = setDisasterTypeFilter;
+window.setDisasterZonesVisible = setDisasterZonesVisible;
+window.setDisasterBeamsVisible = setDisasterBeamsVisible;
+window.setDeathMarkersVisible = setDeathMarkersVisible;
+window.getDisasterTimelineData = getDisasterTimelineData;
+window.getDisasterColor = getDisasterColor;
+window.forceDisasterUpdate = forceDisasterUpdate;
+window.hideAllDisasterMeshes = hideAllDisasterMeshes;

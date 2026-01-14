@@ -153,7 +153,7 @@ class StarFormationHistory:
 
             # Sample from Gaussian around mean age
             age = rng.normal(mean_age, sigma_age)
-            age = np.clip(age, 0.5, max_age_gyr)  # Physical bounds
+            age = np.clip(age, 0.001, max_age_gyr)  # Allow young stars (1 Myr minimum)
 
             ages[i] = age
 

@@ -337,6 +337,438 @@ def evaluate_supernova_destruction_vectorized(
 
 
 # =============================================================================
+# Neutron Star Merger Kernels
+# =============================================================================
+
+
+@numba.jit(nopython=True, fastmath=True)
+def evaluate_ns_merger_hazard_kernel(
+    civ_position: np.ndarray,
+    merger_position: np.ndarray,
+    jet_theta: float,
+    jet_phi: float,
+    sgrb_beaming_angle_deg: float,
+    sgrb_lethal_range_kpc: float,
+    kilonova_lethal_range_pc: float,
+    kilonova_sterilization_range_pc: float,
+    random_val: float
+) -> int:
+    """
+    Evaluate NS merger hazard effect on civilization.
+    
+    Returns:
+        0 = survived
+        1 = destroyed by sGRB
+        2 = destroyed by kilonova
+    """
+    jet_dir = np.array([
+        np.sin(jet_theta) * np.cos(jet_phi),
+        np.sin(jet_theta) * np.sin(jet_phi),
+        np.cos(jet_theta)
+    ])
+    
+    to_civ = civ_position - merger_position
+    distance_kpc = np.sqrt(to_civ[0]**2 + to_civ[1]**2 + to_civ[2]**2)
+    distance_pc = distance_kpc * 1000.0
+    
+    if distance_kpc > 1e-10 and distance_kpc < sgrb_lethal_range_kpc:
+        to_civ_unit = to_civ / distance_kpc
+        cos_angle = jet_dir[0]*to_civ_unit[0] + jet_dir[1]*to_civ_unit[1] + jet_dir[2]*to_civ_unit[2]
+        angle_rad = np.arccos(min(1.0, max(-1.0, cos_angle)))
+        angle_deg = angle_rad * 180.0 / 3.14159265358979
+        
+        if angle_deg < sgrb_beaming_angle_deg:
+            return 1
+        
+        cos_angle_opp = -jet_dir[0]*to_civ_unit[0] - jet_dir[1]*to_civ_unit[1] - jet_dir[2]*to_civ_unit[2]
+        angle_rad_opp = np.arccos(min(1.0, max(-1.0, cos_angle_opp)))
+        angle_deg_opp = angle_rad_opp * 180.0 / 3.14159265358979
+        
+        if angle_deg_opp < sgrb_beaming_angle_deg:
+            return 1
+    
+    if distance_pc < kilonova_lethal_range_pc:
+        return 2
+    elif distance_pc < kilonova_sterilization_range_pc:
+        r = (distance_pc - kilonova_lethal_range_pc) / (
+            kilonova_sterilization_range_pc - kilonova_lethal_range_pc
+        )
+        p_sterilize = np.exp(-3.0 * r)
+        if random_val < p_sterilize:
+            return 2
+    
+    return 0
+
+
+@numba.jit(nopython=True, fastmath=True)
+def compute_ns_merger_probability_kernel(
+    stellar_positions: np.ndarray,
+    stellar_masses: np.ndarray,
+    stellar_ages: np.ndarray,
+    civ_position: np.ndarray,
+    search_radius_kpc: float,
+    galactic_merger_rate_per_myr: float,
+    galactic_mass_msun: float
+) -> float:
+    """
+    Compute NS merger probability for a single civilization location.
+    
+    Uses local stellar mass density of evolved massive stars to
+    scale the galactic-average merger rate.
+    
+    Complexity: O(N) - for use with KD-tree prefiltering
+    
+    Args:
+        stellar_positions: (N, 3) positions in kpc
+        stellar_masses: (N,) masses in solar masses
+        stellar_ages: (N,) ages in Gyr
+        civ_position: (3,) civilization position in kpc
+        search_radius_kpc: Search radius for local rate
+        galactic_merger_rate_per_myr: Galaxy-wide rate per Myr
+        galactic_mass_msun: Total galactic stellar mass
+        
+    Returns:
+        Local merger probability per Myr
+    """
+    n_stars = len(stellar_masses)
+    search_radius_sq = search_radius_kpc * search_radius_kpc
+    
+    local_evolved_mass = 0.0
+    
+    for i in range(n_stars):
+        dx = stellar_positions[i, 0] - civ_position[0]
+        dy = stellar_positions[i, 1] - civ_position[1]
+        dz = stellar_positions[i, 2] - civ_position[2]
+        dist_sq = dx*dx + dy*dy + dz*dz
+        
+        if dist_sq > search_radius_sq:
+            continue
+        
+        mass = stellar_masses[i]
+        if mass < 8.0:
+            continue
+        
+        age = stellar_ages[i]
+        t_ms_gyr = 10.0 * mass ** (-2.5)
+        
+        if age > t_ms_gyr:
+            local_evolved_mass += mass
+    
+    volume_factor = (search_radius_kpc / 15.0) ** 3
+    local_rate = galactic_merger_rate_per_myr * (local_evolved_mass / galactic_mass_msun) * volume_factor
+    
+    return local_rate
+
+
+@numba.jit(nopython=True, parallel=True, fastmath=True)
+def batch_evaluate_hazards_kernel(
+    civ_positions: np.ndarray,
+    stellar_positions: np.ndarray,
+    stellar_masses: np.ndarray,
+    stellar_ages: np.ndarray,
+    sn_lethal_range_pc: float,
+    sn_sterilization_range_pc: float,
+    dt_myr: float,
+    random_values: np.ndarray
+) -> np.ndarray:
+    """
+    Batch evaluate supernova hazards for multiple civilizations.
+    
+    Parallelizes across civilizations for 4-8x speedup on multi-core.
+    
+    Complexity: O(C * N / P) where C=civs, N=stars, P=cores
+    
+    Args:
+        civ_positions: (C, 3) civilization positions in kpc
+        stellar_positions: (N, 3) stellar positions in kpc
+        stellar_masses: (N,) stellar masses
+        stellar_ages: (N,) stellar ages in Gyr
+        sn_lethal_range_pc: Supernova lethal range in pc
+        sn_sterilization_range_pc: Supernova sterilization range in pc
+        dt_myr: Time step in Myr
+        random_values: (C,) random values for stochastic evaluation
+        
+    Returns:
+        (C,) boolean array, True if civilization destroyed
+    """
+    n_civs = len(civ_positions)
+    n_stars = len(stellar_positions)
+    results = np.zeros(n_civs, dtype=np.bool_)
+    
+    sterilization_range_kpc = sn_sterilization_range_pc / 1000.0
+    sterilization_range_kpc_sq = sterilization_range_kpc * sterilization_range_kpc
+    
+    for c in numba.prange(n_civs):
+        civ_pos = civ_positions[c]
+        
+        for i in range(n_stars):
+            dx = stellar_positions[i, 0] - civ_pos[0]
+            dy = stellar_positions[i, 1] - civ_pos[1]
+            dz = stellar_positions[i, 2] - civ_pos[2]
+            dist_sq_kpc = dx*dx + dy*dy + dz*dz
+            
+            if dist_sq_kpc > sterilization_range_kpc_sq:
+                continue
+            
+            mass = stellar_masses[i]
+            if mass < 8.0:
+                continue
+            
+            age = stellar_ages[i]
+            t_ms_gyr = 10.0 * mass ** (-2.5)
+            
+            if age < t_ms_gyr:
+                continue
+            
+            dt_gyr = dt_myr / 1000.0
+            age_end = age + dt_gyr
+            
+            if not (age <= t_ms_gyr < age_end):
+                continue
+            
+            dist_pc = np.sqrt(dist_sq_kpc) * 1000.0
+            
+            if dist_pc < sn_lethal_range_pc:
+                p_sterilize = 1.0
+            else:
+                r = (dist_pc - sn_lethal_range_pc) / (
+                    sn_sterilization_range_pc - sn_lethal_range_pc
+                )
+                p_sterilize = np.exp(-3.0 * r)
+            
+            if random_values[c] < p_sterilize:
+                results[c] = True
+                break
+    
+    return results
+
+
+# =============================================================================
+# Batch Disaster Effect Evaluation Kernels
+# =============================================================================
+
+
+@numba.jit(nopython=True, fastmath=True)
+def evaluate_sn_effect_on_civs_kernel(
+    civ_positions: np.ndarray,
+    disaster_position: np.ndarray,
+    lethal_range_pc: float,
+    sterilization_range_pc: float,
+    random_values: np.ndarray
+) -> np.ndarray:
+    """
+    Evaluate supernova effect on multiple civilizations.
+    
+    Args:
+        civ_positions: (C, 3) civilization positions in kpc
+        disaster_position: (3,) disaster position in kpc
+        lethal_range_pc: Instant death range in pc
+        sterilization_range_pc: Partial sterilization range in pc
+        random_values: (C,) random values for stochastic evaluation
+        
+    Returns:
+        (C,) int array: 0=survived, 1=destroyed
+    """
+    n_civs = len(civ_positions)
+    results = np.zeros(n_civs, dtype=np.int32)
+    
+    lethal_kpc = lethal_range_pc / 1000.0
+    sterilization_kpc = sterilization_range_pc / 1000.0
+    
+    for c in range(n_civs):
+        dx = civ_positions[c, 0] - disaster_position[0]
+        dy = civ_positions[c, 1] - disaster_position[1]
+        dz = civ_positions[c, 2] - disaster_position[2]
+        dist_kpc = np.sqrt(dx*dx + dy*dy + dz*dz)
+        
+        if dist_kpc > sterilization_kpc:
+            continue
+        
+        dist_pc = dist_kpc * 1000.0
+        
+        if dist_pc < lethal_range_pc:
+            results[c] = 1
+        else:
+            r = (dist_pc - lethal_range_pc) / (sterilization_range_pc - lethal_range_pc)
+            p_sterilize = np.exp(-3.0 * r)
+            if random_values[c] < p_sterilize:
+                results[c] = 1
+    
+    return results
+
+
+@numba.jit(nopython=True, fastmath=True)
+def evaluate_grb_effect_on_civs_kernel(
+    civ_positions: np.ndarray,
+    disaster_position: np.ndarray,
+    jet_theta: float,
+    jet_phi: float,
+    beaming_angle_deg: float,
+    lethal_range_kpc: float
+) -> np.ndarray:
+    """
+    Evaluate GRB effect on multiple civilizations.
+    
+    Args:
+        civ_positions: (C, 3) civilization positions in kpc
+        disaster_position: (3,) GRB position in kpc
+        jet_theta: Jet polar angle (radians)
+        jet_phi: Jet azimuthal angle (radians)
+        beaming_angle_deg: Beaming half-angle (degrees)
+        lethal_range_kpc: Lethal distance in kpc
+        
+    Returns:
+        (C,) int array: 0=survived, 1=destroyed
+    """
+    n_civs = len(civ_positions)
+    results = np.zeros(n_civs, dtype=np.int32)
+    
+    jet_dir = np.array([
+        np.sin(jet_theta) * np.cos(jet_phi),
+        np.sin(jet_theta) * np.sin(jet_phi),
+        np.cos(jet_theta)
+    ])
+    
+    beaming_rad = beaming_angle_deg * 3.14159265358979 / 180.0
+    cos_beaming = np.cos(beaming_rad)
+    
+    for c in range(n_civs):
+        dx = civ_positions[c, 0] - disaster_position[0]
+        dy = civ_positions[c, 1] - disaster_position[1]
+        dz = civ_positions[c, 2] - disaster_position[2]
+        dist_kpc = np.sqrt(dx*dx + dy*dy + dz*dz)
+        
+        if dist_kpc < 1e-10 or dist_kpc > lethal_range_kpc:
+            continue
+        
+        to_civ_x = dx / dist_kpc
+        to_civ_y = dy / dist_kpc
+        to_civ_z = dz / dist_kpc
+        
+        cos_angle = jet_dir[0]*to_civ_x + jet_dir[1]*to_civ_y + jet_dir[2]*to_civ_z
+        
+        if cos_angle > cos_beaming:
+            results[c] = 1
+            continue
+        
+        cos_angle_opp = -cos_angle
+        if cos_angle_opp > cos_beaming:
+            results[c] = 1
+    
+    return results
+
+
+@numba.jit(nopython=True, fastmath=True)
+def evaluate_ns_merger_effect_on_civs_kernel(
+    civ_positions: np.ndarray,
+    disaster_position: np.ndarray,
+    jet_theta: float,
+    jet_phi: float,
+    sgrb_beaming_angle_deg: float,
+    sgrb_lethal_range_kpc: float,
+    kilonova_lethal_range_pc: float,
+    kilonova_sterilization_range_pc: float,
+    random_values: np.ndarray
+) -> np.ndarray:
+    """
+    Evaluate NS merger effect on multiple civilizations.
+    
+    Considers both sGRB (beamed) and kilonova (isotropic) effects.
+    
+    Args:
+        civ_positions: (C, 3) civilization positions in kpc
+        disaster_position: (3,) merger position in kpc
+        jet_theta: Jet polar angle (radians)
+        jet_phi: Jet azimuthal angle (radians)
+        sgrb_beaming_angle_deg: sGRB beaming half-angle (degrees)
+        sgrb_lethal_range_kpc: sGRB lethal distance in kpc
+        kilonova_lethal_range_pc: Kilonova lethal distance in pc
+        kilonova_sterilization_range_pc: Kilonova partial sterilization range
+        random_values: (C,) random values for stochastic evaluation
+        
+    Returns:
+        (C,) int array: 0=survived, 1=destroyed by sGRB, 2=destroyed by kilonova
+    """
+    n_civs = len(civ_positions)
+    results = np.zeros(n_civs, dtype=np.int32)
+    
+    jet_dir = np.array([
+        np.sin(jet_theta) * np.cos(jet_phi),
+        np.sin(jet_theta) * np.sin(jet_phi),
+        np.cos(jet_theta)
+    ])
+    
+    beaming_rad = sgrb_beaming_angle_deg * 3.14159265358979 / 180.0
+    cos_beaming = np.cos(beaming_rad)
+    
+    kilonova_lethal_kpc = kilonova_lethal_range_pc / 1000.0
+    kilonova_sterilization_kpc = kilonova_sterilization_range_pc / 1000.0
+    
+    for c in range(n_civs):
+        dx = civ_positions[c, 0] - disaster_position[0]
+        dy = civ_positions[c, 1] - disaster_position[1]
+        dz = civ_positions[c, 2] - disaster_position[2]
+        dist_kpc = np.sqrt(dx*dx + dy*dy + dz*dz)
+        
+        if dist_kpc > 1e-10 and dist_kpc < sgrb_lethal_range_kpc:
+            to_civ_x = dx / dist_kpc
+            to_civ_y = dy / dist_kpc
+            to_civ_z = dz / dist_kpc
+            
+            cos_angle = jet_dir[0]*to_civ_x + jet_dir[1]*to_civ_y + jet_dir[2]*to_civ_z
+            
+            if cos_angle > cos_beaming or (-cos_angle) > cos_beaming:
+                results[c] = 1
+                continue
+        
+        if dist_kpc < kilonova_lethal_kpc:
+            results[c] = 2
+        elif dist_kpc < kilonova_sterilization_kpc:
+            r = (dist_kpc - kilonova_lethal_kpc) / (kilonova_sterilization_kpc - kilonova_lethal_kpc)
+            p_sterilize = np.exp(-3.0 * r)
+            if random_values[c] < p_sterilize:
+                results[c] = 2
+    
+    return results
+
+
+@numba.jit(nopython=True, parallel=True, fastmath=True)
+def batch_find_civs_in_range_kernel(
+    civ_positions: np.ndarray,
+    disaster_positions: np.ndarray,
+    max_range_kpc: float
+) -> np.ndarray:
+    """
+    Find which civilizations are within range of any disaster.
+    
+    Args:
+        civ_positions: (C, 3) civilization positions in kpc
+        disaster_positions: (D, 3) disaster positions in kpc
+        max_range_kpc: Maximum effect range in kpc
+        
+    Returns:
+        (C,) boolean array, True if civ within range of any disaster
+    """
+    n_civs = len(civ_positions)
+    n_disasters = len(disaster_positions)
+    in_range = np.zeros(n_civs, dtype=np.bool_)
+    max_range_sq = max_range_kpc * max_range_kpc
+    
+    for c in numba.prange(n_civs):
+        for d in range(n_disasters):
+            dx = civ_positions[c, 0] - disaster_positions[d, 0]
+            dy = civ_positions[c, 1] - disaster_positions[d, 1]
+            dz = civ_positions[c, 2] - disaster_positions[d, 2]
+            dist_sq = dx*dx + dy*dy + dz*dz
+            
+            if dist_sq < max_range_sq:
+                in_range[c] = True
+                break
+    
+    return in_range
+
+
+# =============================================================================
 # Stellar Generation Kernels
 # =============================================================================
 

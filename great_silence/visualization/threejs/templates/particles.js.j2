@@ -197,6 +197,8 @@ function createHazardMarker(hazardData) {
             break;
         case 'nsm':
         case 'merger':
+        case 'ns_merger':
+        case 'kilonova':
             color = window.config.hazard_nsm_color || '#aa44ff';
             break;
         default:
@@ -222,6 +224,14 @@ function updateHazards(hazards) {
     hazardMeshes = [];
 
     hazards.forEach(hazard => {
+        // Check if this hazard type should be shown based on disaster filters
+        if (window.disasterState) {
+            const type = hazard.type.toLowerCase();
+            if ((type === 'supernova' || type === 'sn') && !window.disasterState.showSupernovae) return;
+            if ((type === 'grb' || type === 'gamma') && !window.disasterState.showGRBs) return;
+            if ((type === 'nsm' || type === 'merger' || type === 'ns_merger' || type === 'kilonova') && !window.disasterState.showNSMergers) return;
+        }
+        
         const mesh = createHazardMarker(hazard);
         mesh.visible = showHazardSprites;
         hazardMeshes.push(mesh);

@@ -395,6 +395,18 @@ class GalaxySimulation:
         # Generate stellar masses from IMF
         self.galaxy.masses = self.imf.sample(self.config.galaxy.total_stars, seed=self.seed + 1)
 
+        # Ensure massive stars have physically consistent ages
+        # Stars can only be as old as their main-sequence lifetime
+        # For M > 8 Msun, t_ms < 40 Myr, so these must be young
+        massive_mask = self.galaxy.masses > 8.0
+        if massive_mask.any():
+            t_ms_gyr = 10.0 * self.galaxy.masses[massive_mask] ** (-2.5)
+            # Cap age at 90% of main-sequence lifetime for living massive stars
+            max_ages = 0.9 * t_ms_gyr
+            # Assign random age within allowed range (ongoing star formation)
+            rng = np.random.default_rng(self.seed + 100)
+            self.galaxy.ages[massive_mask] = rng.uniform(0.001, 1.0, size=massive_mask.sum()) * max_ages
+
         # Generate metallicities (with radial gradient if enabled)
         if self.config.galaxy.use_metallicity_gradient:
             self.galaxy.metallicities = self.galaxy.calculate_metallicities()
@@ -430,15 +442,25 @@ class GalaxySimulation:
         # Initialize disaster tracking modules
         print("Initializing disaster tracking...")
         from .disasters import (
-            SupernovaScheduler,
             RecoveryQueue,
             DisasterArchiver,
+            UnifiedDisasterScheduler,
         )
-        from ..astrophysics import StellarEvolution
 
-        self.supernova_scheduler = SupernovaScheduler(
-            self.galaxy.masses, self.galaxy.metallicities, self.galaxy.ages, StellarEvolution()
+        simulation_duration_myr = self.config.simulation.simulation_duration_gyr * 1000.0
+        self.disaster_scheduler = UnifiedDisasterScheduler(
+            positions=self.galaxy.positions,
+            masses=self.galaxy.masses,
+            ages_gyr=self.galaxy.ages,
+            metallicities=self.galaxy.metallicities,
+            config=self.config.astrophysics,
+            rng=self.rng,
+            simulation_duration_myr=simulation_duration_myr,
         )
+        disaster_stats = self.disaster_scheduler.get_statistics()
+        print(f"  Scheduled disasters: {disaster_stats['total_scheduled']} "
+              f"(SN: {disaster_stats['supernovae']}, GRB: {disaster_stats['grbs']}, "
+              f"NS mergers: {disaster_stats['ns_mergers']})")
 
         n_stars = self.config.galaxy.total_stars
         self.recovery_queue = RecoveryQueue(n_stars)
@@ -458,32 +480,39 @@ class GalaxySimulation:
 
     def _compute_next_timestep(self) -> float:
         """
-        Compute adaptive timestep based on upcoming probe events and activity.
+        Compute adaptive timestep based on upcoming events.
+        
+        Considers:
+        - Probe arrival/replication events
+        - Scheduled disaster events (SN, GRB, NS merger)
+        - Civilization activity level
 
         Returns:
             Next timestep in Myr
         """
         cfg = self.config.simulation
+        candidate_dt = cfg.max_timestep_myr
 
-        # Check for imminent probe events
         if self.event_queue:
-            next_event_time = self.event_queue[0][0]  # Peek min-heap
+            next_event_time = self.event_queue[0][0]
             time_to_event = next_event_time - self.current_time_myr
 
-            # Step to event if within adaptive window and positive
             if time_to_event > 0 and time_to_event <= cfg.max_adaptive_step_myr:
-                # Clamp to min timestep for stability
-                return max(time_to_event, cfg.min_timestep_myr)
+                candidate_dt = min(candidate_dt, max(time_to_event, cfg.min_timestep_myr))
 
-        # No imminent events - use activity-based logic
+        if hasattr(self, 'disaster_scheduler') and self.disaster_scheduler is not None:
+            next_disaster_time = self.disaster_scheduler.peek_next_disaster_time()
+            if next_disaster_time is not None:
+                time_to_disaster = next_disaster_time - self.current_time_myr
+                if time_to_disaster > 0 and time_to_disaster <= cfg.max_adaptive_step_myr:
+                    candidate_dt = min(candidate_dt, max(time_to_disaster + 0.001, cfg.min_timestep_myr))
+
         active_civs = sum(1 for c in self.civilizations if c.is_active)
 
         if active_civs > 0:
-            # Active civilizations - use medium timestep
-            return cfg.medium_timestep_myr
-        else:
-            # No active civilizations - use max timestep
-            return cfg.max_timestep_myr
+            candidate_dt = min(candidate_dt, cfg.medium_timestep_myr)
+
+        return candidate_dt
 
     def _step(self, dt_myr: Optional[float] = None) -> float:
         """
@@ -1813,154 +1842,277 @@ class GalaxySimulation:
 
     def _apply_hazards(self) -> None:
         """
-        Apply astrophysical hazards (supernovae, GRBs) to civilizations.
+        Apply astrophysical hazards using precomputed disaster schedule.
 
-        Checks each active civilization for destruction by nearby supernovae
-        or gamma-ray bursts. Now accounts for metallicity-dependent rates,
-        component-dependent supernova rates, and local density effects.
+        Flow:
+        1. Get all disasters occurring in this timestep window
+        2. Record ALL disaster events (for visualization)
+        3. Evaluate effects on civilizations using batch kernels
+        4. Apply destruction effects to affected civilizations
+        
+        Uses UnifiedDisasterScheduler for O(log N) event retrieval and
+        Numba-optimized kernels for batch effect evaluation.
         """
-        # Initialize hazard evaluator on first call
-        if not hasattr(self, "hazard_evaluator"):
-            from ..astrophysics.hazards import HazardEvaluator
-
-            self.hazard_evaluator = HazardEvaluator(self.config.astrophysics)
+        from .disasters import DisasterType
+        
+        if not hasattr(self, 'disaster_scheduler') or self.disaster_scheduler is None:
+            return
 
         dt_myr = self._current_dt_myr
+        start_time = self.current_time_myr
+        end_time = self.current_time_myr + dt_myr
 
-        # Check each civilization for hazard destruction
-        for civ in self.civilizations:
-            if not civ.is_active:
+        disasters = self.disaster_scheduler.get_disasters_in_window(start_time, end_time)
+
+        if not disasters:
+            if self.recovery_queue is not None:
+                self.recovery_queue.process_recoveries(self.current_time_myr)
+            return
+
+        active_civs = [c for c in self.civilizations if c.is_active]
+        
+        if active_civs:
+            civ_positions = np.array([
+                self.galaxy.positions[c.parent_star_idx] for c in active_civs
+            ])
+        else:
+            civ_positions = np.empty((0, 3))
+
+        use_numba = self.config.simulation.use_numba
+        if use_numba:
+            try:
+                from ..utils.numba_kernels import (
+                    evaluate_sn_effect_on_civs_kernel,
+                    evaluate_grb_effect_on_civs_kernel,
+                    evaluate_ns_merger_effect_on_civs_kernel,
+                )
+                has_kernels = True
+            except ImportError:
+                has_kernels = False
+        else:
+            has_kernels = False
+
+        for disaster in disasters:
+            event_type_str = {
+                DisasterType.SUPERNOVA: "supernova",
+                DisasterType.GRB: "grb",
+                DisasterType.NS_MERGER: "ns_merger",
+            }.get(disaster.disaster_type, "unknown")
+
+            hazard_event = HazardEvent(
+                time_myr=disaster.time_myr,
+                event_type=event_type_str,
+                position=disaster.position.copy(),
+                energy=disaster.energy_ergs,
+                sterilization_radius_pc=disaster.sterilization_radius_pc,
+                affected_civ_ids=[],
+            )
+
+            if len(active_civs) > 0:
+                n_civs = len(active_civs)
+                random_values = self.rng.uniform(0, 1, n_civs).astype(np.float64)
+
+                if disaster.disaster_type == DisasterType.SUPERNOVA:
+                    if has_kernels:
+                        effects = evaluate_sn_effect_on_civs_kernel(
+                            civ_positions.astype(np.float64),
+                            disaster.position.astype(np.float64),
+                            disaster.lethal_radius_pc,
+                            disaster.sterilization_radius_pc,
+                            random_values
+                        )
+                    else:
+                        effects = self._evaluate_sn_effects_python(
+                            civ_positions, disaster, random_values
+                        )
+
+                elif disaster.disaster_type == DisasterType.GRB:
+                    if has_kernels:
+                        effects = evaluate_grb_effect_on_civs_kernel(
+                            civ_positions.astype(np.float64),
+                            disaster.position.astype(np.float64),
+                            disaster.grb_jet_theta,
+                            disaster.grb_jet_phi,
+                            disaster.grb_beaming_angle_deg,
+                            disaster.lethal_radius_pc / 1000.0
+                        )
+                    else:
+                        effects = self._evaluate_grb_effects_python(
+                            civ_positions, disaster
+                        )
+
+                elif disaster.disaster_type == DisasterType.NS_MERGER:
+                    sgrb_range = getattr(
+                        self.config.astrophysics, 'ns_sgrb_lethal_range_kpc', 3.0
+                    )
+                    kilonova_lethal = getattr(
+                        self.config.astrophysics, 'ns_kilonova_lethal_range_pc', 30.0
+                    )
+                    kilonova_sterilization = getattr(
+                        self.config.astrophysics, 'ns_kilonova_sterilization_range_pc', 100.0
+                    )
+                    
+                    if has_kernels:
+                        effects = evaluate_ns_merger_effect_on_civs_kernel(
+                            civ_positions.astype(np.float64),
+                            disaster.position.astype(np.float64),
+                            disaster.grb_jet_theta,
+                            disaster.grb_jet_phi,
+                            disaster.grb_beaming_angle_deg,
+                            sgrb_range,
+                            kilonova_lethal,
+                            kilonova_sterilization,
+                            random_values
+                        )
+                    else:
+                        effects = self._evaluate_ns_merger_effects_python(
+                            civ_positions, disaster, random_values
+                        )
+                else:
+                    effects = np.zeros(n_civs, dtype=np.int32)
+
+                for i, (civ, effect) in enumerate(zip(active_civs, effects)):
+                    if effect > 0:
+                        hazard_event.affected_civ_ids.append(civ.civ_id)
+                        
+                        if not civ.home_world_destroyed:
+                            civ.home_world_destroyed = True
+                            civ.home_world_destruction_time_myr = self.current_time_myr
+
+                        num_mature = self._get_mature_colonies(civ)
+                        if num_mature == 0:
+                            civ.is_active = False
+                            civ.death_time_myr = self.current_time_myr
+                            civ.death_cause = event_type_str
+
+            self.hazard_events.append(hazard_event)
+
+            if self.disaster_archiver is not None:
+                self.disaster_archiver.archive_disaster(hazard_event, self.current_time_myr)
+
+            if self.recovery_queue is not None:
+                if disaster.star_idx >= 0:
+                    self.recovery_queue.sterilize_star(
+                        disaster.star_idx,
+                        self.current_time_myr,
+                        disaster.sterilization_radius_pc / 10.0,
+                        permanent=(disaster.energy_ergs > 1e52),
+                    )
+
+        if self.recovery_queue is not None:
+            self.recovery_queue.process_recoveries(self.current_time_myr)
+
+        active_civs = [c for c in active_civs if c.is_active]
+
+    def _evaluate_sn_effects_python(
+        self, civ_positions: np.ndarray, disaster, random_values: np.ndarray
+    ) -> np.ndarray:
+        """Python fallback for SN effect evaluation."""
+        n_civs = len(civ_positions)
+        effects = np.zeros(n_civs, dtype=np.int32)
+        
+        lethal_kpc = disaster.lethal_radius_pc / 1000.0
+        sterilization_kpc = disaster.sterilization_radius_pc / 1000.0
+        
+        for i in range(n_civs):
+            dist_kpc = np.linalg.norm(civ_positions[i] - disaster.position)
+            dist_pc = dist_kpc * 1000.0
+            
+            if dist_pc < disaster.lethal_radius_pc:
+                effects[i] = 1
+            elif dist_pc < disaster.sterilization_radius_pc:
+                r = (dist_pc - disaster.lethal_radius_pc) / (
+                    disaster.sterilization_radius_pc - disaster.lethal_radius_pc
+                )
+                if random_values[i] < np.exp(-3.0 * r):
+                    effects[i] = 1
+        
+        return effects
+
+    def _evaluate_grb_effects_python(
+        self, civ_positions: np.ndarray, disaster
+    ) -> np.ndarray:
+        """Python fallback for GRB effect evaluation."""
+        n_civs = len(civ_positions)
+        effects = np.zeros(n_civs, dtype=np.int32)
+        
+        jet_dir = np.array([
+            np.sin(disaster.grb_jet_theta) * np.cos(disaster.grb_jet_phi),
+            np.sin(disaster.grb_jet_theta) * np.sin(disaster.grb_jet_phi),
+            np.cos(disaster.grb_jet_theta)
+        ])
+        
+        beaming_rad = disaster.grb_beaming_angle_deg * np.pi / 180.0
+        cos_beaming = np.cos(beaming_rad)
+        lethal_kpc = disaster.lethal_radius_pc / 1000.0
+        
+        for i in range(n_civs):
+            to_civ = civ_positions[i] - disaster.position
+            dist_kpc = np.linalg.norm(to_civ)
+            
+            if dist_kpc < 1e-10 or dist_kpc > lethal_kpc:
                 continue
+            
+            to_civ_unit = to_civ / dist_kpc
+            cos_angle = np.dot(jet_dir, to_civ_unit)
+            
+            if cos_angle > cos_beaming or (-cos_angle) > cos_beaming:
+                effects[i] = 1
+        
+        return effects
 
-            # Check home world for hazards
-            civ_pos = self.galaxy.positions[civ.parent_star_idx]
-
-            # Check supernova hazard (now returns tuple with info dict)
-            destroyed_by_sn, sn_info = self.hazard_evaluator.evaluate_supernova_hazard(
-                civilization_position=civ_pos,
-                stellar_positions=self.galaxy.positions,
-                stellar_masses=self.galaxy.masses,
-                stellar_ages=self.galaxy.ages,
-                component_types=self.galaxy.component_type,
-                dt_myr=dt_myr,
-                rng=self.rng,
-                spatial_index=self._spatial_index if hasattr(self, "_spatial_index") else None,
-            )
-
-            # Store hazard statistics on civilization object for analysis
-            if not hasattr(civ, "hazard_stats"):
-                civ.hazard_stats = {}
-            civ.hazard_stats.update(sn_info)
-
-            if destroyed_by_sn:
-                # Home world destroyed - check if civilization can survive from colonies
-                if not civ.home_world_destroyed:
-                    civ.home_world_destroyed = True
-                    civ.home_world_destruction_time_myr = self.current_time_myr
-
-                # Check if civilization has mature colonies to continue from
-                num_mature = self._get_mature_colonies(civ)
-                if num_mature == 0:
-                    # No mature colonies - civilization extinct
-                    civ.is_active = False
-                    civ.death_time_myr = self.current_time_myr
-                    civ.death_cause = "supernova"
-                # else: civilization continues from colonies with fragility penalty
-
-                # Record hazard event for visualization
-                hazard = HazardEvent(
-                    time_myr=self.current_time_myr,
-                    event_type="supernova",
-                    position=civ_pos.copy(),  # Approximate location
-                    energy=1e51,  # Typical supernova energy in ergs
-                    sterilization_radius_pc=sn_info.get(
-                        "sn_distance_pc", self.config.astrophysics.sn_sterilization_range_pc
-                    ),
-                    affected_civ_ids=[civ.civ_id],
-                )
-                self.hazard_events.append(hazard)
-
-                # Archive disaster
-                if self.disaster_archiver is not None:
-                    self.disaster_archiver.archive_disaster(hazard, self.current_time_myr)
-
-                # Sterilize star in recovery queue
-                if self.recovery_queue is not None:
-                    sterilization_radius = hazard.sterilization_radius_pc
-                    recovery_time = sterilization_radius / 10.0  # Recovery rate of 10 pc/Myr
-                    self.recovery_queue.sterilize_star(
-                        civ.parent_star_idx,
-                        self.current_time_myr,
-                        recovery_time,
-                        permanent=(hazard.energy > 1e52),  # Permanent for very energetic events
-                    )
-
-                if not civ.is_active:
+    def _evaluate_ns_merger_effects_python(
+        self, civ_positions: np.ndarray, disaster, random_values: np.ndarray
+    ) -> np.ndarray:
+        """Python fallback for NS merger effect evaluation."""
+        n_civs = len(civ_positions)
+        effects = np.zeros(n_civs, dtype=np.int32)
+        
+        sgrb_range = getattr(self.config.astrophysics, 'ns_sgrb_lethal_range_kpc', 3.0)
+        kilonova_lethal = getattr(self.config.astrophysics, 'ns_kilonova_lethal_range_pc', 30.0)
+        kilonova_sterilization = getattr(
+            self.config.astrophysics, 'ns_kilonova_sterilization_range_pc', 100.0
+        )
+        
+        jet_dir = np.array([
+            np.sin(disaster.grb_jet_theta) * np.cos(disaster.grb_jet_phi),
+            np.sin(disaster.grb_jet_theta) * np.sin(disaster.grb_jet_phi),
+            np.cos(disaster.grb_jet_theta)
+        ])
+        
+        beaming_rad = disaster.grb_beaming_angle_deg * np.pi / 180.0
+        cos_beaming = np.cos(beaming_rad)
+        
+        kilonova_lethal_kpc = kilonova_lethal / 1000.0
+        kilonova_sterilization_kpc = kilonova_sterilization / 1000.0
+        
+        for i in range(n_civs):
+            to_civ = civ_positions[i] - disaster.position
+            dist_kpc = np.linalg.norm(to_civ)
+            
+            if dist_kpc > 1e-10 and dist_kpc < sgrb_range:
+                to_civ_unit = to_civ / dist_kpc
+                cos_angle = np.dot(jet_dir, to_civ_unit)
+                
+                if cos_angle > cos_beaming or (-cos_angle) > cos_beaming:
+                    effects[i] = 1
                     continue
-
-            # Check GRB hazard (now returns tuple with info dict)
-            destroyed_by_grb, grb_info = self.hazard_evaluator.evaluate_grb_hazard(
-                civilization_position=civ_pos,
-                stellar_positions=self.galaxy.positions,
-                stellar_masses=self.galaxy.masses,
-                stellar_ages=self.galaxy.ages,
-                metallicities=self.galaxy.metallicities,
-                dt_myr=dt_myr,
-                rng=self.rng,
-                spatial_index=self._spatial_index if hasattr(self, "_spatial_index") else None,
-            )
-
-            # Store GRB statistics
-            civ.hazard_stats.update(grb_info)
-
-            if destroyed_by_grb:
-                # Home world destroyed - check if civilization can survive from colonies
-                if not civ.home_world_destroyed:
-                    civ.home_world_destroyed = True
-                    civ.home_world_destruction_time_myr = self.current_time_myr
-
-                # Check if civilization has mature colonies to continue from
-                num_mature = self._get_mature_colonies(civ)
-                if num_mature == 0:
-                    # No mature colonies - civilization extinct
-                    civ.is_active = False
-                    civ.death_time_myr = self.current_time_myr
-                    civ.death_cause = "grb"
-                # else: civilization continues from colonies with fragility penalty
-
-                # Record hazard event for visualization
-                hazard = HazardEvent(
-                    time_myr=self.current_time_myr,
-                    event_type="grb",
-                    position=civ_pos.copy(),  # Approximate location
-                    energy=1e54,  # Typical GRB energy in ergs
-                    sterilization_radius_pc=grb_info.get("grb_distance_kpc", 1.0)
-                    * 1000.0,  # Convert kpc to pc
-                    affected_civ_ids=[civ.civ_id],
+            
+            if dist_kpc < kilonova_lethal_kpc:
+                effects[i] = 2
+            elif dist_kpc < kilonova_sterilization_kpc:
+                r = (dist_kpc - kilonova_lethal_kpc) / (
+                    kilonova_sterilization_kpc - kilonova_lethal_kpc
                 )
-                self.hazard_events.append(hazard)
+                if random_values[i] < np.exp(-3.0 * r):
+                    effects[i] = 2
+        
+        return effects
 
-                # Archive disaster
-                if self.disaster_archiver is not None:
-                    self.disaster_archiver.archive_disaster(hazard, self.current_time_myr)
-
-                # Sterilize star in recovery queue
-                if self.recovery_queue is not None:
-                    sterilization_radius = hazard.sterilization_radius_pc
-                    recovery_time = sterilization_radius / 10.0  # Recovery rate of 10 pc/Myr
-                    self.recovery_queue.sterilize_star(
-                        civ.parent_star_idx,
-                        self.current_time_myr,
-                        recovery_time,
-                        permanent=(hazard.energy > 1e52),  # Permanent for very energetic events
-                    )
-
-        # Process recoveries after all hazards processed
         if self.recovery_queue is not None:
             recovered = self.recovery_queue.process_recoveries(self.current_time_myr)
-            # Log recovery statistics
             if len(recovered) > 0:
-                pass  # Stars have recovered, habitable status updated
+                pass
 
     def _interpolate_probe_positions(self, current_time_myr: float) -> List[ProbeSnapshot]:
         """

@@ -180,13 +180,20 @@ Bottlenecks: get_distance_matrix O(N²), emergence checks all stars, expansion n
    nearby_indices = spatial_index.query_radius(center, radius)
    ```
 
+6. **SN time calculation**: Time until SN is `t_ms - age`, NOT `age + t_ms`
+   ```python
+   t_ms_gyr = 10.0 * mass ** (-2.5)  # Main sequence lifetime
+   time_until_sn = t_ms_gyr - age_gyr  # Negative = already dead
+   ```
+
 ## Incomplete features requiring enhancement
 
 1. **Expansion model** (`civilization/expansion.py`): Needs wavefront propagation with light cones, track launch/arrival times
 2. **Light travel time** (`simulation/physics.py`): Enforce causality in expansion logic
-3. **Hazard application** (`simulation/engine.py:_apply_hazards()`): Actually call HazardEvaluator
-4. **Spatial optimization** (`simulation/engine.py`): Use SpatialIndex for O(log N) queries
-5. **Numba optimization**: Add @jit decorators to hot loops
+3. ~~**Hazard application** (`simulation/engine.py:_apply_hazards()`): Actually call HazardEvaluator~~ ✅ DONE (Jan 2026)
+4. ~~**Spatial optimization** (`simulation/engine.py`): Use SpatialIndex for O(log N) queries~~ ✅ Done via UnifiedDisasterScheduler
+5. ~~**Numba optimization**: Add @jit decorators to hot loops~~ ✅ Done (batch disaster kernels, hazard kernels)
+6. ~~**Precomputed disaster schedule**: Generate all SN/GRB/NS events at init~~ ✅ DONE (Jan 2026)
 
 ## When making changes
 1. Maintain physical units, document in docstrings
@@ -205,3 +212,52 @@ python -c "import pstats; p = pstats.Stats('profile.stats'); p.sort_stats('cumul
 ```bash
 python -c "from great_silence import SimulationConfig; c = SimulationConfig(); print(c.to_dict())"
 ```
+
+## Session Notes / Learnings
+
+### Jan 2026 - NS Merger Implementation
+- Added `NeutronStarMergerModel` in `astrophysics/neutron_star_merger.py`
+- NS mergers produce: sGRB (beamed, ~kpc lethal), kilonova (~30pc lethal)
+- Config params: `ns_merger_rate_per_myr`, `ns_sgrb_beaming_angle_deg`, `ns_sgrb_lethal_range_kpc`, `ns_kilonova_lethal_range_pc`
+- Added Numba kernels: `evaluate_ns_merger_hazard_kernel`, `batch_evaluate_hazards_kernel` in `utils/numba_kernels.py`
+- Updated `HazardEvaluator` with `evaluate_all_hazards()` method
+- Updated `_apply_hazards()` to call unified hazard evaluator for all three types (SN, GRB, NS merger)
+- Tests in `tests/test_astrophysics.py` (52 tests)
+- Run tests with: `mamba run -n galaticbot python -m pytest tests/test_astrophysics.py -v --override-ini="addopts="`
+
+### Jan 2026 - Unified Disaster Scheduler (Precomputed Disasters)
+- Created `UnifiedDisasterScheduler` in `simulation/disasters/unified_scheduler.py`
+- Precomputes ALL disasters at initialization (SN, GRB, NS merger):
+  - SN: scheduled from M > 8 Msun stars based on main-sequence lifetime (`sn_time = t_ms - age`)
+  - GRB: subset of SNe (M > 20 Msun, metallicity-dependent probability)
+  - NS merger: galactic rate (~50/Myr) scaled by stellar fraction, positions near NS remnants
+- Uses min-heap for O(log N) event retrieval: `get_disasters_in_window(start, end)`
+- Disasters occur galaxy-wide, recorded in snapshots even without civilizations
+- Stellar death tracking: `stellar_is_alive`, `stellar_remnant_type` arrays
+- Adaptive timestep integration: `peek_next_disaster_time()` influences dt selection
+- New Numba kernels for batch effect evaluation:
+  - `evaluate_sn_effect_on_civs_kernel`: Batch SN effect on civs
+  - `evaluate_grb_effect_on_civs_kernel`: Batch GRB beam check
+  - `evaluate_ns_merger_effect_on_civs_kernel`: sGRB + kilonova combined
+  - `batch_find_civs_in_range_kernel`: Fast range queries
+- Refactored `_apply_hazards()` to generate-then-affect flow:
+  1. Get disasters from scheduler for current timestep
+  2. Record ALL disaster events (HazardEvent dataclass)
+  3. Evaluate effects on active civs using batch kernels
+  4. Apply destruction effects
+- Tests in `tests/test_unified_disaster_scheduler.py` (22 tests)
+- Run: `mamba run -n galaticbot python -m pytest tests/test_unified_disaster_scheduler.py -v`
+
+### Jan 2026 - Enhanced Disaster Visualization
+- Updated `visualization/threejs/templates/layers.js.j2` with comprehensive disaster viz:
+  - **Toggle: History Mode** - Show all past disasters vs current only
+  - **Toggle: Scale Mode** - Physical scale vs exaggerated (50x) for visibility
+  - **Type filters** - Toggle SN (red), GRB (cyan), NS merger (magenta)
+  - **Shockwaves** - Expanding ring animations at disaster locations
+  - **Sterilization zones** - Semi-transparent spheres showing lethal radii
+  - **GRB beam cones** - Stylized 25° bipolar jets (vs actual 5-10°)
+  - **Death markers** - X markers at locations where civs were killed
+- Added disaster timeline with clickable canvas markers
+- Updated `data_extractor.py` to include full disaster data (energy, radii, jet angles)
+- UI controls in `index.html.j2` disaster panel
+- Color scheme: SN=#ff4400, GRB=#00ffff, NSM=#ff00ff

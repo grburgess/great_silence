@@ -14,11 +14,13 @@ let downsamplePercent = 0;
 function initUI() {
     initPlaybackControls();
     initLayerControls();
+    initDisasterControls();
     initSpeedControl();
     initDownsampleControl();
     initExportButton();
     initRaycaster();
     initMiniMap();
+    initDisasterTimeline();
 }
 
 function initPlaybackControls() {
@@ -33,6 +35,7 @@ function initPlaybackControls() {
 
     timelineSlider.addEventListener('input', (e) => {
         currentFrame = parseInt(e.target.value);
+        window.currentFrame = currentFrame;
         if (window.animationData) {
             updateFrame(currentFrame);
         }
@@ -122,6 +125,232 @@ function initDownsampleControl() {
             });
         }
     }
+}
+
+function initDisasterControls() {
+    const panel = document.getElementById('disaster-panel');
+    if (!panel) return;
+    
+    // History mode toggle
+    const historyToggle = document.getElementById('disaster-history-toggle');
+    if (historyToggle) {
+        historyToggle.addEventListener('change', (e) => {
+            if (window.setDisasterHistoryMode) {
+                window.setDisasterHistoryMode(e.target.checked);
+            }
+            updateDisasterModeDisplay();
+        });
+    }
+    
+    // Scale mode toggle
+    const scaleToggle = document.getElementById('disaster-scale-toggle');
+    if (scaleToggle) {
+        scaleToggle.addEventListener('change', (e) => {
+            if (window.setDisasterScaleMode) {
+                window.setDisasterScaleMode(e.target.checked);
+            }
+            updateDisasterModeDisplay();
+        });
+    }
+    
+    // Type filters
+    const snFilter = document.getElementById('filter-supernova');
+    if (snFilter) {
+        snFilter.addEventListener('change', (e) => {
+            if (window.setDisasterTypeFilter) {
+                window.setDisasterTypeFilter('supernova', e.target.checked);
+            }
+        });
+    }
+    
+    const grbFilter = document.getElementById('filter-grb');
+    if (grbFilter) {
+        grbFilter.addEventListener('change', (e) => {
+            if (window.setDisasterTypeFilter) {
+                window.setDisasterTypeFilter('grb', e.target.checked);
+            }
+        });
+    }
+    
+    const nsmFilter = document.getElementById('filter-nsm');
+    if (nsmFilter) {
+        nsmFilter.addEventListener('change', (e) => {
+            if (window.setDisasterTypeFilter) {
+                window.setDisasterTypeFilter('ns_merger', e.target.checked);
+            }
+        });
+    }
+    
+    // Visual element toggles
+    const zonesToggle = document.getElementById('show-zones');
+    if (zonesToggle) {
+        zonesToggle.addEventListener('change', (e) => {
+            if (window.setDisasterZonesVisible) {
+                window.setDisasterZonesVisible(e.target.checked);
+            }
+        });
+    }
+    
+    const beamsToggle = document.getElementById('show-beams');
+    if (beamsToggle) {
+        beamsToggle.addEventListener('change', (e) => {
+            if (window.setDisasterBeamsVisible) {
+                window.setDisasterBeamsVisible(e.target.checked);
+            }
+        });
+    }
+    
+    const deathToggle = document.getElementById('show-death-markers');
+    if (deathToggle) {
+        deathToggle.addEventListener('change', (e) => {
+            if (window.setDeathMarkersVisible) {
+                window.setDeathMarkersVisible(e.target.checked);
+            }
+        });
+    }
+    
+    updateDisasterModeDisplay();
+}
+
+function updateDisasterModeDisplay() {
+    const historyLabel = document.getElementById('history-mode-label');
+    const scaleLabel = document.getElementById('scale-mode-label');
+    
+    if (historyLabel && window.disasterState) {
+        historyLabel.textContent = window.disasterState.showHistory ? 'History Mode' : 'Current Only';
+    }
+    
+    if (scaleLabel && window.disasterState) {
+        scaleLabel.textContent = window.disasterState.exaggeratedScale ? 'Exaggerated' : 'Physical Scale';
+    }
+}
+
+function initDisasterTimeline() {
+    const container = document.getElementById('disaster-timeline');
+    if (!container || !window.animationData) return;
+    
+    // Collect all disasters from all frames - copy ALL properties
+    let allDisasters = [];
+    window.animationData.frames.forEach(frame => {
+        if (frame.hazards) {
+            frame.hazards.forEach(h => {
+                // Copy all hazard properties for visualization
+                allDisasters.push({
+                    time: h.time,
+                    type: h.type,
+                    position: h.position,
+                    lethal_radius: h.lethal_radius || 0.01,
+                    sterilization_radius: h.sterilization_radius || h.lethal_radius || 0.03,
+                    energy: h.energy || 1e51,
+                    jet_theta: h.jet_theta,
+                    jet_phi: h.jet_phi,
+                    affected_civs: h.affected_civs || []
+                });
+            });
+        }
+    });
+    
+    // Remove duplicates (same time and type)
+    const seen = new Set();
+    allDisasters = allDisasters.filter(d => {
+        const key = `${d.time.toFixed(3)}_${d.type}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    
+    // Sort by time
+    allDisasters.sort((a, b) => a.time - b.time);
+    
+    // Store for later use
+    window.allDisasters = allDisasters;
+    
+    // Update disaster count display
+    const countDisplay = document.getElementById('disaster-count');
+    if (countDisplay) {
+        const snCount = allDisasters.filter(d => d.type === 'supernova' || d.type === 'sn').length;
+        const grbCount = allDisasters.filter(d => d.type === 'grb' || d.type === 'gamma').length;
+        const nsmCount = allDisasters.filter(d => ['nsm', 'merger', 'ns_merger', 'kilonova'].includes(d.type.toLowerCase())).length;
+        
+        countDisplay.innerHTML = `
+            <span style="color: #ff4400;">SN: ${snCount}</span> | 
+            <span style="color: #00ffff;">GRB: ${grbCount}</span> | 
+            <span style="color: #ff00ff;">NSM: ${nsmCount}</span>
+        `;
+    }
+    
+    // Create mini timeline markers
+    renderDisasterTimelineMarkers(allDisasters);
+}
+
+function renderDisasterTimelineMarkers(disasters) {
+    const canvas = document.getElementById('disaster-timeline-canvas');
+    if (!canvas || !window.animationData) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Get time range from animation data
+    const frames = window.animationData.frames;
+    const minTime = frames[0].time;
+    const maxTime = frames[frames.length - 1].time;
+    const timeRange = maxTime - minTime;
+    
+    // Clear canvas
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, width, height);
+    
+    // Draw time axis
+    ctx.strokeStyle = '#333';
+    ctx.beginPath();
+    ctx.moveTo(0, height / 2);
+    ctx.lineTo(width, height / 2);
+    ctx.stroke();
+    
+    // Draw disaster markers
+    disasters.forEach(d => {
+        const x = ((d.time - minTime) / timeRange) * width;
+        
+        let color;
+        const type = d.type.toLowerCase();
+        if (type === 'supernova' || type === 'sn') {
+            color = '#ff4400';
+        } else if (type === 'grb' || type === 'gamma') {
+            color = '#00ffff';
+        } else {
+            color = '#ff00ff';
+        }
+        
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, height / 2, 3, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    
+    // Make canvas clickable to jump to disaster time
+    canvas.onclick = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const clickTime = minTime + (x / width) * timeRange;
+        
+        // Find closest frame
+        let closestFrame = 0;
+        let minDiff = Infinity;
+        frames.forEach((f, i) => {
+            const diff = Math.abs(f.time - clickTime);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestFrame = i;
+            }
+        });
+        
+        // Jump to frame
+        currentFrame = closestFrame;
+        window.currentFrame = closestFrame;
+        document.getElementById('timeline-slider').value = closestFrame;
+        updateFrame(closestFrame);
+    };
 }
 
 function initExportButton() {
@@ -249,6 +478,7 @@ function stepForward() {
 
     if (window.animationData) {
         currentFrame = Math.min(currentFrame + 1, window.animationData.frames.length - 1);
+        window.currentFrame = currentFrame;
         updateFrame(currentFrame);
     }
 }
@@ -257,6 +487,7 @@ function resetPlayback() {
     isPlaying = false;
     window.isPlaying = false;
     currentFrame = 0;
+    window.currentFrame = 0;
     document.getElementById('btn-playpause').textContent = '▶ Play';
     document.getElementById('timeline-slider').value = 0;
 
@@ -298,6 +529,7 @@ function updateAnimation(delta) {
         currentFrame = Math.min(currentFrame, frames.length - 1);
         
         const frameIndex = Math.floor(currentFrame);
+        window.currentFrame = frameIndex;
         document.getElementById('timeline-slider').value = frameIndex;
         
         updateFrame(frameIndex);
@@ -309,6 +541,9 @@ function updateFrame(frameIndex) {
 
     const frame = window.animationData.frames[frameIndex];
     if (!frame) return;
+
+    // Keep window.currentFrame in sync for external access
+    window.currentFrame = frameIndex;
 
     const timeDisplay = document.getElementById('time-display');
     const timeStats = document.getElementById('time-stats');
@@ -332,6 +567,11 @@ function updateFrame(frameIndex) {
 
     if (window.updateTrajectories) {
         window.updateTrajectories(frame.trajectories || [], frame.time);
+    }
+    
+    // Update enhanced disaster visualization
+    if (window.updateDisasterVisualization && window.allDisasters) {
+        window.updateDisasterVisualization(frameIndex, window.allDisasters, window.config);
     }
 }
 
