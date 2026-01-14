@@ -67,6 +67,62 @@ def _extract_hazard_list(snap):
         return []
 
 
+def _extract_expansion_trajectories(snap):
+    """Extract expansion trajectories from archived probes and colonies with timing."""
+    trajectories = []
+    
+    if not hasattr(snap, 'civilization_states') or not hasattr(snap, 'stellar_positions'):
+        return trajectories
+    
+    stellar_positions = snap.stellar_positions
+    if stellar_positions is None or len(stellar_positions) == 0:
+        return trajectories
+    
+    current_time = snap.time_myr if hasattr(snap, 'time_myr') else 0
+    seen_edges = set()
+    
+    for civ in snap.civilization_states:
+        home_idx = civ.parent_star_idx
+        home_pos = stellar_positions[home_idx].tolist() if home_idx < len(stellar_positions) else [0, 0, 0]
+        
+        if hasattr(civ, 'archived_probes') and civ.archived_probes:
+            for probe in civ.archived_probes:
+                launch_idx = probe.launch_star_idx
+                target_idx = probe.target_star_idx
+                edge_key = (civ.civ_id, launch_idx, target_idx)
+                
+                if edge_key not in seen_edges and launch_idx < len(stellar_positions) and target_idx < len(stellar_positions):
+                    seen_edges.add(edge_key)
+                    start_pos = stellar_positions[launch_idx].tolist()
+                    end_pos = stellar_positions[target_idx].tolist()
+                    
+                    arrival_time = probe.arrival_time_myr if hasattr(probe, 'arrival_time_myr') else current_time
+                    
+                    trajectories.append({
+                        'start': start_pos,
+                        'end': end_pos,
+                        'civ_id': civ.civ_id,
+                        'generation': probe.generation if hasattr(probe, 'generation') else 0,
+                        'time_myr': arrival_time
+                    })
+        
+        if hasattr(civ, 'colonized_stars') and civ.colonized_stars:
+            for colony_idx in civ.colonized_stars:
+                edge_key = (civ.civ_id, home_idx, colony_idx)
+                if edge_key not in seen_edges and colony_idx != home_idx and colony_idx < len(stellar_positions):
+                    seen_edges.add(edge_key)
+                    colony_pos = stellar_positions[colony_idx].tolist()
+                    trajectories.append({
+                        'start': home_pos,
+                        'end': colony_pos,
+                        'civ_id': civ.civ_id,
+                        'generation': 0,
+                        'time_myr': current_time
+                    })
+    
+    return trajectories
+
+
 @dataclass
 class FrameData:
     """Data for a single animation frame."""
@@ -150,6 +206,7 @@ class SimulationDataExtractor:
                     "civilizations": _extract_civ_list(snap),
                     "probes": _extract_probe_list(snap),
                     "hazards": _extract_hazard_list(snap),
+                    "trajectories": _extract_expansion_trajectories(snap),
                 }
                 for snap in self.source.snapshots
             ]
@@ -166,7 +223,7 @@ class SimulationDataExtractor:
             seed: Random seed for subsampling
 
         Returns:
-            Dict with positions and colors
+            Dict with positions and colors (as lists for JSON serialization)
         """
         positions = self.simulation_data.get("galaxy_positions", np.array([]))
 
@@ -182,7 +239,10 @@ class SimulationDataExtractor:
             rng = np.random.default_rng(seed)
             colors = np.random.rand(len(positions), 3)
 
-        return {"positions": positions, "colors": colors}
+        return {
+            "positions": positions.tolist() if len(positions) > 0 else [],
+            "colors": colors.tolist() if len(colors) > 0 else [],
+        }
 
     def extract_civilization_data(
         self, time_gyr: Optional[float] = None
@@ -227,9 +287,9 @@ class SimulationDataExtractor:
                     extinct_pos.append(civ["position"])
 
         return {
-            "active_positions": np.array(active_pos) if active_pos else np.array([]),
-            "active_kardashev": np.array(active_kard) if active_kard else np.array([]),
-            "extinct_positions": np.array(extinct_pos) if extinct_pos else np.array([]),
+            "active_positions": active_pos if active_pos else [],
+            "active_kardashev": active_kard if active_kard else [],
+            "extinct_positions": extinct_pos if extinct_pos else [],
         }
 
     def extract_trajectory_data(
@@ -386,9 +446,9 @@ class SimulationDataExtractor:
             probe_id_list.append(probe_id)
 
         return {
-            "positions": np.array(positions) if positions else np.array([]),
-            "civ_ids": np.array(civ_ids) if civ_ids else np.array([]),
-            "progress": np.array(progress) if progress else np.array([]),
+            "positions": [p.tolist() if hasattr(p, 'tolist') else p for p in positions] if positions else [],
+            "civ_ids": civ_ids if civ_ids else [],
+            "progress": progress if progress else [],
             "probe_ids": probe_id_list,
         }
 
@@ -439,8 +499,8 @@ class SimulationDataExtractor:
                 time_since.append(target_time - snapshot["time"])
 
         return {
-            "positions": np.array(positions) if positions else np.array([]),
+            "positions": positions if positions else [],
             "types": types,
-            "times_gyr": np.array(times_gyr) if times_gyr else np.array([]),
-            "time_since": np.array(time_since) if time_since else np.array([]),
+            "times_gyr": times_gyr if times_gyr else [],
+            "time_since": time_since if time_since else [],
         }

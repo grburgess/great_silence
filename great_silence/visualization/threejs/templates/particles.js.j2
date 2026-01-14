@@ -92,6 +92,10 @@ function getKardashevColor(kardashev) {
     }
 }
 
+let showCivSprites = true;
+let showProbeSprites = true;
+let showHazardSprites = true;
+
 function updateCivilizations(civilizations) {
     civSprites.forEach(sprite => scene.remove(sprite));
     civSprites = [];
@@ -105,8 +109,16 @@ function updateCivilizations(civilizations) {
         }
 
         const sprite = createCivilizationSprite(civ);
+        sprite.visible = showCivSprites;
         civSprites.push(sprite);
         scene.add(sprite);
+    });
+}
+
+function setCivVisibility(visible) {
+    showCivSprites = visible;
+    civSprites.forEach(sprite => {
+        sprite.visible = visible;
     });
 }
 
@@ -148,8 +160,16 @@ function updateProbes(probes) {
 
     probes.forEach(probe => {
         const line = createProbeTrail(probe);
+        line.visible = showProbeSprites;
         probeLines.push(line);
         scene.add(line);
+    });
+}
+
+function setProbeVisibility(visible) {
+    showProbeSprites = visible;
+    probeLines.forEach(line => {
+        line.visible = visible;
     });
 }
 
@@ -198,8 +218,98 @@ function updateHazards(hazards) {
 
     hazards.forEach(hazard => {
         const mesh = createHazardMarker(hazard);
+        mesh.visible = showHazardSprites;
         hazardMeshes.push(mesh);
         scene.add(mesh);
+    });
+}
+
+function setHazardVisibility(visible) {
+    showHazardSprites = visible;
+    hazardMeshes.forEach(mesh => {
+        mesh.visible = visible;
+    });
+}
+
+let trajectoryLines = [];
+let showTrajectoryLines = true;
+
+function createExpansionLine(trajectory) {
+    const positions = [];
+    const start = trajectory.start;
+    const end = trajectory.end;
+    
+    const numSegments = 20;
+    for (let i = 0; i <= numSegments; i++) {
+        const t = i / numSegments;
+        positions.push(
+            start[0] + (end[0] - start[0]) * t,
+            start[1] + (end[1] - start[1]) * t,
+            start[2] + (end[2] - start[2]) * t
+        );
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+    const civId = trajectory.civ_id || 0;
+    const hue = (civId * 0.618033988749895) % 1.0;
+    const color = new THREE.Color().setHSL(hue, 1.0, 0.65);
+
+    const material = new THREE.LineBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.9,
+        linewidth: 3,
+        blending: THREE.AdditiveBlending
+    });
+
+    const line = new THREE.Line(geometry, material);
+    line.userData = trajectory;
+
+    const sphereGeom = new THREE.SphereGeometry(0.03, 8, 8);
+    const sphereMat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending
+    });
+    const endMarker = new THREE.Mesh(sphereGeom, sphereMat);
+    endMarker.position.set(end[0], end[1], end[2]);
+    
+    const group = new THREE.Group();
+    group.add(line);
+    group.add(endMarker);
+    group.userData = trajectory;
+
+    return group;
+}
+
+function updateTrajectories(trajectories, currentTimeGyr) {
+    trajectoryLines.forEach(obj => scene.remove(obj));
+    trajectoryLines = [];
+
+    if (!showTrajectoryLines) return;
+    if (!trajectories || !Array.isArray(trajectories)) return;
+
+    const currentTimeMyr = (currentTimeGyr || 0) * 1000;
+
+    trajectories.forEach(traj => {
+        if (traj.start && traj.end) {
+            const trajTimeMyr = traj.time_myr || 0;
+            if (trajTimeMyr <= currentTimeMyr) {
+                const obj = createExpansionLine(traj);
+                trajectoryLines.push(obj);
+                scene.add(obj);
+            }
+        }
+    });
+}
+
+function setTrajectoryVisibility(visible) {
+    showTrajectoryLines = visible;
+    trajectoryLines.forEach(obj => {
+        obj.visible = visible;
     });
 }
 
@@ -214,8 +324,14 @@ window.initParticles = initParticles;
 window.updateParticles = updateParticles;
 window.createCivilizationSprite = createCivilizationSprite;
 window.updateCivilizations = updateCivilizations;
+window.setCivVisibility = setCivVisibility;
 window.createProbeTrail = createProbeTrail;
 window.updateProbes = updateProbes;
+window.setProbeVisibility = setProbeVisibility;
 window.createHazardMarker = createHazardMarker;
 window.updateHazards = updateHazards;
+window.setHazardVisibility = setHazardVisibility;
 window.updateCivilizationDisplay = updateCivilizationDisplay;
+window.createExpansionLine = createExpansionLine;
+window.updateTrajectories = updateTrajectories;
+window.setTrajectoryVisibility = setTrajectoryVisibility;

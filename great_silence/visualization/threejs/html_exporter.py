@@ -56,6 +56,7 @@ class ThreeJSRenderer:
                         ),
                         "probes": snapshot.get("probes", []),
                         "hazards": snapshot.get("hazards", []),
+                        "trajectories": snapshot.get("trajectories", []),
                     }
                     frames.append(frame_data)
 
@@ -113,6 +114,8 @@ class ThreeJSRenderer:
             "show_hazards": show_hazards,
             "animated": animated,
             "animation_data_url": animation_data_url,
+            "data": self.data,
+            "animation_data": self.data.get("animation_data") if animated else None,
         }
 
         template = self._get_template()
@@ -168,6 +171,8 @@ class ThreeJSRenderer:
             "show_spheres": show_spheres,
             "show_hazards": show_hazards,
             "animated": animated,
+            "data": self.data,
+            "animation_data": self.data.get("animation_data") if animated else None,
         }
 
         template = self._get_template()

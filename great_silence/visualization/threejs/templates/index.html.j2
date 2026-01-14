@@ -293,22 +293,17 @@
         }
     </style>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r150/three.min.js"
-            onerror="this.src='https://unpkg.com/three@0.150.0/build/three.min.js'; this.onerror=function(){console.error('Three.js failed to load from all CDNs');}"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/js/controls/OrbitControls.js"
-            onerror="this.src='https://unpkg.com/three@0.150.0/examples/js/controls/OrbitControls.js';"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tweenjs/tween.js@18.6.4/dist/tween.umd.js"
-            onerror="this.src='https://unpkg.com/@tweenjs/tween.js@18.6.4/dist/tween.umd.js';"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/js/postprocessing/EffectComposer.js"
-            onerror="this.src='https://unpkg.com/three@0.150.0/examples/js/postprocessing/EffectComposer.js';"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/js/postprocessing/RenderPass.js"
-            onerror="this.src='https://unpkg.com/three@0.150.0/examples/js/postprocessing/RenderPass.js';"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/js/postprocessing/ShaderPass.js"
-            onerror="this.src='https://unpkg.com/three@0.150.0/examples/js/postprocessing/ShaderPass.js';"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/js/postprocessing/UnrealBloomPass.js"
-            onerror="this.src='https://unpkg.com/three@0.150.0/examples/js/postprocessing/UnrealBloomPass.js';"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/js/postprocessing/FilmPass.js"
-            onerror="this.src='https://unpkg.com/three@0.150.0/examples/js/postprocessing/FilmPass.js';"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tweenjs/tween.js@18.6.4/dist/tween.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FilmShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/FilmPass.js"></script>
     <script>
         window.addEventListener('error', function(e) {
             if (e.target.tagName === 'SCRIPT') {
@@ -377,6 +372,7 @@
                     <button class="btn active" id="btn-civs">Civilizations</button>
                     <button class="btn active" id="btn-probes">Probes</button>
                     <button class="btn active" id="btn-hazards">Hazards</button>
+                    <button class="btn active" id="btn-trajectories">Trajectories</button>
                     <button class="btn" id="btn-postprocess">Effects</button>
                     <button class="btn" id="btn-export">Export Frame</button>
                 </div>
@@ -413,12 +409,18 @@
     <script src="postprocess.js"></script>
 
     <script>
+        {% if data.galaxy %}
+        window.galaxyData = {{ data.galaxy | tojson | safe }};
+        {% endif %}
+
         {% if animated and animation_data %}
-        window.animationData = {{ animation_data | safe }};
+        window.animationData = {
+            frames: {{ animation_data | safe }},
+            time_range: {{ data.time_range | tojson | safe }}
+        };
         {% endif %}
 
         {% if not animated %}
-        window.galaxyData = {{ data.galaxy | tojson | safe }};
         window.civData = {{ data.civilizations | tojson | safe }};
         window.trajectoryData = {{ data.trajectories | tojson | safe }};
         window.probeData = {{ data.probes | tojson | safe }};

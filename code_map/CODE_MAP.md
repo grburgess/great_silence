@@ -1,349 +1,622 @@
 # Great Silence Code Map
 
-Navigation guide for the GalaticBot Monte Carlo simulation project.
+Navigation guide for the GalaticBot Monte Carlo simulation of intelligent life in a Milky Way-like galaxy.
+
+## Quick Start
+
+```python
+from great_silence import GalaxySimulation, SimulationConfig
+
+config = SimulationConfig.with_preset('moderate')
+sim = GalaxySimulation(config, seed=42)
+sim.run(verbose=True)
+stats = sim.get_statistics()
+```
 
 ## Module Organization
 
-### `great_silence/`
-Root package with main exports: `GalaxySimulation`, `SimulationConfig`, `configure_m1_max_threading`
+### `great_silence/` (root)
+Main exports: `GalaxySimulation`, `SimulationConfig`, `configure_m1_max_threading`
 
-### `galaxy/` - Galactic structure and stellar evolution
-- `structure.py` - 3D galaxy model with bulge/disk components
-- `star_formation.py` - Star formation history and initial mass function (IMF)
+### `galaxy/` - Galactic structure and stellar populations
+| File | Lines | Description |
+|------|-------|-------------|
+| `structure.py` | 695 | 3D galaxy model with bulge/disk components, gravitational potential |
+| `star_formation.py` | 295 | Star formation history and initial mass function (IMF) |
 
 ### `astrophysics/` - Hazards and stellar evolution
-- `hazards.py` - Combined hazard evaluation (supernovae, GRBs)
-- `supernovae.py` - Supernova rate and sterilization models
-- `grb.py` - Gamma-ray burst models with metallicity dependence
-- `stellar_evolution.py` - Main sequence lifetime calculations
+| File | Lines | Description |
+|------|-------|-------------|
+| `hazards.py` | 222 | Combined hazard evaluation (supernovae, GRBs) |
+| `supernovae.py` | 223 | Supernova rate and sterilization models |
+| `grb.py` | 167 | Gamma-ray burst models with metallicity dependence |
+| `stellar_evolution.py` | 25 | Main sequence lifetime calculations |
 
-### `civilization/` - Emergence, expansion, extinction
-- `emergence.py` - Drake equation-based civilization emergence
-- `expansion.py` - Colonization wave propagation
-- `extinction.py` - Self-destruction and age-based extinction models
-- `probe_design.py` - Kardashev-scale dependent probe capabilities
+### `civilization/` - Emergence, expansion, extinction, interactions
+| File | Lines | Description |
+|------|-------|-------------|
+| `emergence.py` | 77 | Drake equation-based civilization emergence |
+| `expansion.py` | 118 | Colonization wave propagation |
+| `extinction.py` | 409 | Self-destruction and age-based extinction models |
+| `probe_design.py` | 207 | Kardashev-scale dependent probe capabilities |
+| `personality.py` | 211 | Civilization personality modeling with evolution |
+| `war.py` | 338 | War mechanics with fleet tracking and causal communication |
 
-### `simulation/` - Engine, Monte Carlo, physics, disasters
-- `engine.py` - Core simulation orchestrator (GalaxySimulation class)
-- `monte_carlo.py` - Ensemble simulation runner
-- `physics.py` - Light travel time calculations
-- `disasters/` - High-performance disaster tracking
-  - `scheduler.py` - Supernova schedule precomputation
-  - `recovery.py` - Sterilization status and recovery tracking
-  - `archiver.py` - HDF5 binary encoding for disaster storage
-  - `encoding.py` - Binary format for disaster events
-  - `spatial_index.py` - Fast spatial queries for hazards
+### `simulation/` - Engine, Monte Carlo, physics
+| File | Lines | Description |
+|------|-------|-------------|
+| `engine.py` | 2601 | Core simulation orchestrator (GalaxySimulation class) |
+| `monte_carlo.py` | 148 | Ensemble simulation runner |
+| `physics.py` | 104 | Light travel time calculations |
+
+### `simulation/disasters/` - High-performance disaster tracking
+| File | Lines | Description |
+|------|-------|-------------|
+| `scheduler.py` | 116 | Supernova schedule precomputation with min-heap |
+| `recovery.py` | 142 | Sterilization status and recovery tracking |
+| `archiver.py` | 205 | HDF5 binary encoding for disaster storage |
+| `encoding.py` | 185 | Binary format for disaster events |
+| `spatial_index.py` | 163 | Fast spatial queries for hazards |
 
 ### `visualization/` - Plots, 3D viz, interactive tools
-- `galaxy_viz.py` - Static matplotlib visualizations
-- `plotly_3d_viz.py` - Interactive 3D visualization
-- `interactive_3d.py` - Three.js-based interactive viewer
-- `timeline.py` - Temporal visualization of simulation
-- `threejs/` - WebGL export infrastructure
-  - `data_extractor.py` - Format simulation data for Three.js
-  - `html_exporter.py` - Generate standalone HTML files
+| File | Lines | Description |
+|------|-------|-------------|
+| `galaxy_viz.py` | 920 | Static matplotlib visualizations |
+| `plotly_3d_viz.py` | 789 | Interactive 3D Plotly visualization |
+| `interactive_3d.py` | 868 | Three.js-based interactive viewer |
+| `timeline.py` | 237 | Temporal visualization of simulation |
+| `sphere_builder.py` | 157 | Civilization influence zone spheres |
+| `trajectory_builder.py` | 169 | Expansion trajectory lines |
+
+### `visualization/threejs/` - WebGL export infrastructure
+| File | Lines | Description |
+|------|-------|-------------|
+| `config.py` | 128 | Central Three.js visualization configuration |
+| `data_extractor.py` | - | Format simulation data for Three.js |
+| `html_exporter.py` | - | Generate standalone HTML files |
+| `mock_data_generator.py` | 189 | Mock data for template testing |
+| `templates/` | 9 files | Jinja2 templates for JS components |
 
 ### `config/` - Parameters and configuration
-- `parameters.py` - SimulationConfig and all parameter dataclasses
+| File | Lines | Description |
+|------|-------|-------------|
+| `parameters.py` | 391 | SimulationConfig and all parameter dataclasses |
 
-### `utils/` - Spatial indexing, threading, progress tracking
-- `spatial.py` - KD-tree for nearest neighbor queries
-- `threading.py` - M1 Max threading optimization
-- `progress.py` - Progress tracking with metrics
-- `parallel.py` - Causality-preserving parallelization
-- `numba_kernels.py` - JIT-compiled kernels for performance
+### `utils/` - Spatial indexing, threading, progress
+| File | Lines | Description |
+|------|-------|-------------|
+| `spatial.py` | 85 | KD-tree for nearest neighbor queries |
+| `civ_spatial_index.py` | 318 | Civilization territory overlap detection |
+| `threading.py` | 236 | M1 Max threading optimization |
+| `progress.py` | 172 | Progress tracking with metrics |
+| `parallel.py` | 227 | Causality-preserving parallelization |
+| `numba_kernels.py` | 598 | JIT-compiled kernels for performance |
 
 ### `notebook/` - Jupyter integration
-- `widgets.py` - Interactive widgets for notebooks
-- `helpers.py` - Helper functions for analysis
-- `runners.py` - Simulation runners for notebooks
+| File | Description |
+|------|-------------|
+| `widgets.py` | Interactive widgets for notebooks |
+| `helpers.py` | Helper functions for analysis |
+| `runners.py` | Simulation runners for notebooks |
+
+---
 
 ## Key Classes
 
-### Simulation Engine (`simulation/engine.py`)
-- **GalaxySimulation** (lines 135-1329)
-  - Main orchestrator for simulation lifecycle
-  - Manages galaxy, civilizations, probes, hazards
-  - Implements adaptive time stepping and event queue
-  - Supports sequential and parallel civilization evolution
+### GalaxySimulation (`simulation/engine.py:234`)
+Main orchestrator for simulation lifecycle (2601 lines).
 
-- **ProbeState** (lines 33-57)
-  - Single probe with generation tracking
-  - Fixed velocity/range locked at launch
+**Core Methods:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `__init__()` | 242 | Initialize simulation with config and seed |
+| `initialize()` | 366 | Set up galaxy and stellar population |
+| `run()` | 550 | Main simulation loop with adaptive stepping |
+| `_step()` | 488 | Single timestep orchestration |
+| `_compute_next_timestep()` | 459 | Adaptive timestep logic |
+| `get_statistics()` | 2133 | Return summary statistics |
 
-- **CivilizationState** (lines 59-91)
-  - Complete civilization state
-  - Tracks colonies, probes, Kardashev level
-  - Supports distributed resilience model
+**Civilization Methods:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `_check_civilization_emergence()` | 747 | Drake equation emergence |
+| `_evolve_civilizations_sequential()` | 947 | Sequential evolution |
+| `_evolve_civilizations_parallel()` | 1230 | Parallel with causality |
+| `_advance_civilization_tech()` | 1294 | Kardashev progression |
+| `_check_civilization_extinction()` | 1319 | Check self-destruction |
 
-- **SimulationSnapshot** (lines 109-121)
-  - Time-slice of simulation for visualization
+**Probe Methods:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `_attempt_expansion()` | 1056 | Initiate probe expansion |
+| `_process_probe_events()` | 1102 | Event queue processing |
+| `_launch_initial_probes()` | 1516 | Initial wave from home world |
+| `_launch_offspring_probes()` | 1563 | Spawn from arrived probe |
+| `_handle_probe_arrival()` | 1175 | Mark colonization, schedule replication |
+| `_handle_replication_complete()` | 1504 | Launch offspring probes |
+| `_find_nearest_targets()` | 1610 | Find colonization targets |
+| `_archive_completed_probes()` | 1145 | Memory management |
 
-- **HazardEvent** (lines 123-133)
-  - Supernova/GRB event record
+**War/Encounter Methods:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `_scan_for_encounters()` | 2146 | Detect civilization encounters |
+| `_handle_encounter()` | 2176 | Process encounter event |
+| `_start_war()` | 2257 | Initiate war between civilizations |
+| `_resolve_wars()` | 2316 | Resolve ongoing wars |
+| `_resolve_battle_at_star()` | 2365 | Battle resolution |
+| `_end_war()` | 2490 | Conclude war |
+| `_form_alliance()` | 2530 | Alliance formation |
 
-### Galaxy Model (`galaxy/structure.py`)
-- **GalaxyModel** (lines 8-696)
-  - 3D Milky Way-like galaxy
-  - Bulge + disk components
-  - Gravitational potential (Miyamoto-Nagai + Hernquist + NFW)
-  - Exponential/thin-thick disk profiles
-  - Spiral arm perturbations
-  - Proper stellar kinematics
+**Hazard Methods:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `_apply_hazards()` | 1814 | Apply supernovae/GRBs |
+| `_interpolate_probe_positions()` | 1965 | Probes in flight for viz |
+| `_save_snapshot()` | 2028 | Save simulation state |
+
+### Supporting Data Classes (`simulation/engine.py`)
+| Class | Line | Description |
+|-------|------|-------------|
+| `ProbeState` | 54 | Single probe with generation tracking |
+| `EncounterEvent` | 80 | Record of civilization encounter |
+| `CivilizationState` | 93 | Complete civilization state |
+| `HazardEvent` | 169/181 | Supernova/GRB event record |
+| `ProbeSnapshot` | 193 | Probe state for visualization |
+| `SimulationSnapshot` | 209 | Time-slice for visualization |
+
+### GalaxyModel (`galaxy/structure.py:8`)
+3D Milky Way-like galaxy model (695 lines).
+
+**Key Methods:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `generate_stellar_population()` | 38 | Full population generation |
+| `_generate_exponential_disk()` | 92 | Disk positions (Numba-accelerated) |
+| `_generate_bulge()` | 147 | Hernquist bulge |
+| `_generate_double_exponential_disk()` | 189 | Thin+thick disk |
+| `_apply_spiral_arms()` | 212 | Spiral arm density waves |
+| `_generate_velocities()` | 288 | Equilibrium kinematics |
+| `_compute_circular_velocity()` | 247 | Rotation curve |
+| `calculate_metallicities()` | 368 | Metallicity gradient |
+| `evolve_positions()` | 593 | Leapfrog integrator |
+| `get_distance_matrix()` | 647 | Pairwise distances |
+| `get_stellar_density()` | 672 | Local density |
+
+**Gravitational Potential:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `_compute_disk_acceleration()` | 402 | Miyamoto-Nagai disk |
+| `_compute_bulge_acceleration()` | 470 | Hernquist bulge |
+| `_compute_halo_acceleration()` | 525 | NFW dark matter halo |
+| `_compute_gravitational_acceleration()` | 569 | Combined potential |
 
 ### Star Formation (`galaxy/star_formation.py`)
-- **StarFormationHistory** (lines 8-161)
-  - Delayed exponential SFR model
-  - Radial age gradient (inside-out formation)
-  - Vectorized age generation
+| Class | Line | Description |
+|-------|------|-------------|
+| `StarFormationHistory` | 8 | Delayed exponential SFR model |
+| `InitialMassFunction` | 163 | Kroupa, Salpeter, Chabrier IMFs |
 
-- **InitialMassFunction** (lines 163-295)
-  - Kroupa, Salpeter, Chabrier IMFs
-  - Log-space rejection sampling
+**StarFormationHistory Methods:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `sfr()` | 24 | Delayed exponential SFR |
+| `cumulative_stellar_mass()` | 49 | Integrated stellar mass |
+| `generate_stellar_ages()` | 73 | Age sampling |
+| `generate_stellar_ages_with_gradient()` | 104 | Radial age gradient |
 
-### Hazards (`astrophysics/hazards.py`)
-- **HazardEvaluator** (lines 10-223)
-  - Combined supernova + GRB evaluation
-  - Spatial index optimization for O(log N) queries
-  - Density-dependent hazard rates
+**InitialMassFunction Methods:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `pdf()` | 179 | IMF probability density |
+| `sample()` | 212 | Rejection sampling from IMF |
+| `mean_mass()` | 250 | Average stellar mass |
+| `fraction_above_mass()` | 272 | Massive star fraction |
 
-### Extinction Model (`civilization/extinction.py`)
-- **ExtinctionModel** (lines 23-410)
-  - Kardashev-dependent self-destruction
-  - Crisis peaks at specific tech levels
-  - Gaussian hazard functions
-  - Age-based exponential decay
-  - Distributed resilience (multi-colony survival)
+### ExtinctionModel (`civilization/extinction.py:23`)
+Kardashev-dependent extinction with crisis peaks (409 lines).
 
-- **CrisisPeak** (lines 8-21)
-  - Gaussian hazard peak at Kardashev level
-  - Six default crises: nuclear, AI, relativistic weapons, etc.
+| Class | Line | Description |
+|-------|------|-------------|
+| `CrisisPeak` | 9 | Gaussian hazard peak definition |
+| `ExtinctionModel` | 23 | Main extinction model |
+
+**Key Methods:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `_create_default_crisis_peaks()` | 93 | Six default crises |
+| `calculate_kardashev_hazard_rate()` | 145 | Gaussian crisis peaks |
+| `check_self_destruction()` | 196 | Hazard rate to probability |
+| `check_age_extinction()` | 240 | Exponential decay |
+| `survival_probability()` | 268 | Distributed resilience |
+| `get_crisis_info()` | 304 | Crisis configuration |
+| `set_crisis_amplitude()` | 321 | Modify crisis severity |
+| `enable_crisis()` | 340 | Toggle crisis |
+| `plot_hazard_function()` | 357 | Visualize hazard curve |
+
+### HazardEvaluator (`astrophysics/hazards.py:10`)
+Combined supernova + GRB evaluation (222 lines).
+
+| Method | Line | Description |
+|--------|------|-------------|
+| `evaluate_supernova_hazard()` | 26 | SN sterilization check |
+| `evaluate_grb_hazard()` | 133 | GRB beam intersection check |
 
 ### Probe Design (`civilization/probe_design.py`)
-Scaling functions based on Kardashev scale:
-- `probe_velocity_from_kardashev()` (lines 9-43)
-- `per_hop_range_from_kardashev()` (lines 46-78)
-- `offspring_count()` (lines 80-112)
-- `replication_delay_years()` (lines 114-153)
-- `min_metallicity_for_replication()` (lines 155-203)
+Scaling functions based on Kardashev scale.
+
+| Function | Line | Description |
+|----------|------|-------------|
+| `probe_velocity_from_kardashev()` | 9 | Velocity scaling (0.001c-0.5c) |
+| `per_hop_range_from_kardashev()` | 46 | Range scaling (1-100 pc) |
+| `offspring_count()` | 80 | Replication count (1-8) |
+| `replication_delay_years()` | 114 | Build time (100k-10k yr) |
+| `min_metallicity_for_replication()` | 155 | Metallicity threshold |
+
+### Personality System (`civilization/personality.py`)
+Civilization behavior modeling.
+
+| Class/Function | Line | Description |
+|----------------|------|-------------|
+| `PersonalityState` | 9 | Dynamic personality state |
+| `sample_personality()` | 20 | K-dependent personality sampling |
+| `evolve_personality()` | 102 | War outcome personality drift |
+| `get_colony_personality_modifier()` | 178 | Colony-specific modifiers |
+
+**Personality Types:**
+- `expansionist` (friendliness < 0.3)
+- `defensive` (0.3-0.5)
+- `isolationist` (0.5-0.7)
+- `xenophile` (> 0.7)
+
+### War System (`civilization/war.py`)
+Fleet tracking and causal communication (338 lines).
+
+| Class | Line | Description |
+|-------|------|-------------|
+| `BattleOutcome` | 9 | Enum: attacker/defender/stalemate/mutual |
+| `WarPhase` | 18 | Enum: mobilization/offensive/stalemate/peace/concluded |
+| `FleetState` | 28 | Military fleet state |
+| `BattleEvent` | 46 | Battle record |
+| `WarState` | 62 | Ongoing war state |
+| `CommunicationEvent` | 81 | Light-cone constrained messaging |
+| `VassalState` | 94 | Vassal relationship |
+
+| Function | Line | Description |
+|----------|------|-------------|
+| `calculate_fleet_strength()` | 104 | K-dependent fleet power |
+| `calculate_colony_strength()` | 131 | Colony defense |
+| `resolve_battle()` | 158 | Battle resolution |
+| `calculate_war_duration()` | 227 | Expected war length |
+| `calculate_light_cone_arrival()` | 255 | Causal message delay |
+| `is_communication_possible()` | 279 | Check light-cone causality |
+| `check_alliance_cascade_light_cone()` | 300 | Ally join eligibility |
 
 ### Configuration (`config/parameters.py`)
-- **SimulationConfig** (lines 226-342)
-  - Main config container with YAML I/O
-  - Presets: early_filter, late_filter, rare_earth, optimistic, moderate
+| Class | Line | Description |
+|-------|------|-------------|
+| `GalaxyParameters` | 9 | Disk/bulge structure, gradients |
+| `AstrophysicsParameters` | 60 | IMF, supernova/GRB rates |
+| `CivilizationParameters` | 82 | Drake equation, expansion, Kardashev |
+| `SimulationParameters` | 227 | Time stepping, parallelization |
+| `SimulationConfig` | 277 | Main config container with YAML I/O |
 
-- **GalaxyParameters** (lines 8-57)
-  - Disk/bulge structure, gradients, kinematics
+**SimulationConfig Presets:**
+- `early_filter` - Rare emergence, high extinction
+- `late_filter` - Common emergence, high extinction
+- `rare_earth` - Very rare emergence
+- `optimistic` - Abundant emergence, low extinction
+- `moderate` - Balanced parameters
 
-- **AstrophysicsParameters** (lines 59-79)
-  - IMF, supernova/GRB rates
+### Monte Carlo (`simulation/monte_carlo.py`)
+| Class | Line | Description |
+|-------|------|-------------|
+| `MonteCarloRunner` | 12 | Ensemble simulation runner |
 
-- **CivilizationParameters** (lines 81-176)
-  - Drake equation, expansion, self-destruction, Kardashev progression
+| Method | Line | Description |
+|--------|------|-------------|
+| `run_single_realization()` | 27 | Single simulation run |
+| `run_parallel()` | 50 | ProcessPoolExecutor parallelization |
+| `run_sequential()` | 77 | Sequential (debugging) |
+| `analyze_results()` | 95 | Statistics with 95% CI |
 
-- **SimulationParameters** (lines 178-225)
-  - Time stepping, adaptive stepping, parallelization, output
+### Spatial Indexing (`utils/spatial.py:8`, `utils/civ_spatial_index.py:21`)
+| Class | Line | File | Description |
+|-------|------|------|-------------|
+| `SpatialIndex` | 8 | spatial.py | KD-tree wrapper |
+| `CivilizationSpatialIndex` | 21 | civ_spatial_index.py | Territory overlap detection |
+| `ColonyInfo` | 9 | civ_spatial_index.py | Colony metadata |
 
-### Visualization (`visualization/galaxy_viz.py`)
-- **GalaxyVisualizer** (lines 9-921)
-  - 2D/3D static plots with matplotlib
-  - Multiple views: top, side, 3D, density
-  - Civilization distribution, age/metallicity gradients
-  - Hazard zone mapping with Galactic Habitable Zone (GHZ)
+**SpatialIndex Methods:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `query_radius()` | 25 | Stars within radius |
+| `query_nearest()` | 56 | k-nearest neighbors |
+| `query_pairs()` | 74 | All pairs within distance |
+
+**CivilizationSpatialIndex Methods:**
+| Method | Line | Description |
+|--------|------|-------------|
+| `add_colony()` | 43 | Register colony |
+| `remove_colony()` | 76 | Unregister colony |
+| `find_civilizations_in_range()` | 105 | Civs near star |
+| `find_territory_overlaps()` | 129 | All overlapping pairs |
+| `find_nearby_enemy_colonies()` | 181 | Enemy detection |
+| `get_frontier_colonies()` | 229 | Border colonies |
+| `find_path_between_colonies()` | 263 | BFS pathfinding |
 
 ### Disaster Tracking (`simulation/disasters/`)
-- **SupernovaScheduler** (disasters/scheduler.py:8-117)
-  - Pre-computed SN times with min-heap
-  - O(log N) queries for time windows
+| Class | Line | File | Description |
+|-------|------|------|-------------|
+| `SupernovaScheduler` | 8 | scheduler.py | Pre-computed SN times (min-heap) |
+| `SterilizationStatus` | 8 | recovery.py | Star sterilization state |
+| `RecoveryQueue` | 16 | recovery.py | Recovery time modeling |
+| `DisasterArchiver` | 21 | archiver.py | HDF5 binary encoding |
+| `DisasterSpatialIndex` | 13 | spatial_index.py | Fast hazard queries |
 
-- **RecoveryQueue** (disasters/recovery.py)
-  - Track sterilization status per star
-  - Recovery time modeling
+### Visualization Classes
+| Class | Line | File | Description |
+|-------|------|------|-------------|
+| `GalaxyVisualizer` | 9 | galaxy_viz.py | Matplotlib 2D/3D plots |
+| `VisualizationConfig` | 21 | plotly_3d_viz.py | Plotly config |
+| `ColorMapper` | 72 | plotly_3d_viz.py | Civ-to-color mapping |
+| `Plotly3DGalaxyViz` | 219 | plotly_3d_viz.py | Interactive 3D Plotly |
+| `SphereBuilder` | 9 | sphere_builder.py | Influence zone spheres |
+| `TrajectoryBuilder` | 8 | trajectory_builder.py | Expansion lines |
+| `ThreeJSConfig` | 8 | threejs/config.py | WebGL configuration |
 
-- **DisasterArchiver** (disasters/archiver.py)
-  - HDF5 binary encoding for disaster events
-  - Tiered storage with recent window
+### Progress Tracking (`utils/progress.py`)
+| Class | Line | Description |
+|-------|------|-------------|
+| `ProgressMetrics` | 8 | Simulation metrics dataclass |
+| `ProgressTracker` | 33 | Abstract base class |
+| `TqdmProgressTracker` | 66 | Terminal progress bar |
+| `JupyterProgressTracker` | 92 | Notebook progress widget |
+| `create_progress_tracker()` | 126 | Factory function |
 
-- **DisasterSpatialIndex** (disasters/spatial_index.py)
-  - Fast spatial queries for hazard evaluation
+### Parallelization (`utils/parallel.py`)
+| Class/Function | Line | Description |
+|----------------|------|-------------|
+| `ThreadLocalProbeBuffer` | 10 | Thread-safe probe buffer |
+| `compute_light_travel_distance()` | 24 | Distance light travels in dt |
+| `find_causal_groups_simple()` | 38 | Distance-based partitioning |
+| `find_causal_groups_with_colonies()` | 104 | Includes colony overlap |
+| `should_use_parallelization()` | 187 | Decision heuristic |
 
-### Spatial Index (`utils/spatial.py`)
-- **SpatialIndex** (lines 8-86)
-  - KD-tree wrapper for 3D queries
-  - `query_radius()`, `query_nearest()`, `query_pairs()`
+### Numba Kernels (`utils/numba_kernels.py`)
+JIT-compiled performance kernels (598 lines).
 
-## Core Functions
+| Function | Line | Description |
+|----------|------|-------------|
+| `evolve_positions_numba()` | 33 | Position integration |
+| `evolve_positions_inplace_numba()` | 72 | In-place version |
+| `compute_distances_to_point_numba()` | 102 | Vectorized distances |
+| `find_nearby_mask_numba()` | 132 | Boolean mask for radius |
+| `find_nearby_indices_numba()` | 169 | Index array for radius |
+| `compute_supernova_rates_numba()` | 228 | SN rate calculation |
+| `evaluate_supernova_destruction_vectorized()` | 270 | Vectorized SN hazard |
+| `rejection_sample_exponential_disk_radii()` | 345 | Fast disk sampling |
+| `compute_circular_velocities()` | 398 | Rotation curve |
+| `count_within_radius()` | 471 | Neighbor counting |
+| `benchmark_kernel()` | 517 | Kernel benchmarking |
 
-### Simulation Flow (`simulation/engine.py`)
-- `initialize()` (lines 261-361) - Set up galaxy and stellar population
-- `run()` (lines 438-529) - Main simulation loop with adaptive stepping
-- `_step()` (lines 391-436) - Single timestep orchestration
-- `_compute_next_timestep()` (lines 362-389) - Adaptive timestep logic
-
-### Civilization Evolution
-- `_check_civilization_emergence()` (lines 642-722) - Drake equation emergence
-- `_evolve_civilizations_sequential()` (lines 820-924) - Sequential evolution
-- `_evolve_civilizations_parallel()` (lines 1075-1137) - Parallel with causality
-- `_attempt_expansion()` (lines 925-970) - Self-replicating probe expansion
-- `_process_probe_events()` (lines 971-1013) - Event queue processing (10-50x speedup)
-
-### Probe Lifecycle
-- `_launch_initial_probes()` (engine.py:965+) - Initial wave from home world
-- `_handle_probe_arrival()` (engine.py:1044-1074) - Mark colonization, schedule replication
-- `_handle_replication_complete()` (engine.py:1075+) - Launch offspring probes
-- `_archive_completed_probes()` (engine.py:1014-1043) - Memory management
-
-### Hazard Application
-- `_apply_hazards()` (engine.py:431) - Apply supernovae/GRBs to civilizations
-- `evaluate_supernova_hazard()` (hazards.py:26-131) - SN sterilization check
-- `evaluate_grb_hazard()` (hazards.py:133-223) - GRB beam intersection check
-
-### Galaxy Generation (`galaxy/structure.py`)
-- `generate_stellar_population()` (lines 38-91) - Full population generation
-- `_generate_exponential_disk()` (lines 92-146) - Disk positions (Numba-accelerated)
-- `_generate_bulge()` (lines 147-188) - Hernquist bulge
-- `_apply_spiral_arms()` (lines 212-246) - Spiral arm density waves
-- `_generate_velocities()` (lines 288-367) - Equilibrium kinematics
-- `evolve_positions()` (lines 593-646) - Leapfrog integrator (experimental)
-
-### Star Properties (`galaxy/star_formation.py`)
-- `StarFormationHistory.sfr()` (lines 24-47) - Delayed exponential SFR
-- `StarFormationHistory.generate_stellar_ages_with_gradient()` (lines 104-161) - Age gradient
-- `InitialMassFunction.sample()` (lines 212-248) - Rejection sampling from IMF
-
-### Extinction Calculations (`civilization/extinction.py`)
-- `calculate_kardashev_hazard_rate()` (lines 145-194) - Gaussian crisis peaks
-- `check_self_destruction()` (lines 196-239) - Hazard rate to probability
-- `check_age_extinction()` (lines 240-267) - Exponential decay
+---
 
 ## Data Flow
 
 ### Initialization Flow
-1. **Config Loading** → SimulationConfig.from_yaml() or defaults
-2. **Galaxy Generation** → GalaxyModel.generate_stellar_population()
-   - Generates positions (bulge + disk)
-   - Assigns velocities from rotation curve
-3. **Stellar Properties** → StarFormationHistory + InitialMassFunction
-   - Assign ages (with radial gradient)
-   - Sample masses from IMF
-   - Calculate metallicities (with radial gradient)
-4. **Habitability** → Filter by mass range (0.5-1.5 M☉)
-5. **Spatial Index** → Build KD-tree for fast queries (if use_numba=True)
+```
+SimulationConfig (YAML or preset)
+    ↓
+GalaxySimulation.__init__()
+    ↓
+GalaxyModel.generate_stellar_population()
+    ├── _generate_bulge() [Hernquist profile]
+    ├── _generate_exponential_disk() [ρ(R,z) ∝ exp(-R/h_R)exp(-|z|/h_z)]
+    ├── _apply_spiral_arms() [density wave perturbation]
+    ├── _generate_velocities() [rotation curve, equilibrium kinematics]
+    ├── SFH.generate_stellar_ages_with_gradient() [radial age gradient]
+    ├── IMF.sample() [Kroupa/Salpeter/Chabrier]
+    └── Filter habitable stars [0.5-1.5 M☉]
+    ↓
+Initialize disaster tracking (if enabled)
+    ├── SupernovaScheduler._build_schedule() [precompute SN times]
+    ├── RecoveryQueue for sterilization tracking
+    └── DisasterArchiver for HDF5 binary encoding
+    ↓
+SpatialIndex.build() [KD-tree for O(log N) queries]
+    ↓
+ExtinctionModel with crisis peaks
+```
 
-### Main Simulation Loop (per timestep)
-1. **Evolve Galaxy** → galaxy.evolve_positions(dt_myr)
-   - Update stellar positions (if enable_stellar_motion=True)
-2. **Check Emergence** → _check_civilization_emergence()
-   - Vectorized Drake equation over habitable stars
-   - Scale probability by dt_myr
-   - Create new CivilizationState objects
-3. **Evolve Civilizations** → _evolve_civilizations()
-   - **Sequential**: Loop through all civilizations
-   - **Parallel**: Partition by causality, process groups in threads
-   - For each civ:
-     - Advance Kardashev scale (breakthrough/stagnation)
-     - Check self-destruction (crisis peaks)
-     - Check age-based extinction
-     - Attempt expansion (if K ≥ 0.85)
-4. **Process Probe Events** → _process_probe_events()
-   - Handle arrivals from event queue
-   - Handle replication completions
-   - Archive completed probes periodically
-5. **Apply Hazards** → _apply_hazards()
-   - Check supernovae (using SupernovaScheduler)
-   - Check GRBs
-   - Mark civilizations as destroyed
-6. **Advance Time** → current_time_myr += dt_myr
-7. **Save Snapshot** → _save_snapshot() (every snapshot_interval_myr)
+### Main Simulation Loop
+```
+while current_time < duration:
+    ├── _compute_next_timestep() [adaptive: 10kyr-10Myr]
+    ├── _step(dt_myr)
+    │   ├── galaxy.evolve_positions(dt_myr) [if motion enabled]
+    │   ├── _check_civilization_emergence()
+    │   ├── _evolve_civilizations()
+    │   │   ├── Advance Kardashev scale
+    │   │   ├── Check self-destruction
+    │   │   ├── Check age extinction
+    │   │   └── Attempt expansion (K ≥ 0.85)
+    │   ├── _process_probe_events() [event queue]
+    │   ├── _scan_for_encounters() [if enabled]
+    │   ├── _resolve_wars(dt_myr) [if ongoing]
+    │   ├── _apply_hazards()
+    │   └── _save_snapshot() [periodic]
+    └── Update progress
+```
 
 ### Probe Expansion Flow
-1. **Expansion Start** (K ≥ 0.85)
-   - Lock probe parameters: velocity, range, offspring count, replication delay
-   - Store metallicity threshold
-2. **Launch Initial Wave**
-   - Find nearest metal-rich stars within per_hop_range
-   - Create ProbeState objects
-   - Schedule arrival events in event_queue
-3. **Arrival Event**
-   - Mark star as colonized
-   - Schedule replication event (arrival_time + replication_delay)
-   - Archive probe (move to active_probes → archived_probes)
-4. **Replication Event**
-   - Find nearest uncolonized targets
-   - Launch offspring probes
-   - Schedule new arrival events
+```
+Expansion Start (K ≥ 0.85)
+    ├── Lock probe parameters [v, range, offspring, delay]
+    └── _launch_initial_probes()
+        ├── Find targets within per_hop_range_pc
+        ├── Create ProbeState objects
+        └── Schedule arrival events
+            ↓
+Arrival Event (_handle_probe_arrival)
+    ├── Mark star colonized
+    ├── Schedule replication event
+    └── Archive probe
+        ↓
+Replication Event (_handle_replication_complete)
+    ├── _launch_offspring_probes()
+    │   ├── Find uncolonized targets
+    │   └── Schedule arrival events
+    └── Repeat...
+```
 
-### Disaster Tracking Flow
-1. **Precomputation** → SupernovaScheduler._build_schedule()
-   - Calculate main sequence lifetimes for massive stars (M > 8 M☉)
-   - Add ages to get SN times
-   - Build min-heap of (time, star_idx) pairs
-2. **Per Timestep** → _apply_hazards()
-   - Query scheduler for SNe in current window
-   - Evaluate GRB events stochastically
-   - Check sterilization distances
-3. **Recovery Tracking** → RecoveryQueue
-   - Track sterilization status per star
-   - Model recovery time (for emergence re-enabled)
+### Civilization Lifecycle
+```
+Emergence → Growth → Expansion → Death
 
-### Monte Carlo Flow
-1. **Ensemble Setup** → MonteCarloRunner(config)
-2. **Parallel Execution** → run_parallel()
-   - Spawn worker processes (one per realization)
-   - Each runs independent GalaxySimulation
-   - Collect results
-3. **Analysis** → analyze_results()
-   - Aggregate statistics across realizations
-   - Compute mean/std/median/percentiles
-   - Generate distribution plots
+Emergence:
+    ├── Stellar age ≥ 4 Gyr
+    ├── Drake: f_planets × n_habitable × f_life × f_intel × f_tech
+    └── Scale by dt_myr
+
+Growth:
+    ├── Kardashev advancement: 0.7 → 3.0
+    ├── Rate varies per civilization
+    └── Breakthrough/stagnation periods
+
+Expansion (K ≥ 0.85):
+    ├── Self-replicating probes
+    ├── Event-driven O(log N) processing
+    └── Distributed colony network
+
+Death:
+    ├── Self-destruction [crisis peaks at K=0.72, 0.85, etc.]
+    ├── Age-based extinction [exponential decay]
+    ├── Supernova sterilization [distance-dependent]
+    ├── GRB beam intersection [jet geometry]
+    ├── War defeat [territory loss]
+    └── All colonies destroyed = civilization death
+```
+
+### War Flow (if encounters enabled)
+```
+_scan_for_encounters()
+    ├── Find civilizations with overlapping territories
+    └── Generate EncounterEvent
+        ↓
+_handle_encounter()
+    ├── Check personality compatibility
+    ├── Calculate war probability
+    └── Either _start_war() or _form_alliance()
+        ↓
+_resolve_wars(dt_myr) [each timestep]
+    ├── _resolve_battle_at_star()
+    │   ├── Calculate fleet strengths
+    │   ├── Apply tech advantage
+    │   └── Determine casualties
+    ├── Update war exhaustion
+    └── Check surrender conditions
+        ↓
+_end_war()
+    ├── Transfer territory
+    ├── Evolve personalities
+    └── Record outcome
+```
+
+---
+
+## Performance Optimizations
+
+1. **Numba JIT Kernels** - 50-100x speedup for hot loops
+2. **Vectorized Emergence** - Batch probability across all stars
+3. **Spatial Index** - O(log N) hazard queries (KD-tree)
+4. **Event Queue** - Probe processing without O(N) polling (10-50x)
+5. **Thread-Local Buffers** - Parallel expansion without locking
+6. **Binary Disaster Encoding** - Compact HDF5 storage
+7. **Probe Archiving** - Prevents exponential memory growth
+8. **Adaptive Timestepping** - Fine steps only when needed
+9. **Causality Partitioning** - Safe parallel civ evolution
+
+### Adaptive Timestep Logic
+```
+No active probes       → dt = 10 Myr   [coarse]
+Active probes, no events → dt = 100 kyr [medium]
+Probe events pending   → dt = 10 kyr   [fine]
+```
+
+---
+
+## Key Design Patterns
+
+### Configuration as Data
+- All parameters in dataclasses
+- YAML serialization/deserialization
+- Presets for common scenarios
+
+### Event-Driven Probe Processing
+- Min-heap event queue for arrivals/replications
+- Replaces O(N) polling with O(log N) event processing
+
+### Causality-Preserving Parallelization
+- Partition civilizations by causal independence
+- Groups processed in parallel, no race conditions
+- Thread-local buffers for probe creation
+
+### Distributed Resilience Model
+- Each colony independently survives hazards
+- Civilization dies only if ALL colonies die
+- p_total = p_single^N_colonies
+- Creates U-shaped risk curve (safe at mid-expansion)
+
+### Probe Parameter Locking
+- Once expansion starts, probe capabilities locked
+- Based on Kardashev level at launch time
+- Reflects technological lock-in during expansion
+
+---
 
 ## Entry Points
 
-### CLI (`cli.py`)
+### CLI
 ```bash
 python -m great_silence --mode single --config config.yaml --visualize
 python -m great_silence --mode monte-carlo --quick
 ```
 
-Main function: `main()` (lines 13-175)
-- Parses arguments
-- Loads configuration
-- Runs single or Monte Carlo simulation
-- Generates visualizations
-
-### Library Usage
+### Library
 ```python
 from great_silence import GalaxySimulation, SimulationConfig
 
-# Create config
 config = SimulationConfig.with_preset('moderate')
-
-# Run simulation
 sim = GalaxySimulation(config, seed=42)
 sim.run(verbose=True)
-
-# Get statistics
 stats = sim.get_statistics()
-```
-
-### Quick Test
-```python
-# 10k stars, 1 Gyr
-config = SimulationConfig()
-config.galaxy.total_stars = 10000
-config.simulation.simulation_duration_gyr = 1.0
-
-sim = GalaxySimulation(config)
-sim.run()
 ```
 
 ### Examples
 - `examples/basic_simulation.py` - Simple single run
-- Jupyter notebooks in `notebook/` directory
+- `examples/enhanced_simulation.py` - Full features
+- `notebooks/` - Jupyter integration
+
+---
 
 ## Dependencies
 
-### Module Dependency Graph
+### External
+| Package | Purpose |
+|---------|---------|
+| `numpy` | Vectorized operations |
+| `scipy.spatial.cKDTree` | Spatial indexing |
+| `matplotlib` | Static visualization |
+| `plotly` | Interactive 3D viz |
+| `tqdm` | Progress bars |
+| `pyyaml` | Configuration I/O |
+| `h5py` | Disaster archiving (optional) |
+| `numba` | JIT compilation (optional, recommended) |
+| `colorcet` | Color palettes |
+| `jinja2` | Template rendering |
+
+### Internal Dependency Graph
 ```
 simulation/engine.py
 ├── config/parameters.py
@@ -351,9 +624,12 @@ simulation/engine.py
 ├── galaxy/star_formation.py
 ├── civilization/extinction.py
 ├── civilization/probe_design.py
+├── civilization/personality.py
+├── civilization/war.py
 ├── astrophysics/hazards.py
 ├── utils/progress.py
 ├── utils/parallel.py
+├── utils/civ_spatial_index.py
 └── simulation/disasters/
 
 galaxy/structure.py
@@ -364,98 +640,58 @@ astrophysics/hazards.py
 ├── astrophysics/grb.py
 └── config/parameters.py
 
-civilization/extinction.py
-└── (no external dependencies)
-
-visualization/galaxy_viz.py
-└── (matplotlib only, no internal deps)
-
-utils/spatial.py
-└── scipy.spatial.cKDTree
+visualization/*
+└── (matplotlib/plotly/jinja2 only)
 ```
 
-### Internal Dependencies
-- **GalaxyModel** ← GalaxyParameters, SimulationParameters
-- **GalaxySimulation** ← All modules (orchestrator)
-- **HazardEvaluator** ← SupernovaModel, GRBModel, StellarEvolution
-- **ExtinctionModel** ← CivilizationParameters (crisis peaks)
-- **GalaxyVisualizer** ← NumPy arrays only (no sim objects)
-
-### External Dependencies
-- `numpy` - Vectorized operations
-- `scipy.spatial.cKDTree` - Spatial indexing
-- `matplotlib` - Static visualization
-- `plotly` - Interactive 3D viz
-- `tqdm` - Progress bars
-- `pyyaml` - Configuration I/O
-- `h5py` - Disaster archiving (optional)
-- `numba` - JIT compilation (optional, recommended)
-- `nbdev` - Jupyter development (dev only)
-
-## Key Design Patterns
-
-### Configuration as Data
-- All parameters in dataclasses (GalaxyParameters, etc.)
-- YAML serialization/deserialization
-- Presets for common scenarios
-
-### Event-Driven Probe Processing
-- Min-heap event queue for probe arrivals/replications
-- Replaces O(N_probes) polling with O(log N) event processing
-- 10-50x speedup for expansion-heavy scenarios
-
-### Causality-Preserving Parallelization
-- Partition civilizations by causal independence
-- Groups processed in parallel (no race conditions)
-- Thread-local buffers for probe creation
-- Single-threaded merge step
-
-### Spatial Indexing
-- KD-tree for nearest neighbor queries
-- O(log N) instead of O(N) for hazard evaluation
-- Used in supernova checks, expansion targeting
-
-### Adaptive Time Stepping
-- Fine steps (10 kyr) during probe events
-- Medium steps (100 kyr) with active civilizations
-- Coarse steps (10 Myr) during quiet periods
-
-### Distributed Resilience Model
-- Each colony independently survives hazards
-- Civilization dies only if ALL colonies die
-- Probability: p_total = p_single^N_colonies
-- Creates U-shaped risk curve (safe at mid-expansion)
-
-## Performance Optimizations
-
-1. **Numba JIT Kernels** - Rejection sampling for exponential disk (50-100x speedup)
-2. **Vectorized Emergence** - Batch probability calculation across stars
-3. **Spatial Index** - O(log N) hazard queries instead of O(N)
-4. **Event Queue** - Probe processing without polling
-5. **Thread-Local Buffers** - Parallel expansion without locking
-6. **Binary Disaster Encoding** - Compact HDF5 storage
-7. **Probe Archiving** - Prevents exponential memory growth
-
-## Incomplete Features
-
-See `AGENTS.md` "Incomplete features requiring enhancement":
-- Expansion wavefront with light cones (currently branching tree)
-- Light travel time enforcement in expansion logic
-- Hazard application (call to HazardEvaluator in engine)
-- Numba optimization for hot loops
-- Mid-flight retargeting (disabled due to O(N) brute force)
+---
 
 ## Testing
 
 ```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=great-silence --cov-report=html
-
-# Specific test
-pytest tests/test_galaxy.py::TestGalaxyModel::test_generation
+pytest                                    # All tests
+pytest --cov=great-silence --cov-report=html  # With coverage
+pytest tests/test_galaxy.py               # Specific file
+pytest tests/test_galaxy.py::TestGalaxyModel::test_generation  # Specific test
 ```
 
-See `AGENTS.md` for full testing commands.
+---
+
+## Common Pitfalls
+
+1. **Unit confusion**: Always check units
+   - Distances: kpc (galaxy), pc (stellar)
+   - Time: Gyr (ages), Myr (timesteps), yr (light travel)
+   - Velocity: km/s (stellar), fraction of c (probes)
+
+2. **Time step scaling**: Probabilities MUST scale by dt_myr
+   ```python
+   p_event = base_rate_per_myr * dt_myr  # Correct
+   ```
+
+3. **Random seeds**: Pass seed to all RNG creation
+   ```python
+   rng = np.random.default_rng(seed)
+   ```
+
+4. **Array copying**: Be explicit about views vs copies
+   ```python
+   positions_copy = self.positions.copy()
+   ```
+
+5. **Distance matrix memory**: Don't compute O(N²) for large N
+   ```python
+   # Use spatial index instead
+   spatial_index = SpatialIndex(pos)
+   nearby = spatial_index.query_radius(center, radius)
+   ```
+
+---
+
+## Incomplete Features
+
+See `AGENTS.md` for details:
+- Expansion wavefront with light cones
+- Light travel time enforcement in expansion
+- Mid-flight probe retargeting (disabled)
+- Additional Numba optimization opportunities

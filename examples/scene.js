@@ -2,9 +2,12 @@
 
 let scene, camera, renderer, composer, controls;
 let starGeometry, starMaterial, starPoints;
-let civGeometry, civMaterial, civSprites;
-let probeGeometry, probeMaterial, probeLines;
-let hazardGeometry, hazardMaterial, hazardMeshes;
+let civGeometry, civMaterial;
+let civSprites = [];
+let probeGeometry, probeMaterial;
+let probeLines = [];
+let hazardGeometry, hazardMaterial;
+let hazardMeshes = [];
 
 let clock;
 
@@ -114,21 +117,25 @@ function createStarField() {
         }
     `;
     
+    const starOpacity = window.config.star_opacity || 0.8;
+    
     const starFragmentShader = `
         uniform vec3 color;
+        uniform float opacity;
         varying float vBrightness;
         void main() {
             vec2 coord = gl_PointCoord - vec2(0.5);
             float dist = length(coord);
             if (dist > 0.5) discard;
             float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
-            gl_FragColor = vec4(color * vBrightness, alpha * window.config.star_opacity);
+            gl_FragColor = vec4(color * vBrightness, alpha * opacity);
         }
     `;
 
     starMaterial = new THREE.ShaderMaterial({
         uniforms: {
-            color: { value: new THREE.Color(1.0, 1.0, 1.0) }
+            color: { value: new THREE.Color(1.0, 1.0, 1.0) },
+            opacity: { value: starOpacity }
         },
         vertexShader: starVertexShader,
         fragmentShader: starFragmentShader,
@@ -167,9 +174,6 @@ function createHazardMarkers() {
 function renderStatic() {
     renderer.render(scene, camera);
 }
-
-let currentFrame = 0;
-let isPlaying = false;
 
 function initAnimation() {
     if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
