@@ -262,6 +262,7 @@ class SimulationParameters:
     enable_stellar_motion: bool = (
         False  # Enable gravitational evolution of stellar positions (EXPERIMENTAL)
     )
+    enable_star_formation: bool = True  # Enable continuous star formation during simulation
 
     # Output
     save_snapshots: bool = True

@@ -456,11 +456,15 @@ class GalaxySimulation:
             config=self.config.astrophysics,
             rng=self.rng,
             simulation_duration_myr=simulation_duration_myr,
+            enable_star_formation=self.config.simulation.enable_star_formation,
+            galaxy_scale_radius_kpc=self.config.galaxy.scale_length_kpc,
         )
         disaster_stats = self.disaster_scheduler.get_statistics()
         print(f"  Scheduled disasters: {disaster_stats['total_scheduled']} "
               f"(SN: {disaster_stats['supernovae']}, GRB: {disaster_stats['grbs']}, "
               f"NS mergers: {disaster_stats['ns_mergers']})")
+        if disaster_stats['scheduled_star_births'] > 0:
+            print(f"  Scheduled star births: {disaster_stats['scheduled_star_births']}")
 
         n_stars = self.config.galaxy.total_stars
         self.recovery_queue = RecoveryQueue(n_stars)
@@ -532,12 +536,19 @@ class GalaxySimulation:
         # Store for methods that need it
         self._current_dt_myr = dt_myr
 
+        # Evolve stellar ages
+        dt_gyr = dt_myr / 1000.0
+        self.galaxy.ages += dt_gyr
+
         # Evolve galaxy (stellar motion)
         self.galaxy.evolve_positions(
             dt_myr,
             use_numba=self.config.simulation.use_numba,
             enable_motion=self.config.simulation.enable_stellar_motion,
         )
+
+        # Continuous star formation (new massive stars)
+        self._process_star_formation(dt_myr)
 
         # Check for new civilization emergence
         self._check_civilization_emergence()
@@ -1839,6 +1850,102 @@ class GalaxySimulation:
         probe.target_star_idx = new_target_idx
         probe.arrival_time_myr = self.current_time_myr + travel_time_myr
         # Note: launch_time_myr stays the same (original launch), but arrival time updated
+
+    def _process_star_formation(self, dt_myr: float) -> None:
+        """
+        Process pre-scheduled star births from UnifiedDisasterScheduler.
+        
+        Star births are scheduled at initialization for the entire simulation,
+        so this method only retrieves and processes births in the current window.
+        No per-timestep RNG calls - all randomness is resolved at init.
+        """
+        if not hasattr(self, 'disaster_scheduler') or self.disaster_scheduler is None:
+            return
+        
+        if not self.config.simulation.enable_star_formation:
+            return
+        
+        start_time = self.current_time_myr - dt_myr
+        star_births = self.disaster_scheduler.get_star_births_in_window(
+            start_myr=start_time,
+            end_myr=self.current_time_myr
+        )
+        
+        if not star_births:
+            return
+        
+        for birth in star_births:
+            t_ms_gyr = 10.0 * birth.mass ** (-2.5)
+            time_until_sn_myr = t_ms_gyr * 1000.0
+            sn_time_myr = birth.time_myr + time_until_sn_myr
+            
+            if sn_time_myr > self.config.simulation.simulation_duration_gyr * 1000:
+                continue
+            
+            self._schedule_new_stellar_death(
+                position=birth.position,
+                mass=birth.mass,
+                metallicity=birth.metallicity,
+                sn_time_myr=sn_time_myr,
+            )
+
+    def _schedule_new_stellar_death(
+        self,
+        position: np.ndarray,
+        mass: float,
+        metallicity: float,
+        sn_time_myr: float,
+    ) -> None:
+        """Add a newly formed massive star to the disaster schedule."""
+        from .disasters import ScheduledDisaster, DisasterType
+        import heapq
+        
+        scheduler = self.disaster_scheduler
+        
+        sn_disaster = ScheduledDisaster(
+            time_myr=sn_time_myr,
+            disaster_type=DisasterType.SUPERNOVA,
+            star_idx=-1,
+            position=position.copy(),
+            energy_ergs=1e51,
+            lethal_radius_pc=self.config.astrophysics.sn_lethal_range_pc,
+            sterilization_radius_pc=self.config.astrophysics.sn_sterilization_range_pc,
+        )
+        
+        sn_idx = len(scheduler.scheduled_disasters)
+        scheduler.scheduled_disasters.append(sn_disaster)
+        heapq.heappush(scheduler.disaster_by_time, (sn_time_myr, sn_idx))
+        
+        if mass > self.config.astrophysics.grb_min_progenitor_mass:
+            grb_base_fraction = self.config.astrophysics.grb_fraction_of_sne
+            z_modifier = np.clip(10.0 ** (-0.8 * metallicity), 0.1, 10.0)
+            mass_modifier = np.clip((mass / 20.0) ** 0.5, 1.0, 2.0)
+            p_grb = np.clip(grb_base_fraction * z_modifier * mass_modifier, 0.0, 1.0)
+            
+            if self.rng.uniform(0, 1) < p_grb:
+                jet_theta = np.arccos(2 * self.rng.uniform(0, 1) - 1)
+                jet_phi = self.rng.uniform(0, 2 * np.pi)
+                
+                grb_disaster = ScheduledDisaster(
+                    time_myr=sn_time_myr,
+                    disaster_type=DisasterType.GRB,
+                    star_idx=-1,
+                    position=position.copy(),
+                    energy_ergs=1e54,
+                    lethal_radius_pc=self.config.astrophysics.grb_lethal_range_kpc * 1000.0,
+                    sterilization_radius_pc=self.config.astrophysics.grb_lethal_range_kpc * 1000.0,
+                    grb_jet_theta=jet_theta,
+                    grb_jet_phi=jet_phi,
+                    grb_beaming_angle_deg=self.config.astrophysics.grb_beaming_angle_deg,
+                )
+                
+                grb_idx = len(scheduler.scheduled_disasters)
+                scheduler.scheduled_disasters.append(grb_disaster)
+                heapq.heappush(scheduler.disaster_by_time, (sn_time_myr, grb_idx))
+        
+        if mass > 8.0 and mass < 25.0:
+            scheduler.ns_remnant_indices.append(-1)
+            scheduler.ns_formation_times.append(sn_time_myr)
 
     def _apply_hazards(self) -> None:
         """

@@ -18,6 +18,7 @@ class TestUnifiedDisasterScheduler:
         self.masses = self.rng.exponential(1.0, self.n_stars)
         self.masses[:50] = self.rng.uniform(10, 30, 50)
         self.ages_gyr = self.rng.uniform(0, 13, self.n_stars)
+        self.ages_gyr[:50] = self.rng.uniform(0, 0.01, 50)
         self.metallicities = self.rng.uniform(-1.0, 0.5, self.n_stars)
         
         self.config = AstrophysicsParameters()
@@ -223,6 +224,138 @@ class TestUnifiedDisasterScheduler:
         assert stats['total_scheduled'] == (
             stats['supernovae'] + stats['grbs'] + stats['ns_mergers']
         )
+
+
+class TestStarBirthScheduling:
+    """Test pre-scheduled star formation."""
+
+    def test_star_birth_scheduling_disabled(self):
+        """Test star birth scheduling can be disabled."""
+        from great_silence.simulation.disasters import UnifiedDisasterScheduler
+        from great_silence.config.parameters import AstrophysicsParameters
+        
+        rng = np.random.default_rng(42)
+        n_stars = 1000
+        positions = rng.uniform(-15, 15, (n_stars, 3))
+        masses = rng.exponential(1.0, n_stars)
+        ages_gyr = rng.uniform(0, 13, n_stars)
+        metallicities = rng.uniform(-1.0, 0.5, n_stars)
+        config = AstrophysicsParameters()
+        
+        scheduler = UnifiedDisasterScheduler(
+            positions=positions,
+            masses=masses,
+            ages_gyr=ages_gyr,
+            metallicities=metallicities,
+            config=config,
+            rng=rng,
+            simulation_duration_myr=5000.0,
+            enable_star_formation=False,
+        )
+        
+        stats = scheduler.get_statistics()
+        assert stats['scheduled_star_births'] == 0
+        assert stats['pending_star_births'] == 0
+
+    def test_star_birth_scheduling_scales_with_galaxy_size(self):
+        """Test star birth rate scales with galaxy size."""
+        from great_silence.simulation.disasters import UnifiedDisasterScheduler
+        from great_silence.config.parameters import AstrophysicsParameters
+        
+        config = AstrophysicsParameters()
+        
+        n_stars_large = 5_000_000
+        rng = np.random.default_rng(42)
+        positions = rng.uniform(-15, 15, (1000, 3))
+        masses = rng.exponential(1.0, 1000)
+        ages_gyr = rng.uniform(0, 13, 1000)
+        metallicities = rng.uniform(-1.0, 0.5, 1000)
+        
+        class LargeConfig:
+            pass
+        large_config = LargeConfig()
+        for attr in dir(config):
+            if not attr.startswith('_'):
+                setattr(large_config, attr, getattr(config, attr))
+        
+        scheduler_large = UnifiedDisasterScheduler(
+            positions=np.tile(positions, (n_stars_large // 1000, 1)),
+            masses=np.tile(masses, n_stars_large // 1000),
+            ages_gyr=np.tile(ages_gyr, n_stars_large // 1000),
+            metallicities=np.tile(metallicities, n_stars_large // 1000),
+            config=config,
+            rng=np.random.default_rng(42),
+            simulation_duration_myr=5000.0,
+            enable_star_formation=True,
+        )
+        
+        stats = scheduler_large.get_statistics()
+        expected_rate = 300 * (n_stars_large / 4e11) * 5000
+        actual = stats['scheduled_star_births']
+        assert actual > 0
+        assert 0.5 * expected_rate < actual < 2.0 * expected_rate
+
+    def test_star_birth_window_retrieval(self):
+        """Test star births are correctly retrieved in time windows."""
+        from great_silence.simulation.disasters import UnifiedDisasterScheduler
+        from great_silence.config.parameters import AstrophysicsParameters
+        
+        n_stars = 5_000_000
+        rng = np.random.default_rng(42)
+        positions = rng.uniform(-15, 15, (1000, 3))
+        masses = rng.exponential(1.0, 1000)
+        ages_gyr = rng.uniform(0, 13, 1000)
+        metallicities = rng.uniform(-1.0, 0.5, 1000)
+        config = AstrophysicsParameters()
+        
+        scheduler = UnifiedDisasterScheduler(
+            positions=np.tile(positions, (n_stars // 1000, 1)),
+            masses=np.tile(masses, n_stars // 1000),
+            ages_gyr=np.tile(ages_gyr, n_stars // 1000),
+            metallicities=np.tile(metallicities, n_stars // 1000),
+            config=config,
+            rng=rng,
+            simulation_duration_myr=5000.0,
+            enable_star_formation=True,
+        )
+        
+        births = scheduler.get_star_births_in_window(0, 1000)
+        
+        for b in births:
+            assert 0 <= b.time_myr <= 1000
+            assert b.mass > 8.0
+            assert len(b.position) == 3
+
+    def test_star_birth_properties_physical(self):
+        """Test scheduled star births have physical properties."""
+        from great_silence.simulation.disasters import UnifiedDisasterScheduler, ScheduledStarBirth
+        from great_silence.config.parameters import AstrophysicsParameters
+        
+        n_stars = 5_000_000
+        rng = np.random.default_rng(42)
+        positions = rng.uniform(-15, 15, (1000, 3))
+        masses = rng.exponential(1.0, 1000)
+        ages_gyr = rng.uniform(0, 13, 1000)
+        metallicities = rng.uniform(-1.0, 0.5, 1000)
+        config = AstrophysicsParameters()
+        
+        scheduler = UnifiedDisasterScheduler(
+            positions=np.tile(positions, (n_stars // 1000, 1)),
+            masses=np.tile(masses, n_stars // 1000),
+            ages_gyr=np.tile(ages_gyr, n_stars // 1000),
+            metallicities=np.tile(metallicities, n_stars // 1000),
+            config=config,
+            rng=rng,
+            simulation_duration_myr=5000.0,
+            enable_star_formation=True,
+        )
+        
+        for birth in scheduler.scheduled_star_births:
+            assert 8.0 <= birth.mass <= 100.0
+            r = np.sqrt(birth.position[0]**2 + birth.position[1]**2)
+            assert 3.9 <= r <= 15.1
+            assert abs(birth.position[2]) < 2.0
+            assert -1.0 < birth.metallicity < 1.0
 
 
 class TestDisasterEffectKernels:

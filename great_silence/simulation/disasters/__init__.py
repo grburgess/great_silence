@@ -23,6 +23,7 @@ from .unified_scheduler import (
     UnifiedDisasterScheduler,
     DisasterType,
     ScheduledDisaster,
+    ScheduledStarBirth,
 )
 
 __all__ = [
@@ -42,4 +43,5 @@ __all__ = [
     "UnifiedDisasterScheduler",
     "DisasterType",
     "ScheduledDisaster",
+    "ScheduledStarBirth",
 ]

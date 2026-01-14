@@ -24,6 +24,15 @@ class DisasterType(IntEnum):
 
 
 @dataclass
+class ScheduledStarBirth:
+    """A pre-scheduled star birth event."""
+    time_myr: float
+    position: np.ndarray
+    mass: float
+    metallicity: float
+
+
+@dataclass
 class ScheduledDisaster:
     """A pre-scheduled disaster event."""
     time_myr: float
@@ -120,6 +129,8 @@ class UnifiedDisasterScheduler:
         config,
         rng: np.random.Generator,
         simulation_duration_myr: float,
+        enable_star_formation: bool = True,
+        galaxy_scale_radius_kpc: float = 3.0,
     ):
         """
         Initialize unified disaster scheduler.
@@ -132,6 +143,8 @@ class UnifiedDisasterScheduler:
             config: AstrophysicsParameters
             rng: Random number generator
             simulation_duration_myr: Total simulation duration
+            enable_star_formation: If True, schedule continuous star births
+            galaxy_scale_radius_kpc: Galaxy scale radius for star formation
         """
         self.positions = positions
         self.masses = masses
@@ -140,6 +153,8 @@ class UnifiedDisasterScheduler:
         self.config = config
         self.rng = rng
         self.simulation_duration_myr = simulation_duration_myr
+        self.enable_star_formation = enable_star_formation
+        self.galaxy_scale_radius_kpc = galaxy_scale_radius_kpc
         
         self.n_stars = len(masses)
         
@@ -156,15 +171,22 @@ class UnifiedDisasterScheduler:
         self.ns_remnant_indices: List[int] = []
         self.ns_formation_times: List[float] = []
         
+        self.scheduled_star_births: List[ScheduledStarBirth] = []
+        self.star_birth_heap: List[Tuple[float, int]] = []
+        
         self._build_schedules()
 
     def _build_schedules(self):
-        """Build all disaster schedules from stellar population."""
+        """Build all disaster and star birth schedules from stellar population."""
         self._schedule_supernovae()
         self._schedule_grbs()
         self._schedule_ns_mergers()
         
+        if self.enable_star_formation:
+            self._schedule_star_births()
+        
         heapq.heapify(self.disaster_by_time)
+        heapq.heapify(self.star_birth_heap)
 
     def _schedule_supernovae(self):
         """Schedule all supernovae from massive stars."""
@@ -344,6 +366,121 @@ class UnifiedDisasterScheduler:
             heapq.heappush(self.ns_merger_heap, (merger_time, ns1_idx, ns2_idx))
             heapq.heappush(self.disaster_by_time, (merger_time, merger_idx))
 
+    def _schedule_star_births(self):
+        """
+        Pre-schedule massive star births for entire simulation.
+        
+        Uses Milky Way massive star formation rate (~300/Myr for M > 8 Msun)
+        scaled by simulated galaxy size. Births are Poisson-distributed.
+        """
+        milky_way_rate_per_myr = 300.0
+        galactic_scale = self.n_stars / 4e11
+        scaled_rate = milky_way_rate_per_myr * galactic_scale
+        
+        if scaled_rate <= 0:
+            return
+        
+        expected_births = scaled_rate * self.simulation_duration_myr
+        
+        if expected_births < 0.01:
+            return
+        
+        n_births = self.rng.poisson(expected_births)
+        
+        if n_births == 0:
+            return
+        
+        birth_times = self.rng.uniform(0, self.simulation_duration_myr, n_births)
+        birth_times.sort()
+        
+        scale_r = self.galaxy_scale_radius_kpc
+        for birth_time in birth_times:
+            u = self.rng.uniform(0.3, 0.95)
+            r = scale_r * np.sqrt(u / (1 - u))
+            r = np.clip(r, 4.0, 15.0)
+            
+            theta = self.rng.uniform(0, 2 * np.pi)
+            z = self.rng.normal(0, 0.1)
+            
+            position = np.array([r * np.cos(theta), r * np.sin(theta), z])
+            
+            u_mass = self.rng.uniform()
+            alpha = -2.3
+            m_min, m_max = 8.0, 100.0
+            mass = (
+                m_min ** (alpha + 1)
+                + u_mass * (m_max ** (alpha + 1) - m_min ** (alpha + 1))
+            ) ** (1 / (alpha + 1))
+            
+            metallicity = self.rng.normal(-0.2, 0.2)
+            
+            star_birth = ScheduledStarBirth(
+                time_myr=birth_time,
+                position=position,
+                mass=mass,
+                metallicity=metallicity,
+            )
+            
+            birth_idx = len(self.scheduled_star_births)
+            self.scheduled_star_births.append(star_birth)
+            self.star_birth_heap.append((birth_time, birth_idx))
+
+    def get_star_births_in_window(
+        self, start_myr: float, end_myr: float
+    ) -> List[ScheduledStarBirth]:
+        """
+        Get all star births occurring in time window.
+        
+        Args:
+            start_myr: Window start (Myr)
+            end_myr: Window end (Myr)
+            
+        Returns:
+            List of ScheduledStarBirth events
+        """
+        result = []
+        
+        while self.star_birth_heap and self.star_birth_heap[0][0] <= end_myr:
+            birth_time, birth_idx = self.star_birth_heap[0]
+            
+            if birth_time >= start_myr:
+                heapq.heappop(self.star_birth_heap)
+                result.append(self.scheduled_star_births[birth_idx])
+            else:
+                heapq.heappop(self.star_birth_heap)
+        
+        return result
+
+    def peek_next_star_birth_time(self) -> Optional[float]:
+        """
+        Get time of next scheduled star birth without consuming it.
+        
+        Returns:
+            Time in Myr, or None if no more star births
+        """
+        if self.star_birth_heap:
+            return self.star_birth_heap[0][0]
+        return None
+
+    def peek_next_event_time(self) -> Optional[float]:
+        """
+        Get time of next event (disaster or star birth), whichever is first.
+        
+        Returns:
+            Time in Myr, or None if no more events
+        """
+        next_disaster = self.peek_next_disaster_time()
+        next_birth = self.peek_next_star_birth_time()
+        
+        if next_disaster is None and next_birth is None:
+            return None
+        elif next_disaster is None:
+            return next_birth
+        elif next_birth is None:
+            return next_disaster
+        else:
+            return min(next_disaster, next_birth)
+
     def get_disasters_in_window(
         self, start_myr: float, end_myr: float
     ) -> List[ScheduledDisaster]:
@@ -394,7 +531,7 @@ class UnifiedDisasterScheduler:
         return None
 
     def get_statistics(self) -> dict:
-        """Get disaster schedule statistics."""
+        """Get disaster and star birth schedule statistics."""
         sn_count = len([d for d in self.scheduled_disasters 
                        if d.disaster_type == DisasterType.SUPERNOVA])
         grb_count = len([d for d in self.scheduled_disasters 
@@ -409,6 +546,8 @@ class UnifiedDisasterScheduler:
             'ns_mergers': merger_count,
             'pending_events': len(self.disaster_by_time),
             'ns_remnants_formed': len(self.ns_remnant_indices),
+            'scheduled_star_births': len(self.scheduled_star_births),
+            'pending_star_births': len(self.star_birth_heap),
         }
 
     @property

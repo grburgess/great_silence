@@ -248,6 +248,22 @@ python -c "from great_silence import SimulationConfig; c = SimulationConfig(); p
 - Tests in `tests/test_unified_disaster_scheduler.py` (22 tests)
 - Run: `mamba run -n galaticbot python -m pytest tests/test_unified_disaster_scheduler.py -v`
 
+### Jan 2026 - Stellar Evolution and Continuous Star Formation
+- **Stellar Aging**: Stars now age during simulation (`ages += dt_gyr` each timestep)
+- **Pre-Scheduled Star Formation**: All star births computed at initialization
+  - Uses `ScheduledStarBirth` dataclass in `unified_scheduler.py`
+  - Star birth heap with O(log N) retrieval via `get_star_births_in_window()`
+  - Milky Way rate: ~300 massive stars/Myr
+  - Scaled by `n_stars / 4e11` to match simulated galaxy size
+  - For 50k stars: ~0.2 new massive stars over 5 Gyr (correct scaling!)
+  - New stars placed in outer disk (r=4-15 kpc) star-forming regions
+  - Positions use exponential disk profile scaled by `galaxy_scale_radius_kpc`
+  - New stars trigger disasters via `_schedule_new_stellar_death()`
+- **No per-timestep RNG**: All birth times/positions/masses determined at init
+- Config: `enable_star_formation: bool = True` in SimulationParameters
+- IMF sampling: Kroupa power-law (M > 8 Msun) with α=-2.3
+- Tests in `tests/test_unified_disaster_scheduler.py::TestStarBirthScheduling`
+
 ### Jan 2026 - Enhanced Disaster Visualization
 - Updated `visualization/threejs/templates/layers.js.j2` with comprehensive disaster viz:
   - **Toggle: History Mode** - Show all past disasters vs current only
