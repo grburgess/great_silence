@@ -219,7 +219,7 @@ class ThreeJSRenderer:
             template = env.get_template(template_file.name)
             js_content = template.render(**template_data)
             
-            js_filename = template_file.stem + ".js"
+            js_filename = template_file.stem.replace('.js', '') + '.js'
             js_filepath = filepath.parent / js_filename
             
             with open(js_filepath, "w") as jf:

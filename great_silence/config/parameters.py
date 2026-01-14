@@ -174,6 +174,42 @@ class CivilizationParameters:
     colonial_war_kardashev_threshold: float = 1.5  # Minimum K-scale for colonial war (Type II civs)
     colonial_war_amplitude: float = 0.05  # Base hazard rate amplitude for colonial war (per Myr)
 
+    # Personality system
+    personality_assignment_model: str = "kardashev_dependent"
+    personality_fixed_friendliness: float = 0.5
+    personality_evolution_enabled: bool = True
+    personality_evolution_rate: float = 0.1
+
+    # Encounter mechanics
+    first_contact_detection_range_pc: float = 100.0
+    encounter_scan_interval_myr: float = 100.0
+    sensor_range_pc: float = 50.0
+
+    # War mechanics
+    war_outcome_model: str = "winner_takes_territory"
+    war_duration_max_myr: float = 10.0
+    war_stalemate_probability: float = 0.1
+    tech_advantage_sensitivity: float = 0.3
+    fleet_velocity_multiplier: float = 0.01  # Fraction of c for fleet movement
+    battle_resolution_interval_myr: float = 0.5
+
+    # Reputation system
+    reputation_enabled: bool = True
+    reputation_weight_in_war_decision: float = 0.3
+    reputation_propagation_enabled: bool = True
+    reputation_decay_rate: float = 0.01
+
+    # Alliance system
+    alliance_formation_enabled: bool = True
+    alliance_propagation_enabled: bool = True
+    alliance_light_cone_constraint: bool = True
+
+    # Strategic resources
+    resource_generation_rate: float = 10.0
+    war_resource_cost_myr: float = 5.0
+    vassalization_enabled: bool = True
+    tribute_rate_default: float = 0.2
+
 
 @dataclass
 class SimulationParameters:

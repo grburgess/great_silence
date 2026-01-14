@@ -28,6 +28,26 @@ from ..civilization.probe_design import (
     min_metallicity_for_replication,
     C_PC_YR
 )
+from ..civilization.war import (
+    FleetState,
+    WarState,
+    BattleEvent,
+    CommunicationEvent,
+    VassalState,
+    calculate_fleet_strength,
+    calculate_colony_strength,
+    resolve_battle,
+    calculate_light_cone_arrival,
+    is_communication_possible,
+    check_alliance_cascade_light_cone
+)
+from ..civilization.personality import (
+    PersonalityState,
+    sample_personality,
+    evolve_personality,
+    get_colony_personality_modifier
+)
+from ..utils.civ_spatial_index import CivilizationSpatialIndex
 
 
 @dataclass
@@ -54,6 +74,19 @@ class ProbeState:
     has_arrived: bool = False
     has_replicated: bool = False
     replication_complete_time_myr: Optional[float] = None
+
+
+@dataclass
+class EncounterEvent:
+    """Record of a civilization encounter event."""
+
+    time_myr: float
+    civ_1_id: int
+    civ_2_id: int
+    encounter_type: str  # "probe_arrival", "shared_colony", "sensor_detection"
+    outcome: str  # "peace", "war_started", "alliance_formed", "vassalization"
+    resolution_details: str
+    is_within_light_cone: bool
 
 
 @dataclass
@@ -88,6 +121,40 @@ class CivilizationState:
     # Probe tracking
     active_probes: List['ProbeState'] = field(default_factory=list)
     archived_probes: List['ProbeState'] = field(default_factory=list)  # Completed probes
+
+    # Personality and AI behavior
+    personality_type: str = "defensive"
+    friendliness: float = 0.5
+    aggression_factor: float = 0.5
+    war_trauma: float = 0.0
+    victory_confidence: float = 0.5
+
+    # Inter-civilization relations
+    known_civilizations: Set[int] = field(default_factory=set)
+    reputation: Dict[int, float] = field(default_factory=dict)  # civ_id -> reputation [-1.0, 1.0]
+    allies: Set[int] = field(default_factory=set)
+    enemies: Set[int] = field(default_factory=set)
+    vassals: Dict[int, VassalState] = field(default_factory=dict)
+    overlord: Optional[int] = None
+
+    # War state
+    war_state: Optional[WarState] = None
+    battles_fought: int = 0
+    wars_won: int = 0
+    wars_lost: int = 0
+
+    # Military fleet tracking
+    active_fleets: List[FleetState] = field(default_factory=list)
+    archived_fleets: List[FleetState] = field(default_factory=list)
+    next_fleet_id: int = 0
+
+    # Colony strength tracking
+    colony_strengths: Dict[int, float] = field(default_factory=dict)  # star_idx -> strength
+
+    # Strategic resources
+    strategic_resource_stockpile: float = 100.0
+    resource_debt: float = 0.0
+    war_exhaustion: float = 0.0
 
 
 @dataclass
@@ -261,6 +328,9 @@ class GalaxySimulation:
         # History tracking
         self.snapshots: List[SimulationSnapshot] = []
         self.hazard_events: List[HazardEvent] = []
+        self.encounter_events: List[EncounterEvent] = []
+        self.communication_events: List[CommunicationEvent] = []
+        self.battle_events: List[BattleEvent] = []
         self._last_snapshot_time_myr: Optional[float] = None
 
         # Habitable star indices (cached)
@@ -268,6 +338,9 @@ class GalaxySimulation:
 
         # Colonized stars tracking (for performance)
         self._colonized_mask: Optional[np.ndarray] = None
+
+        # Spatial index for civilization territories (O(log N) overlap detection)
+        self.civ_spatial_index: Optional[CivilizationSpatialIndex] = None
 
         # Disaster tracking modules (initialized in initialize())
         self.supernova_scheduler: Optional[Any] = None
@@ -330,6 +403,9 @@ class GalaxySimulation:
 
         # Initialize colonized mask
         self._colonized_mask = np.zeros(self.config.galaxy.total_stars, dtype=bool)
+
+        # Initialize civilization spatial index for efficient overlap detection
+        self.civ_spatial_index = CivilizationSpatialIndex(self.galaxy.positions)
 
         # Build spatial index for efficient hazard and expansion queries
         if self.config.simulation.use_numba:
@@ -727,13 +803,35 @@ class GalaxySimulation:
                 civ_id=self.next_civ_id,
                 birth_time_myr=self.current_time_myr,
                 parent_star_idx=star_idx_int,
-                colonized_stars={star_idx_int},  # PRIORITY 1B: Set instead of list
-                colony_arrival_times={star_idx_int: self.current_time_myr},  # Home world "arrived" at birth
+                colonized_stars={star_idx_int},
+                colony_arrival_times={star_idx_int: self.current_time_myr},
                 kardashev_scale=initial_kardashev,
                 kardashev_advancement_rate=advancement_rate
             )
+
+            personality = sample_personality(
+                initial_kardashev,
+                self.rng,
+                self.config.civilization.personality_assignment_model
+            )
+            new_civ.personality_type = personality.personality_type
+            new_civ.friendliness = personality.friendliness
+            new_civ.aggression_factor = personality.aggression_factor
+            new_civ.war_trauma = personality.war_trauma
+            new_civ.victory_confidence = personality.victory_confidence
+
+            new_civ.colony_strengths[star_idx_int] = 1.0
+            if self.civ_spatial_index is not None:
+                self.civ_spatial_index.add_colony(
+                    civ_id=new_civ.civ_id,
+                    star_idx=star_idx_int,
+                    strength=1.0,
+                    arrival_time_myr=self.current_time_myr,
+                    is_home_world=True
+                )
+
             self.civilizations.append(new_civ)
-            self._colonized_mask[star_idx_int] = True  # Mark as colonized
+            self._colonized_mask[star_idx_int] = True
             self.next_civ_id += 1
 
     def _get_mature_colonies(self, civ: CivilizationState) -> int:

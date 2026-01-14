@@ -6,9 +6,11 @@ let civGeometry, civMaterial, civSprites;
 let probeGeometry, probeMaterial, probeLines;
 let hazardGeometry, hazardMaterial, hazardMeshes;
 
-const clock = new THREE.Clock();
+let clock;
 
 function initScene() {
+    clock = new THREE.Clock();
+    
     const container = document.getElementById('canvas-container');
 
     scene = new THREE.Scene();
