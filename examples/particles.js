@@ -5,12 +5,17 @@ function initParticles() {
 }
 
 function updateParticles() {
-    if (!starPoints) return;
+    if (!starPoints || !starGeometry) return;
 
-    starGeometry.attributes.position.needsUpdate = true;
-    starGeometry.attributes.color.needsUpdate = true;
-    starGeometry.attributes.size.needsUpdate = true;
-    starGeometry.attributes.brightness.needsUpdate = true;
+    if (starGeometry.attributes.position) {
+        starGeometry.attributes.position.needsUpdate = true;
+    }
+    if (starGeometry.attributes.color) {
+        starGeometry.attributes.color.needsUpdate = true;
+    }
+    if (starGeometry.attributes.size) {
+        starGeometry.attributes.size.needsUpdate = true;
+    }
 }
 
 function createCivilizationSprite(civData) {

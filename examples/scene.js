@@ -73,13 +73,15 @@ function createStarField() {
 
     const positions = window.galaxyData.positions;
     const colors = window.galaxyData.colors || [];
+    const sizes = window.galaxyData.sizes || [];
     const count = positions.length;
 
     starGeometry = new THREE.BufferGeometry();
     const positionArray = new Float32Array(count * 3);
     const colorArray = new Float32Array(count * 3);
     const sizeArray = new Float32Array(count);
-    const brightnessArray = new Float32Array(count);
+
+    const baseSize = window.config.star_point_size || 0.05;
 
     for (let i = 0; i < count; i++) {
         positionArray[i * 3] = positions[i][0];
@@ -92,55 +94,92 @@ function createStarField() {
             colorArray[i * 3 + 2] = colors[i][2];
         } else {
             colorArray[i * 3] = 1.0;
-            colorArray[i * 3 + 1] = 1.0;
-            colorArray[i * 3 + 2] = 1.0;
+            colorArray[i * 3 + 1] = 0.95;
+            colorArray[i * 3 + 2] = 0.9;
         }
 
-        sizeArray[i] = window.config.star_point_size || 0.05;
-        brightnessArray[i] = 0.5 + Math.random() * 0.5;
+        sizeArray[i] = sizes.length > 0 ? sizes[i] : baseSize;
     }
 
     starGeometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
     starGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
     starGeometry.setAttribute('size', new THREE.BufferAttribute(sizeArray, 1));
-    starGeometry.setAttribute('brightness', new THREE.BufferAttribute(brightnessArray, 1));
 
     const starVertexShader = `
         attribute float size;
-        attribute float brightness;
-        varying float vBrightness;
+        attribute vec3 color;
+        varying vec3 vColor;
+        varying float vDistance;
         void main() {
-            vBrightness = brightness;
+            vColor = color;
             vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-            gl_PointSize = size * (300.0 / -mvPosition.z);
+            vDistance = -mvPosition.z;
+            
+            // Size scales with distance, larger when closer
+            float scaledSize = size * (400.0 / max(vDistance, 0.1));
+            // Minimum size when far away to prevent disappearing
+            gl_PointSize = max(scaledSize, 1.5);
+            
             gl_Position = projectionMatrix * mvPosition;
         }
     `;
     
-    const starOpacity = window.config.star_opacity || 0.8;
+    const starOpacity = window.config.star_opacity || 0.85;
     
     const starFragmentShader = `
-        uniform vec3 color;
         uniform float opacity;
-        varying float vBrightness;
+        uniform float farDistance;
+        varying vec3 vColor;
+        varying float vDistance;
+        
         void main() {
             vec2 coord = gl_PointCoord - vec2(0.5);
             float dist = length(coord);
-            if (dist > 0.5) discard;
-            float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
-            gl_FragColor = vec4(color * vBrightness, alpha * opacity);
+            
+            // Distance-based blur: stars get softer/blurrier when zoomed out
+            float blurFactor = clamp(vDistance / farDistance, 0.0, 1.0);
+            
+            // Core radius shrinks, glow expands with distance
+            float coreRadius = mix(0.15, 0.05, blurFactor);
+            float glowRadius = mix(0.35, 0.5, blurFactor);
+            
+            // Sharp core
+            float core = 1.0 - smoothstep(0.0, coreRadius, dist);
+            
+            // Soft glow halo
+            float glow = 1.0 - smoothstep(coreRadius, glowRadius, dist);
+            glow = glow * glow; // Quadratic falloff for softer look
+            
+            // Outer blur (very soft)
+            float outerGlow = 1.0 - smoothstep(glowRadius, 0.5, dist);
+            outerGlow = outerGlow * 0.3 * blurFactor;
+            
+            // Combine: bright core + glow + outer blur
+            float intensity = core + glow * 0.6 + outerGlow;
+            intensity = clamp(intensity, 0.0, 1.0);
+            
+            if (intensity < 0.01) discard;
+            
+            // Color with slight boost for bright stars
+            vec3 finalColor = vColor * (0.8 + intensity * 0.4);
+            
+            // Alpha based on intensity and overall opacity
+            float alpha = intensity * opacity;
+            
+            gl_FragColor = vec4(finalColor, alpha);
         }
     `;
 
     starMaterial = new THREE.ShaderMaterial({
         uniforms: {
-            color: { value: new THREE.Color(1.0, 1.0, 1.0) },
-            opacity: { value: starOpacity }
+            opacity: { value: starOpacity },
+            farDistance: { value: 50.0 }
         },
         vertexShader: starVertexShader,
         fragmentShader: starFragmentShader,
         transparent: true,
-        blending: THREE.AdditiveBlending
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
     });
 
     starPoints = new THREE.Points(starGeometry, starMaterial);

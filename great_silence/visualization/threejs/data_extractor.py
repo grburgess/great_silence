@@ -198,6 +198,9 @@ class SimulationDataExtractor:
             self.simulation_data["galaxy_positions"] = (
                 self.source.galaxy.positions.copy()
             )
+            
+            if hasattr(self.source.galaxy, "masses") and self.source.galaxy.masses is not None:
+                self.simulation_data["galaxy_masses"] = self.source.galaxy.masses.copy()
 
         if hasattr(self.source, "snapshots"):
             self.snapshots = [
@@ -216,32 +219,42 @@ class SimulationDataExtractor:
     def extract_galaxy_data(
         self, subsample: int = 10000, seed: int = 42
     ) -> dict:
-        """Extract star positions for visualization.
+        """Extract star positions, colors, and sizes for visualization.
 
         Args:
             subsample: Number of stars to render
             seed: Random seed for subsampling
 
         Returns:
-            Dict with positions and colors (as lists for JSON serialization)
+            Dict with positions, colors, and sizes (as lists for JSON serialization)
         """
+        from great_silence.astrophysics.stellar_evolution import StellarEvolution
+        
         positions = self.simulation_data.get("galaxy_positions", np.array([]))
-
+        masses = self.simulation_data.get("galaxy_masses", np.array([]))
+        
+        indices = None
         if len(positions) > subsample:
             rng = np.random.default_rng(seed)
-            indices = rng.choice(
-                len(positions), subsample, replace=False
-            )
+            indices = rng.choice(len(positions), subsample, replace=False)
             positions = positions[indices]
+            if len(masses) > 0:
+                masses = masses[indices]
 
-        colors = self.simulation_data.get("galaxy_colors", np.array([]))
-        if len(colors) > 0 and len(colors) != len(positions):
-            rng = np.random.default_rng(seed)
-            colors = np.random.rand(len(positions), 3)
+        if len(masses) > 0 and len(masses) == len(positions):
+            colors = StellarEvolution.mass_to_color(masses)
+            sizes = StellarEvolution.mass_to_apparent_size(masses, base_size=0.03)
+        else:
+            colors = self.simulation_data.get("galaxy_colors", np.array([]))
+            if len(colors) == 0 or len(colors) != len(positions):
+                rng = np.random.default_rng(seed)
+                colors = np.ones((len(positions), 3)) * 0.9
+            sizes = np.ones(len(positions)) * 0.03
 
         return {
             "positions": positions.tolist() if len(positions) > 0 else [],
             "colors": colors.tolist() if len(colors) > 0 else [],
+            "sizes": sizes.tolist() if len(sizes) > 0 else [],
         }
 
     def extract_civilization_data(
