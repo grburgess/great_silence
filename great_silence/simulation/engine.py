@@ -218,6 +218,13 @@ class SimulationSnapshot:
     active_probes_in_flight: List[ProbeSnapshot] = field(default_factory=list)
     total_active_probes: int = 0
     hazard_events: List[HazardEvent] = field(default_factory=list)  # Disasters since last snapshot
+    encounter_events: List[EncounterEvent] = field(
+        default_factory=list
+    )  # Civilization encounters since last snapshot
+    communication_events: List[CommunicationEvent] = field(
+        default_factory=list
+    )  # Inter-civ communications since last snapshot
+    battle_events: List[BattleEvent] = field(default_factory=list)  # Battles since last snapshot
     colony_positions: List[Tuple[int, np.ndarray]] = field(
         default_factory=list
     )  # (civ_id, position)
@@ -2040,6 +2047,51 @@ class GalaxySimulation:
                 else []
             )
 
+        # Collect encounter events since last snapshot
+        encounter_events_since_snapshot = []
+        if hasattr(self, "encounter_events"):
+            encounter_events_since_snapshot = (
+                [
+                    e
+                    for e in self.encounter_events
+                    if e.time_myr > self._last_snapshot_time_myr
+                    if e.time_myr <= self.current_time_myr
+                ]
+                if hasattr(self, "_last_snapshot_time_myr")
+                and self._last_snapshot_time_myr is not None
+                else []
+            )
+
+        # Collect communication events since last snapshot
+        communication_events_since_snapshot = []
+        if hasattr(self, "communication_events"):
+            communication_events_since_snapshot = (
+                [
+                    c
+                    for c in self.communication_events
+                    if c.time_myr > self._last_snapshot_time_myr
+                    if c.time_myr <= self.current_time_myr
+                ]
+                if hasattr(self, "_last_snapshot_time_myr")
+                and self._last_snapshot_time_myr is not None
+                else []
+            )
+
+        # Collect battle events since last snapshot
+        battle_events_since_snapshot = []
+        if hasattr(self, "battle_events"):
+            battle_events_since_snapshot = (
+                [
+                    b
+                    for b in self.battle_events
+                    if b.time_myr > self._last_snapshot_time_myr
+                    if b.time_myr <= self.current_time_myr
+                ]
+                if hasattr(self, "_last_snapshot_time_myr")
+                and self._last_snapshot_time_myr is not None
+                else []
+            )
+
         # Collect colony positions
         colony_positions = []
         civ_birth_ages = []
@@ -2068,6 +2120,9 @@ class GalaxySimulation:
             active_probes_in_flight=probe_snapshots,
             total_active_probes=len(probe_snapshots),
             hazard_events=hazard_events_since_snapshot,
+            encounter_events=encounter_events_since_snapshot,
+            communication_events=communication_events_since_snapshot,
+            battle_events=battle_events_since_snapshot,
             colony_positions=colony_positions,
             civ_birth_ages=civ_birth_ages,
         )

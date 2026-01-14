@@ -113,7 +113,7 @@ function createStarField() {
             gl_Position = projectionMatrix * mvPosition;
         }
     `;
-
+    
     const starFragmentShader = `
         uniform vec3 color;
         varying float vBrightness;
@@ -122,7 +122,7 @@ function createStarField() {
             float dist = length(coord);
             if (dist > 0.5) discard;
             float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
-            gl_FragColor = vec4(color * vBrightness, alpha * ${window.config.star_opacity || 0.8});
+            gl_FragColor = vec4(color * vBrightness, alpha * window.config.star_opacity);
         }
     `;
 
