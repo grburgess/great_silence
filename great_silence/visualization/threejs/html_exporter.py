@@ -198,37 +198,54 @@ class ThreeJSRenderer:
 
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
-
+        
         if compress:
             import gzip
-
+            
             with gzip.open(str(filepath) + ".gz", "wb") as f:
                 f.write(html.encode("utf-8"))
         else:
             with open(filepath, "w") as f:
                 f.write(html)
+        
+        from jinja2 import Environment, FileSystemLoader
+        import great_silence.visualization.threejs.templates as templates_pkg
+        
+        templates_dir = Path(templates_pkg.__file__).parent
+        env = Environment(loader=FileSystemLoader(templates_dir))
+        js_template_files = templates_dir.glob("*.js.j2")
+        
+        for template_file in js_template_files:
+            template = env.get_template(template_file.name)
+            js_content = template.render(**template_data)
+            
+            js_filename = template_file.stem + ".js"
+            js_filepath = filepath.parent / js_filename
+            
+            with open(js_filepath, "w") as jf:
+                jf.write(js_content)
 
-    def _get_template(self):
+    def _get_template(self, template_name="index.html.j2"):
         """Get Jinja2 template for HTML rendering."""
         try:
             from jinja2 import Environment, FileSystemLoader
-
+            
             if self.template_dir:
                 env = Environment(
                     loader=FileSystemLoader(self.template_dir)
                 )
             else:
                 import great_silence.visualization.threejs.templates as templates_pkg
-
+                
                 templates_dir = Path(
                     templates_pkg.__file__
                 ).parent
                 env = Environment(
                     loader=FileSystemLoader(templates_dir)
                 )
-
-            return env.get_template("index.html.j2")
-
+            
+            return env.get_template(template_name)
+        
         except ImportError:
             return _BasicTemplate()
 
