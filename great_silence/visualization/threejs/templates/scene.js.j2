@@ -141,19 +141,145 @@ function createStarField() {
 }
 
 function createCivilizationSprites() {
-    civSprites = [];
+    if (window.animationData && window.animationData.frames && window.animationData.frames.length > 0) {
+        updateCivilizations(window.animationData.frames[0].civilizations);
+    } else if (window.civData) {
+        updateCivilizations(window.civData);
+    }
 }
 
 function createProbeTrails() {
-    probeLines = [];
+    if (window.animationData && window.animationData.frames && window.animationData.frames.length > 0) {
+        updateProbes(window.animationData.frames[0].probes);
+    } else if (window.probeData) {
+        updateProbes(window.probeData);
+    }
 }
 
 function createHazardMarkers() {
-    hazardMeshes = [];
+    if (window.animationData && window.animationData.frames && window.animationData.frames.length > 0) {
+        updateHazards(window.animationData.frames[0].hazards);
+    } else if (window.hazardData) {
+        updateHazards(window.hazardData);
+    }
 }
 
 function renderStatic() {
     renderer.render(scene, camera);
+}
+
+let currentFrame = 0;
+let isPlaying = false;
+
+function initAnimation() {
+    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
+        return;
+    }
+    
+    // Initialize the timeline slider
+    const maxFrame = window.animationData.frames.length - 1;
+    const timelineSlider = document.getElementById('timeline-slider');
+    timelineSlider.max = maxFrame;
+    timelineSlider.value = 0;
+    
+    // Initialize buttons
+    const playBtn = document.getElementById('btn-playpause');
+    playBtn.textContent = '▶ Play';
+    
+    const stepBtn = document.getElementById('btn-step');
+    
+    // Set up play/pause button
+    playBtn.addEventListener('click', function() {
+        isPlaying = !isPlaying;
+        playBtn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+        
+        if (isPlaying) {
+            playAnimation();
+        }
+    });
+    
+    // Set up step button
+    stepBtn.addEventListener('click', function() {
+        if (!isPlaying) {
+            stepAnimation();
+        }
+    });
+    
+    // Timeline slider
+    timelineSlider.addEventListener('input', function() {
+        currentFrame = parseInt(this.value);
+        updateAnimation(0);  // Update immediately
+    });
+    
+    // Set up reset button
+    document.getElementById('btn-reset').addEventListener('click', function() {
+        currentFrame = 0;
+        timelineSlider.value = 0;
+        updateAnimation(0);
+        isPlaying = false;
+        document.getElementById('btn-playpause').textContent = '▶ Play';
+    });
+}
+
+function playAnimation() {
+    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
+        return;
+    }
+    
+    const speed = parseFloat(document.getElementById('speed-slider').value);
+    
+    function animateStep() {
+        if (isPlaying) {
+            stepAnimation();
+            setTimeout(animateStep, 100 / speed);  // Adjust for speed setting
+        }
+    }
+    
+    animateStep();
+}
+
+function stepAnimation() {
+    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
+        return;
+    }
+    
+    const totalFrames = window.animationData.frames.length;
+    const timelineSlider = document.getElementById('timeline-slider');
+    
+    currentFrame++;
+    if (currentFrame >= totalFrames) {
+        currentFrame = 0;
+    }
+    
+    timelineSlider.value = currentFrame;
+    updateAnimation(0);
+}
+
+function updateAnimation(delta) {
+    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
+        return;
+    }
+    
+    const totalFrames = window.animationData.frames.length;
+    const timeRange = window.animationData.time_range || [0, 1];
+    
+    // Update time display
+    const time = timeRange[0] + (timeRange[1] - timeRange[0]) * currentFrame / (totalFrames - 1);
+    document.getElementById('time-display').textContent = time.toFixed(2) + ' Gyr';
+    
+    const frame = window.animationData.frames[currentFrame];
+    
+    if (frame) {
+        updateCivilizations(frame.civilizations);
+        updateProbes(frame.probes);
+        updateHazards(frame.hazards);
+    }
+    
+    // Update stats
+    const civilStats = document.getElementById('civ-stats');
+    const activeCivs = frame.civilizations ? frame.civilizations.filter(c => c.is_active).length : 0;
+    const totalCivs = frame.civilizations ? frame.civilizations.length : 0;
+    civilStats.textContent = `Active: ${activeCivs} | Total: ${totalCivs}`;
 }
 
 function animate() {
@@ -178,6 +304,8 @@ function animate() {
         renderer.render(scene, camera);
     }
 }
+
+window.isPlaying = false;
 
 function updateStarsVisible(visible) {
     if (starPoints) {

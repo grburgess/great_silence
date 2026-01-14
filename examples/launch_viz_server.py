@@ -13,7 +13,7 @@ def launch_server():
         print("ERROR: examples/ directory not found")
         return
 
-    html_file = examples_dir / "galaxy_visualization.html"
+    html_file = examples_dir / "galactic_civilization_threejs.html"
     
     if not html_file.exists():
         print(f"ERROR: {html_file} not found")
@@ -21,7 +21,7 @@ def launch_server():
         return
 
     port = 8080
-    url = f"http://localhost:{port}/examples/galaxy_visualization.html"
+    url = f"http://localhost:{port}/examples/galactic_civilization_threejs.html"
 
     print("=" * 80)
     print("THREE.JS VISUALIZATION SERVER")

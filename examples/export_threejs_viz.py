@@ -137,14 +137,14 @@ def main():
     print("OPENING VISUALIZATION IN BROWSER")
     print("=" * 80)
     
-    import subprocess
-    import sys
-    if sys.platform == 'darwin':
-        subprocess.run(['open', str(output_path)])
-    elif sys.platform == 'linux':
-        subprocess.run(['xdg-open', str(output_path)])
-    elif sys.platform == 'win32':
-        subprocess.run(['start', str(output_path)])
+    # import subprocess
+    # import sys
+    # if sys.platform == 'darwin':
+    #     subprocess.run(['open', str(output_path)])
+    # elif sys.platform == 'linux':
+    #     subprocess.run(['xdg-open', str(output_path)])
+    # elif sys.platform == 'win32':
+    #     subprocess.run(['start', str(output_path)])
     
     print("\n✓ Complete!")
     print("\nVisualization features:")
