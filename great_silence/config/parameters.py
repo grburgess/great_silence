@@ -117,7 +117,9 @@ class CivilizationParameters:
     # Probe sensor capabilities for mid-flight course corrections
     # Probes can detect and retarget to favorable planets within sensor range
     probe_sensor_range_pc: float = 10.0  # Sensor range in parsecs (default: 10 pc)
-    enable_mid_flight_retargeting: bool = False  # PRIORITY 1D: Disabled (O(N) brute force, needs spatial index fix)
+    enable_mid_flight_retargeting: bool = (
+        False  # PRIORITY 1D: Disabled (O(N) brute force, needs spatial index fix)
+    )
 
     # Expansion limits
     max_colonies_per_civilization: int = 1000  # Cap to prevent runaway expansion
@@ -160,17 +162,27 @@ class CivilizationParameters:
     kardashev_max_scale: float = 3.0  # Maximum technological level (Type III)
 
     # Colony maturation and resilience
-    colony_maturation_time_myr: float = 0.1  # Time colonies need before contributing to resilience (Myr)
+    colony_maturation_time_myr: float = (
+        0.1  # Time colonies need before contributing to resilience (Myr)
+    )
 
     # Colonization lifetime bonus
-    colonization_lifetime_bonus_myr: float = 0.5  # Logarithmic bonus: bonus × log(1 + num_mature_colonies)
+    colonization_lifetime_bonus_myr: float = (
+        0.5  # Logarithmic bonus: bonus × log(1 + num_mature_colonies)
+    )
 
     # Home world destruction effects
-    home_world_fragility_period_myr: float = 0.5  # Duration of fragility after home world loss (Myr)
-    home_world_fragility_factor: float = 0.5  # Lifetime multiplier during fragility (0.5 = 50% reduction)
+    home_world_fragility_period_myr: float = (
+        0.5  # Duration of fragility after home world loss (Myr)
+    )
+    home_world_fragility_factor: float = (
+        0.5  # Lifetime multiplier during fragility (0.5 = 50% reduction)
+    )
 
     # Colonial war mechanics
-    colonial_war_colony_threshold: int = 10  # Minimum mature colonies before colonial war risk applies
+    colonial_war_colony_threshold: int = (
+        10  # Minimum mature colonies before colonial war risk applies
+    )
     colonial_war_kardashev_threshold: float = 1.5  # Minimum K-scale for colonial war (Type II civs)
     colonial_war_amplitude: float = 0.05  # Base hazard rate amplitude for colonial war (per Myr)
 
@@ -236,7 +248,9 @@ class SimulationParameters:
     chunk_size: int = 10000
 
     # Physics options
-    enable_stellar_motion: bool = False  # Enable gravitational evolution of stellar positions (EXPERIMENTAL)
+    enable_stellar_motion: bool = (
+        False  # Enable gravitational evolution of stellar positions (EXPERIMENTAL)
+    )
 
     # Output
     save_snapshots: bool = True
@@ -271,34 +285,34 @@ class SimulationConfig:
     @classmethod
     def from_yaml(cls, filepath: str) -> "SimulationConfig":
         """Load configuration from YAML file."""
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             data = yaml.safe_load(f)
 
         return cls(
-            galaxy=GalaxyParameters(**data.get('galaxy', {})),
-            astrophysics=AstrophysicsParameters(**data.get('astrophysics', {})),
-            civilization=CivilizationParameters(**data.get('civilization', {})),
-            simulation=SimulationParameters(**data.get('simulation', {}))
+            galaxy=GalaxyParameters(**data.get("galaxy", {})),
+            astrophysics=AstrophysicsParameters(**data.get("astrophysics", {})),
+            civilization=CivilizationParameters(**data.get("civilization", {})),
+            simulation=SimulationParameters(**data.get("simulation", {})),
         )
 
     def to_yaml(self, filepath: str) -> None:
         """Save configuration to YAML file."""
         data = {
-            'galaxy': self.galaxy.__dict__,
-            'astrophysics': self.astrophysics.__dict__,
-            'civilization': self.civilization.__dict__,
-            'simulation': self.simulation.__dict__
+            "galaxy": self.galaxy.__dict__,
+            "astrophysics": self.astrophysics.__dict__,
+            "civilization": self.civilization.__dict__,
+            "simulation": self.simulation.__dict__,
         }
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary."""
         return {
-            'galaxy': self.galaxy.__dict__,
-            'astrophysics': self.astrophysics.__dict__,
-            'civilization': self.civilization.__dict__,
-            'simulation': self.simulation.__dict__
+            "galaxy": self.galaxy.__dict__,
+            "astrophysics": self.astrophysics.__dict__,
+            "civilization": self.civilization.__dict__,
+            "simulation": self.simulation.__dict__,
         }
 
     @classmethod
@@ -321,7 +335,7 @@ class SimulationConfig:
         """
         config = cls()
 
-        if preset == 'early_filter':
+        if preset == "early_filter":
             # Great Filter is early: Abiogenesis is extremely difficult
             config.civilization.fraction_develop_life = 0.001  # 0.1% instead of 10%
             config.civilization.fraction_develop_intelligence = 0.1
@@ -331,7 +345,7 @@ class SimulationConfig:
             config.civilization.self_destruction_model_type = "flat"
             # Predicts: ~10 civilizations over galaxy lifetime
 
-        elif preset == 'late_filter':
+        elif preset == "late_filter":
             # Great Filter is late: Civilizations self-destruct rapidly at critical transitions
             config.civilization.fraction_develop_life = 0.5  # Life is common
             config.civilization.fraction_develop_intelligence = 0.1
@@ -344,7 +358,7 @@ class SimulationConfig:
             config.civilization.crisis_interplanetary_amplitude = 0.20
             # Predicts: ~100 civilizations at any given time, but very short-lived
 
-        elif preset == 'rare_earth':
+        elif preset == "rare_earth":
             # Rare Earth hypothesis: Habitable planets are extremely rare
             config.civilization.avg_habitable_planets_per_system = 0.01  # 1% instead of 20%
             config.civilization.fraction_develop_life = 0.5
@@ -354,7 +368,7 @@ class SimulationConfig:
             config.civilization.self_destruction_probability_per_myr = 0.01
             # Predicts: ~50 civilizations over galaxy lifetime
 
-        elif preset == 'optimistic':
+        elif preset == "optimistic":
             # Optimistic scenario: Life, intelligence, and technology are common
             config.civilization.fraction_develop_life = 0.5  # 50%
             config.civilization.fraction_develop_intelligence = 0.1  # 10%
@@ -364,7 +378,7 @@ class SimulationConfig:
             # Predicts: ~50,000 civilizations over galaxy lifetime (NOT Fermi-consistent)
             # WARNING: This preset is for exploration only, inconsistent with observations
 
-        elif preset == 'moderate':
+        elif preset == "moderate":
             # Use defaults (already Fermi-consistent)
             pass
 

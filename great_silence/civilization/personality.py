@@ -18,9 +18,7 @@ class PersonalityState:
 
 
 def sample_personality(
-    kardashev_scale: float,
-    rng: np.random.Generator,
-    model: str = "kardashev_dependent"
+    kardashev_scale: float, rng: np.random.Generator, model: str = "kardashev_dependent"
 ) -> PersonalityState:
     """
     Sample initial personality based on Kardashev scale.
@@ -58,7 +56,7 @@ def sample_personality(
     return PersonalityState(
         personality_type=personality_type,
         friendliness=friendliness,
-        aggression_factor=aggression_factor
+        aggression_factor=aggression_factor,
     )
 
 
@@ -80,10 +78,7 @@ def get_friendliness_distribution_mean(kardashev_scale: float) -> float:
         return 0.7
 
 
-def derive_personality_type(
-    friendliness: float,
-    rng: np.random.Generator
-) -> str:
+def derive_personality_type(friendliness: float, rng: np.random.Generator) -> str:
     """
     Derive personality type from friendliness.
 
@@ -110,7 +105,7 @@ def evolve_personality(
     num_wars_lost: int,
     num_wars_won: int,
     rng: np.random.Generator,
-    evolution_rate: float = 0.1
+    evolution_rate: float = 0.1,
 ) -> PersonalityState:
     """
     Evolve personality based on war outcomes and historical trauma.
@@ -139,7 +134,7 @@ def evolve_personality(
         aggression_factor=personality.aggression_factor,
         war_trauma=personality.war_trauma,
         victory_confidence=personality.victory_confidence,
-        evolution_history=personality.evolution_history.copy()
+        evolution_history=personality.evolution_history.copy(),
     )
 
     if war_outcome == "defeat":
@@ -168,20 +163,20 @@ def evolve_personality(
     evolved.victory_confidence = np.clip(evolved.victory_confidence, 0.1, 0.9)
     evolved.war_trauma = np.clip(evolved.war_trauma, 0.0, 1.0)
 
-    evolved.evolution_history.append({
-        'time_step': 'current',
-        'outcome': war_outcome,
-        'friendliness': evolved.friendliness,
-        'type': evolved.personality_type
-    })
+    evolved.evolution_history.append(
+        {
+            "time_step": "current",
+            "outcome": war_outcome,
+            "friendliness": evolved.friendliness,
+            "type": evolved.personality_type,
+        }
+    )
 
     return evolved
 
 
 def get_colony_personality_modifier(
-    colony_age_myr: float,
-    is_home_world: bool,
-    base_personality: PersonalityState
+    colony_age_myr: float, is_home_world: bool, base_personality: PersonalityState
 ) -> float:
     """
     Get personality modifier for individual colonies.

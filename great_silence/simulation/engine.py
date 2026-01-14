@@ -16,7 +16,7 @@ from ..utils.parallel import (
     compute_light_travel_distance,
     find_causal_groups_simple,
     find_causal_groups_with_colonies,
-    should_use_parallelization
+    should_use_parallelization,
 )
 from ..galaxy.structure import GalaxyModel
 from ..galaxy.star_formation import StarFormationHistory, InitialMassFunction
@@ -26,7 +26,7 @@ from ..civilization.probe_design import (
     offspring_count,
     replication_delay_years,
     min_metallicity_for_replication,
-    C_PC_YR
+    C_PC_YR,
 )
 from ..civilization.war import (
     FleetState,
@@ -39,13 +39,13 @@ from ..civilization.war import (
     resolve_battle,
     calculate_light_cone_arrival,
     is_communication_possible,
-    check_alliance_cascade_light_cone
+    check_alliance_cascade_light_cone,
 )
 from ..civilization.personality import (
     PersonalityState,
     sample_personality,
     evolve_personality,
-    get_colony_personality_modifier
+    get_colony_personality_modifier,
 )
 from ..utils.civ_spatial_index import CivilizationSpatialIndex
 
@@ -96,13 +96,21 @@ class CivilizationState:
     civ_id: int
     birth_time_myr: float  # When civilization emerged
     parent_star_idx: int  # Index of star where civilization originated
-    colonized_stars: Set[int] = field(default_factory=set)  # Indices of colonized stars (PRIORITY 1B: Set for O(1) lookups)
-    colony_arrival_times: Dict[int, float] = field(default_factory=dict)  # star_idx -> arrival_time_myr
+    colonized_stars: Set[int] = field(
+        default_factory=set
+    )  # Indices of colonized stars (PRIORITY 1B: Set for O(1) lookups)
+    colony_arrival_times: Dict[int, float] = field(
+        default_factory=dict
+    )  # star_idx -> arrival_time_myr
     kardashev_scale: float = 0.7  # Technological level: 0.7 (modern Earth) to 3.0 (galaxy-scale)
-    kardashev_advancement_rate: float = 0.01  # Individual advancement rate (varies per civilization)
+    kardashev_advancement_rate: float = (
+        0.01  # Individual advancement rate (varies per civilization)
+    )
     is_active: bool = True
     death_time_myr: Optional[float] = None
-    death_cause: Optional[str] = None  # 'extinction_event', 'self_destruction', 'old_age', 'supernova', 'grb', 'colonial_war'
+    death_cause: Optional[str] = (
+        None  # 'extinction_event', 'self_destruction', 'old_age', 'supernova', 'grb', 'colonial_war'
+    )
 
     # Home world destruction tracking (for distributed resilience)
     home_world_destroyed: bool = False
@@ -119,8 +127,8 @@ class CivilizationState:
     probe_sensor_range_pc: Optional[float] = None
 
     # Probe tracking
-    active_probes: List['ProbeState'] = field(default_factory=list)
-    archived_probes: List['ProbeState'] = field(default_factory=list)  # Completed probes
+    active_probes: List["ProbeState"] = field(default_factory=list)
+    archived_probes: List["ProbeState"] = field(default_factory=list)  # Completed probes
 
     # Personality and AI behavior
     personality_type: str = "defensive"
@@ -210,7 +218,9 @@ class SimulationSnapshot:
     active_probes_in_flight: List[ProbeSnapshot] = field(default_factory=list)
     total_active_probes: int = 0
     hazard_events: List[HazardEvent] = field(default_factory=list)  # Disasters since last snapshot
-    colony_positions: List[Tuple[int, np.ndarray]] = field(default_factory=list)  # (civ_id, position)
+    colony_positions: List[Tuple[int, np.ndarray]] = field(
+        default_factory=list
+    )  # (civ_id, position)
     civ_birth_ages: List[Tuple[int, float]] = field(default_factory=list)  # (civ_id, age_gyr)
 
 
@@ -236,9 +246,7 @@ class GalaxySimulation:
 
         # Initialize galaxy model
         self.galaxy = GalaxyModel(
-            config.galaxy,
-            seed=self.seed,
-            use_numba=config.simulation.use_numba
+            config.galaxy, seed=self.seed, use_numba=config.simulation.use_numba
         )
 
         # Star formation history and IMF
@@ -266,48 +274,49 @@ class GalaxySimulation:
 
         # Extinction model
         from ..civilization.extinction import ExtinctionModel, CrisisPeak
+
         crisis_peaks = [
             CrisisPeak(
                 name="nuclear_age",
                 kardashev_center=0.72,
                 width=0.05,
                 amplitude=config.civilization.crisis_nuclear_age_amplitude,
-                enabled=config.civilization.enable_nuclear_crisis
+                enabled=config.civilization.enable_nuclear_crisis,
             ),
             CrisisPeak(
                 name="planetary_unification",
                 kardashev_center=0.85,
                 width=0.08,
                 amplitude=config.civilization.crisis_planetary_unification_amplitude,
-                enabled=config.civilization.enable_planetary_unification_crisis
+                enabled=config.civilization.enable_planetary_unification_crisis,
             ),
             CrisisPeak(
                 name="ai_transition",
                 kardashev_center=1.05,
                 width=0.10,
                 amplitude=config.civilization.crisis_ai_transition_amplitude,
-                enabled=config.civilization.enable_ai_crisis
+                enabled=config.civilization.enable_ai_crisis,
             ),
             CrisisPeak(
                 name="interplanetary_expansion",
                 kardashev_center=1.25,
                 width=0.15,
                 amplitude=config.civilization.crisis_interplanetary_amplitude,
-                enabled=config.civilization.enable_interplanetary_crisis
+                enabled=config.civilization.enable_interplanetary_crisis,
             ),
             CrisisPeak(
                 name="stellar_engineering",
                 kardashev_center=1.80,
                 width=0.20,
                 amplitude=config.civilization.crisis_stellar_engineering_amplitude,
-                enabled=config.civilization.enable_stellar_crisis
+                enabled=config.civilization.enable_stellar_crisis,
             ),
             CrisisPeak(
                 name="relativistic_weapons",
                 kardashev_center=2.50,
                 width=0.25,
                 amplitude=config.civilization.crisis_relativistic_weapons_amplitude,
-                enabled=config.civilization.enable_relativistic_weapons_crisis
+                enabled=config.civilization.enable_relativistic_weapons_crisis,
             ),
         ]
 
@@ -317,7 +326,7 @@ class GalaxySimulation:
             model_type=config.civilization.self_destruction_model_type,
             baseline_rate=config.civilization.baseline_self_destruction_rate,
             baseline_scaling=config.civilization.baseline_risk_scaling,
-            crisis_peaks=crisis_peaks
+            crisis_peaks=crisis_peaks,
         )
 
         # Simulation state
@@ -369,20 +378,15 @@ class GalaxySimulation:
                 outer_mean_age_gyr=self.config.galaxy.outer_mean_age_gyr,
                 age_gradient_scale_kpc=self.config.galaxy.age_gradient_scale_kpc,
                 max_age_gyr=max_age_gyr,
-                seed=self.seed
+                seed=self.seed,
             )
         else:
             self.galaxy.ages = self.sfh.generate_stellar_ages(
-                self.config.galaxy.total_stars,
-                max_age_gyr=max_age_gyr,
-                seed=self.seed
+                self.config.galaxy.total_stars, max_age_gyr=max_age_gyr, seed=self.seed
             )
 
         # Generate stellar masses from IMF
-        self.galaxy.masses = self.imf.sample(
-            self.config.galaxy.total_stars,
-            seed=self.seed + 1
-        )
+        self.galaxy.masses = self.imf.sample(self.config.galaxy.total_stars, seed=self.seed + 1)
 
         # Generate metallicities (with radial gradient if enabled)
         if self.config.galaxy.use_metallicity_gradient:
@@ -394,8 +398,8 @@ class GalaxySimulation:
         # Determine stellar types (simplified: 0=unsuitable, 1=potentially habitable)
         # Stars within configured mass range are considered potentially habitable
         self.galaxy.stellar_types = (
-            (self.galaxy.masses >= self.config.galaxy.habitable_mass_min_msun) &
-            (self.galaxy.masses <= self.config.galaxy.habitable_mass_max_msun)
+            (self.galaxy.masses >= self.config.galaxy.habitable_mass_min_msun)
+            & (self.galaxy.masses <= self.config.galaxy.habitable_mass_max_msun)
         ).astype(int)
 
         # Cache habitable star indices
@@ -411,6 +415,7 @@ class GalaxySimulation:
         if self.config.simulation.use_numba:
             print("Building spatial index for fast queries...")
             from ..utils.spatial import SpatialIndex
+
             self._spatial_index = SpatialIndex(self.galaxy.positions)
         else:
             self._spatial_index = None
@@ -425,23 +430,16 @@ class GalaxySimulation:
         from ..astrophysics import StellarEvolution
 
         self.supernova_scheduler = SupernovaScheduler(
-            self.galaxy.masses,
-            self.galaxy.metallicities,
-            self.galaxy.ages,
-            StellarEvolution()
+            self.galaxy.masses, self.galaxy.metallicities, self.galaxy.ages, StellarEvolution()
         )
 
         n_stars = self.config.galaxy.total_stars
         self.recovery_queue = RecoveryQueue(n_stars)
 
         if self.config.simulation.save_snapshots:
-            archive_path = Path(
-                self.config.simulation.output_directory
-            ) / "disasters.h5"
+            archive_path = Path(self.config.simulation.output_directory) / "disasters.h5"
             self.disaster_archiver = DisasterArchiver(
-                archive_path=archive_path,
-                recent_window_myr=10.0,
-                buffer_size=1000
+                archive_path=archive_path, recent_window_myr=10.0, buffer_size=1000
             )
 
         print(f"Galaxy initialized with {len(self.galaxy.positions)} stars")
@@ -502,7 +500,7 @@ class GalaxySimulation:
         self.galaxy.evolve_positions(
             dt_myr,
             use_numba=self.config.simulation.use_numba,
-            enable_motion=self.config.simulation.enable_stellar_motion
+            enable_motion=self.config.simulation.enable_stellar_motion,
         )
 
         # Check for new civilization emergence
@@ -543,9 +541,9 @@ class GalaxySimulation:
         # Progress tracking setup
         if verbose:
             self._progress_tracker = create_progress_tracker(
-                environment='auto',
+                environment="auto",
                 show_iteration_rate=cfg.progress_show_iteration_rate,
-                show_probe_count=cfg.progress_show_probe_count
+                show_probe_count=cfg.progress_show_probe_count,
             )
             self._progress_tracker.start(duration_myr)
 
@@ -661,7 +659,7 @@ class GalaxySimulation:
             active_civs=active_civs,
             active_probes=active_probes,
             event_queue_size=len(self.event_queue),
-            wall_time_elapsed=time.time() - self._start_time
+            wall_time_elapsed=time.time() - self._start_time,
         )
 
         # Update tracker
@@ -671,7 +669,7 @@ class GalaxySimulation:
         self._last_progress_pct = metrics.time_pct
         self._last_update_time = time.time()
 
-    def _partition_civilizations_by_causality(self) -> List[List['CivilizationState']]:
+    def _partition_civilizations_by_causality(self) -> List[List["CivilizationState"]]:
         """
         Partition civilizations into causally independent groups.
 
@@ -699,9 +697,7 @@ class GalaxySimulation:
         max_causal_distance_kpc = compute_light_travel_distance(self._current_dt_myr)
 
         # Extract civilization positions
-        civ_positions = np.array([
-            self.galaxy.positions[c.parent_star_idx] for c in active_civs
-        ])
+        civ_positions = np.array([self.galaxy.positions[c.parent_star_idx] for c in active_civs])
 
         civ_ids = [c.civ_id for c in active_civs]
 
@@ -710,17 +706,12 @@ class GalaxySimulation:
             # Include colony overlap in causality check
             colonized_systems = [c.colonized_stars for c in active_civs]
             group_indices = find_causal_groups_with_colonies(
-                civ_positions,
-                civ_ids,
-                colonized_systems,
-                max_causal_distance_kpc
+                civ_positions, civ_ids, colonized_systems, max_causal_distance_kpc
             )
         else:
             # Simple distance-based partitioning
             group_indices = find_causal_groups_simple(
-                civ_positions,
-                civ_ids,
-                max_causal_distance_kpc
+                civ_positions, civ_ids, max_causal_distance_kpc
             )
 
         # Convert indices to civilization objects
@@ -741,7 +732,10 @@ class GalaxySimulation:
 
         # Check each habitable star
         # Only consider stars old enough to have developed life
-        old_enough = self.galaxy.ages[self.habitable_star_indices] > self.config.civilization.min_stellar_age_for_life_gyr
+        old_enough = (
+            self.galaxy.ages[self.habitable_star_indices]
+            > self.config.civilization.min_stellar_age_for_life_gyr
+        )
         not_colonized = ~self._colonized_mask[self.habitable_star_indices]
 
         eligible_mask = old_enough & not_colonized
@@ -788,14 +782,14 @@ class GalaxySimulation:
             # Sample random initial Kardashev scale
             initial_kardashev = self.rng.normal(
                 self.config.civilization.initial_kardashev_scale_mean,
-                self.config.civilization.initial_kardashev_scale_stddev
+                self.config.civilization.initial_kardashev_scale_stddev,
             )
             initial_kardashev = max(0.5, min(1.0, initial_kardashev))  # Clamp to [0.5, 1.0]
 
             # Sample random advancement rate
             advancement_rate = self.rng.normal(
                 self.config.civilization.kardashev_advancement_rate_mean,
-                self.config.civilization.kardashev_advancement_rate_stddev
+                self.config.civilization.kardashev_advancement_rate_stddev,
             )
             advancement_rate = max(0.001, advancement_rate)  # Ensure positive
 
@@ -806,13 +800,11 @@ class GalaxySimulation:
                 colonized_stars={star_idx_int},
                 colony_arrival_times={star_idx_int: self.current_time_myr},
                 kardashev_scale=initial_kardashev,
-                kardashev_advancement_rate=advancement_rate
+                kardashev_advancement_rate=advancement_rate,
             )
 
             personality = sample_personality(
-                initial_kardashev,
-                self.rng,
-                self.config.civilization.personality_assignment_model
+                initial_kardashev, self.rng, self.config.civilization.personality_assignment_model
             )
             new_civ.personality_type = personality.personality_type
             new_civ.friendliness = personality.friendliness
@@ -827,7 +819,7 @@ class GalaxySimulation:
                     star_idx=star_idx_int,
                     strength=1.0,
                     arrival_time_myr=self.current_time_myr,
-                    is_home_world=True
+                    is_home_world=True,
                 )
 
             self.civilizations.append(new_civ)
@@ -858,10 +850,7 @@ class GalaxySimulation:
         return mature_count
 
     def _calculate_colonial_war_risk(
-        self,
-        kardashev_scale: float,
-        num_mature_colonies: int,
-        dt_myr: float
+        self, kardashev_scale: float, num_mature_colonies: int, dt_myr: float
     ) -> float:
         """
         Calculate colonial war extinction probability.
@@ -890,7 +879,7 @@ class GalaxySimulation:
             return 0.0
 
         # Hazard rate increases with K-scale and colonies
-        k_factor = (kardashev_scale - cfg.colonial_war_kardashev_threshold)
+        k_factor = kardashev_scale - cfg.colonial_war_kardashev_threshold
         colony_factor = np.log(num_mature_colonies / cfg.colonial_war_colony_threshold)
 
         lambda_war = cfg.colonial_war_amplitude * k_factor * colony_factor
@@ -924,7 +913,9 @@ class GalaxySimulation:
         groups = self._partition_civilizations_by_causality()
 
         # Check if parallelization is beneficial
-        if not should_use_parallelization(n_active, cfg.parallel_min_civs_threshold, len(groups), cfg.parallel_worker_threads):
+        if not should_use_parallelization(
+            n_active, cfg.parallel_min_civs_threshold, len(groups), cfg.parallel_worker_threads
+        ):
             # Fall back to sequential
             return self._evolve_civilizations_sequential()
 
@@ -943,12 +934,19 @@ class GalaxySimulation:
             base_advancement = civ.kardashev_advancement_rate * dt_myr
 
             # Check for technological breakthrough (rapid advancement)
-            p_breakthrough = self.config.civilization.kardashev_breakthrough_probability_per_myr * dt_myr
+            p_breakthrough = (
+                self.config.civilization.kardashev_breakthrough_probability_per_myr * dt_myr
+            )
             if self.rng.uniform(0, 1) < p_breakthrough:
                 # Breakthrough! Advance faster
-                advancement = base_advancement * self.config.civilization.kardashev_breakthrough_multiplier
+                advancement = (
+                    base_advancement * self.config.civilization.kardashev_breakthrough_multiplier
+                )
             # Check for technological stagnation
-            elif self.rng.uniform(0, 1) < self.config.civilization.kardashev_stagnation_probability_per_myr * dt_myr:
+            elif (
+                self.rng.uniform(0, 1)
+                < self.config.civilization.kardashev_stagnation_probability_per_myr * dt_myr
+            ):
                 # Stagnation - no advancement this timestep
                 advancement = 0.0
             else:
@@ -956,16 +954,13 @@ class GalaxySimulation:
                 advancement = base_advancement
 
             civ.kardashev_scale = min(
-                civ.kardashev_scale + advancement,
-                self.config.civilization.kardashev_max_scale
+                civ.kardashev_scale + advancement, self.config.civilization.kardashev_max_scale
             )
 
             # Check self-destruction with distributed resilience and colonial war
             # Base self-destruction from crises (nuclear, AI, etc.)
             p_single_crisis = self.extinction_model.check_self_destruction(
-                dt_myr=dt_myr,
-                rng=self.rng,
-                kardashev_scale=civ.kardashev_scale
+                dt_myr=dt_myr, rng=self.rng, kardashev_scale=civ.kardashev_scale
             )
 
             # Get mature colonies for resilience calculation
@@ -974,7 +969,7 @@ class GalaxySimulation:
             # Distributed resilience: crisis must affect all colonies
             # Each colony independently survives with probability (1 - p)
             if num_mature > 1:
-                p_crisis_total = p_single_crisis ** num_mature
+                p_crisis_total = p_single_crisis**num_mature
             else:
                 p_crisis_total = p_single_crisis
 
@@ -991,18 +986,18 @@ class GalaxySimulation:
                 civ.is_active = False
                 civ.death_time_myr = self.current_time_myr
                 # Assign cause based on which was more likely
-                civ.death_cause = 'colonial_war' if p_colonial_war > p_crisis_total else 'self_destruction'
+                civ.death_cause = (
+                    "colonial_war" if p_colonial_war > p_crisis_total else "self_destruction"
+                )
                 continue
 
             # Check age-based death with colonization bonus and distributed resilience
             # Calculate effective lifetime with logarithmic colonization bonus
-            colonization_bonus = (
-                self.config.civilization.colonization_lifetime_bonus_myr *
-                np.log(1 + num_mature)
+            colonization_bonus = self.config.civilization.colonization_lifetime_bonus_myr * np.log(
+                1 + num_mature
             )
             effective_lifetime = (
-                self.config.civilization.mean_civilization_lifetime_myr +
-                colonization_bonus
+                self.config.civilization.mean_civilization_lifetime_myr + colonization_bonus
             )
 
             # Apply home world fragility penalty if applicable
@@ -1022,14 +1017,14 @@ class GalaxySimulation:
                 # Distributed model: each mature colony rolls independently
                 # Civilization dies only if ALL colonies die
                 if num_mature > 1:
-                    p_all_die = p_death_single ** num_mature
+                    p_all_die = p_death_single**num_mature
                 else:
                     p_all_die = p_death_single
 
                 if self.rng.uniform(0, 1) < p_all_die:
                     civ.is_active = False
                     civ.death_time_myr = self.current_time_myr
-                    civ.death_cause = 'old_age'
+                    civ.death_cause = "old_age"
                     continue
 
             # Expansion (simplified - will be enhanced with proper light travel time)
@@ -1069,7 +1064,7 @@ class GalaxySimulation:
                     civ.kardashev_scale,
                     threshold_k085=self.config.civilization.metallicity_threshold_k085,
                     threshold_k095=self.config.civilization.metallicity_threshold_k095,
-                    threshold_k120=self.config.civilization.metallicity_threshold_k120
+                    threshold_k120=self.config.civilization.metallicity_threshold_k120,
                 )
 
                 # Store sensor range for mid-flight course corrections
@@ -1120,9 +1115,9 @@ class GalaxySimulation:
             if probe is None:
                 continue  # Probe not found (shouldn't happen)
 
-            if event_type == 'probe_arrival':
+            if event_type == "probe_arrival":
                 self._handle_probe_arrival(civ, probe)
-            elif event_type == 'replication_complete':
+            elif event_type == "replication_complete":
                 self._handle_replication_complete(civ, probe)
 
     def _archive_completed_probes(self) -> None:
@@ -1172,12 +1167,15 @@ class GalaxySimulation:
             self._colonized_mask[probe.target_star_idx] = True
 
         # Schedule replication complete event
-        heapq.heappush(self.event_queue, (
-            probe.replication_complete_time_myr,
-            'replication_complete',
-            civ.civ_id,
-            probe.probe_id
-        ))
+        heapq.heappush(
+            self.event_queue,
+            (
+                probe.replication_complete_time_myr,
+                "replication_complete",
+                civ.civ_id,
+                probe.probe_id,
+            ),
+        )
 
         # Archive immediately on arrival - probe is now stationary, waiting to replicate
         # We keep probe data for replication event, but remove from active iteration
@@ -1186,7 +1184,7 @@ class GalaxySimulation:
             civ.active_probes.remove(probe)
             civ.archived_probes.append(probe)
 
-    def _evolve_civilizations_parallel(self, groups: List[List['CivilizationState']]) -> None:
+    def _evolve_civilizations_parallel(self, groups: List[List["CivilizationState"]]) -> None:
         """
         Evolve civilizations in parallel using causality-preserving groups.
 
@@ -1201,10 +1199,7 @@ class GalaxySimulation:
         # Process groups in parallel using ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=cfg.parallel_worker_threads) as executor:
             # Submit all groups for parallel processing
-            futures = [
-                executor.submit(self._evolve_civilization_group, group)
-                for group in groups
-            ]
+            futures = [executor.submit(self._evolve_civilization_group, group) for group in groups]
 
             # Collect results (thread-local buffers)
             buffers = [future.result() for future in futures]
@@ -1212,7 +1207,9 @@ class GalaxySimulation:
         # Merge thread-local buffers back into shared state (single-threaded)
         self._merge_probe_buffers(buffers)
 
-    def _evolve_civilization_group(self, group: List['CivilizationState']) -> ThreadLocalProbeBuffer:
+    def _evolve_civilization_group(
+        self, group: List["CivilizationState"]
+    ) -> ThreadLocalProbeBuffer:
         """
         Evolve a group of causally-independent civilizations.
 
@@ -1235,12 +1232,14 @@ class GalaxySimulation:
             # Check extinction (updates civ state directly - safe since civs in group are independent)
             extinct = self._check_civilization_extinction(civ, dt_myr)
             if extinct:
-                buffer.extinction_updates.append((
-                    civ.civ_id,
-                    False,  # is_active
-                    self.current_time_myr,  # death_time_myr
-                    civ.death_cause
-                ))
+                buffer.extinction_updates.append(
+                    (
+                        civ.civ_id,
+                        False,  # is_active
+                        self.current_time_myr,  # death_time_myr
+                        civ.death_cause,
+                    )
+                )
                 continue
 
             # Expansion - collect probes in buffer instead of modifying shared state
@@ -1249,26 +1248,32 @@ class GalaxySimulation:
 
         return buffer
 
-    def _advance_civilization_tech(self, civ: 'CivilizationState', dt_myr: float) -> None:
+    def _advance_civilization_tech(self, civ: "CivilizationState", dt_myr: float) -> None:
         """Advance civilization technology (Kardashev scale)."""
         base_advancement = civ.kardashev_advancement_rate * dt_myr
 
         # Check for technological breakthrough
-        p_breakthrough = self.config.civilization.kardashev_breakthrough_probability_per_myr * dt_myr
+        p_breakthrough = (
+            self.config.civilization.kardashev_breakthrough_probability_per_myr * dt_myr
+        )
         if self.rng.uniform(0, 1) < p_breakthrough:
-            advancement = base_advancement * self.config.civilization.kardashev_breakthrough_multiplier
+            advancement = (
+                base_advancement * self.config.civilization.kardashev_breakthrough_multiplier
+            )
         # Check for stagnation
-        elif self.rng.uniform(0, 1) < self.config.civilization.kardashev_stagnation_probability_per_myr * dt_myr:
+        elif (
+            self.rng.uniform(0, 1)
+            < self.config.civilization.kardashev_stagnation_probability_per_myr * dt_myr
+        ):
             advancement = 0.0
         else:
             advancement = base_advancement
 
         civ.kardashev_scale = min(
-            civ.kardashev_scale + advancement,
-            self.config.civilization.kardashev_max_scale
+            civ.kardashev_scale + advancement, self.config.civilization.kardashev_max_scale
         )
 
-    def _check_civilization_extinction(self, civ: 'CivilizationState', dt_myr: float) -> bool:
+    def _check_civilization_extinction(self, civ: "CivilizationState", dt_myr: float) -> bool:
         """
         Check if civilization goes extinct this timestep.
 
@@ -1277,22 +1282,18 @@ class GalaxySimulation:
         """
         # Self-destruction check
         p_single_crisis = self.extinction_model.check_self_destruction(
-            dt_myr=dt_myr,
-            rng=self.rng,
-            kardashev_scale=civ.kardashev_scale
+            dt_myr=dt_myr, rng=self.rng, kardashev_scale=civ.kardashev_scale
         )
 
         # Distributed resilience
         num_mature = self._get_mature_colonies(civ)
         if num_mature > 1:
-            p_crisis_total = p_single_crisis ** num_mature
+            p_crisis_total = p_single_crisis**num_mature
         else:
             p_crisis_total = p_single_crisis
 
         # Colonial war risk
-        p_colonial_war = self._calculate_colonial_war_risk(
-            civ.kardashev_scale, num_mature, dt_myr
-        )
+        p_colonial_war = self._calculate_colonial_war_risk(civ.kardashev_scale, num_mature, dt_myr)
 
         # Combined extinction probability
         p_total_extinction = 1.0 - (1.0 - p_crisis_total) * (1.0 - p_colonial_war)
@@ -1300,17 +1301,17 @@ class GalaxySimulation:
         if self.rng.uniform(0, 1) < p_total_extinction:
             civ.is_active = False
             civ.death_time_myr = self.current_time_myr
-            civ.death_cause = 'colonial_war' if p_colonial_war > p_crisis_total else 'self_destruction'
+            civ.death_cause = (
+                "colonial_war" if p_colonial_war > p_crisis_total else "self_destruction"
+            )
             return True
 
         # Age-based death check
-        colonization_bonus = (
-            self.config.civilization.colonization_lifetime_bonus_myr *
-            np.log(1 + num_mature)
+        colonization_bonus = self.config.civilization.colonization_lifetime_bonus_myr * np.log(
+            1 + num_mature
         )
         effective_lifetime = (
-            self.config.civilization.mean_civilization_lifetime_myr +
-            colonization_bonus
+            self.config.civilization.mean_civilization_lifetime_myr + colonization_bonus
         )
 
         # Home world fragility penalty
@@ -1326,19 +1327,21 @@ class GalaxySimulation:
             p_death_single = 1.0 - np.exp(-decay_rate * dt_myr)
 
             if num_mature > 1:
-                p_all_die = p_death_single ** num_mature
+                p_all_die = p_death_single**num_mature
             else:
                 p_all_die = p_death_single
 
             if self.rng.uniform(0, 1) < p_all_die:
                 civ.is_active = False
                 civ.death_time_myr = self.current_time_myr
-                civ.death_cause = 'old_age'
+                civ.death_cause = "old_age"
                 return True
 
         return False
 
-    def _attempt_expansion_buffered(self, civ: 'CivilizationState', buffer: ThreadLocalProbeBuffer) -> None:
+    def _attempt_expansion_buffered(
+        self, civ: "CivilizationState", buffer: ThreadLocalProbeBuffer
+    ) -> None:
         """
         Attempt expansion using thread-local buffer (parallel-safe version).
 
@@ -1367,14 +1370,16 @@ class GalaxySimulation:
                     civ.kardashev_scale,
                     threshold_k085=self.config.civilization.metallicity_threshold_k085,
                     threshold_k095=self.config.civilization.metallicity_threshold_k095,
-                    threshold_k120=self.config.civilization.metallicity_threshold_k120
+                    threshold_k120=self.config.civilization.metallicity_threshold_k120,
                 )
                 civ.probe_sensor_range_pc = self.config.civilization.probe_sensor_range_pc
 
                 # Launch initial probes from home world - collect in buffer
                 self._launch_initial_probes_buffered(civ, buffer)
 
-    def _launch_initial_probes_buffered(self, civ: 'CivilizationState', buffer: ThreadLocalProbeBuffer) -> None:
+    def _launch_initial_probes_buffered(
+        self, civ: "CivilizationState", buffer: ThreadLocalProbeBuffer
+    ) -> None:
         """Launch initial probes from home world (buffered version)."""
         source_pos = self.galaxy.positions[civ.parent_star_idx]
 
@@ -1385,7 +1390,7 @@ class GalaxySimulation:
             civ.probe_min_metallicity,
             civ.colonized_stars,
             civ.probe_offspring_count,
-            civ.parent_star_idx
+            civ.parent_star_idx,
         )
 
         if len(targets) == 0:
@@ -1413,20 +1418,16 @@ class GalaxySimulation:
                 launch_time_myr=self.current_time_myr,
                 arrival_time_myr=arrival_time_myr,
                 has_arrived=False,
-                replication_complete_time_myr=arrival_time_myr + (civ.probe_replication_delay_yr / 1e6),
-                has_replicated=False
+                replication_complete_time_myr=arrival_time_myr
+                + (civ.probe_replication_delay_yr / 1e6),
+                has_replicated=False,
             )
 
             # Add to buffer with civ_id for later merging
             buffer.new_probes.append((civ.civ_id, probe))
 
             # Add arrival event to buffer
-            buffer.new_events.append((
-                arrival_time_myr,
-                'probe_arrival',
-                civ.civ_id,
-                probe_id
-            ))
+            buffer.new_events.append((arrival_time_myr, "probe_arrival", civ.civ_id, probe_id))
 
     def _merge_probe_buffers(self, buffers: List[ThreadLocalProbeBuffer]) -> None:
         """
@@ -1481,7 +1482,7 @@ class GalaxySimulation:
             max_targets=civ.probe_offspring_count,
             colonized_set=civ.colonized_stars,  # PRIORITY 1B: Already a Set, no conversion needed
             exclude_idx=home_idx,
-            min_metallicity=civ.probe_min_metallicity
+            min_metallicity=civ.probe_min_metallicity,
         )
 
         # Launch probes
@@ -1506,18 +1507,15 @@ class GalaxySimulation:
                 velocity_c=civ.probe_velocity_c,
                 per_hop_range_pc=civ.probe_per_hop_range_pc,
                 offspring_count=civ.probe_offspring_count,
-                replication_delay_yr=civ.probe_replication_delay_yr
+                replication_delay_yr=civ.probe_replication_delay_yr,
             )
             self.next_probe_id += 1
             civ.active_probes.append(probe)
 
             # PRIORITY 2: Schedule probe arrival event
-            heapq.heappush(self.event_queue, (
-                arrival_time_myr,
-                'probe_arrival',
-                civ.civ_id,
-                probe.probe_id
-            ))
+            heapq.heappush(
+                self.event_queue, (arrival_time_myr, "probe_arrival", civ.civ_id, probe.probe_id)
+            )
 
     def _launch_offspring_probes(self, civ: CivilizationState, parent_probe: ProbeState) -> None:
         """Launch offspring probes from arrived parent probe."""
@@ -1531,7 +1529,7 @@ class GalaxySimulation:
             max_targets=civ.probe_offspring_count,
             colonized_set=civ.colonized_stars,  # PRIORITY 1B: Already a Set, no conversion needed
             exclude_idx=source_idx,
-            min_metallicity=civ.probe_min_metallicity
+            min_metallicity=civ.probe_min_metallicity,
         )
 
         # Launch offspring probes
@@ -1556,22 +1554,25 @@ class GalaxySimulation:
                 velocity_c=civ.probe_velocity_c,
                 per_hop_range_pc=civ.probe_per_hop_range_pc,
                 offspring_count=civ.probe_offspring_count,
-                replication_delay_yr=civ.probe_replication_delay_yr
+                replication_delay_yr=civ.probe_replication_delay_yr,
             )
             self.next_probe_id += 1
             civ.active_probes.append(probe)
 
             # PRIORITY 2: Schedule probe arrival event
-            heapq.heappush(self.event_queue, (
-                arrival_time_myr,
-                'probe_arrival',
-                civ.civ_id,
-                probe.probe_id
-            ))
+            heapq.heappush(
+                self.event_queue, (arrival_time_myr, "probe_arrival", civ.civ_id, probe.probe_id)
+            )
 
-    def _find_nearest_targets(self, source_pos: np.ndarray, max_range_pc: float,
-                              max_targets: int, colonized_set: Set[int],
-                              exclude_idx: int, min_metallicity: float) -> List[int]:
+    def _find_nearest_targets(
+        self,
+        source_pos: np.ndarray,
+        max_range_pc: float,
+        max_targets: int,
+        colonized_set: Set[int],
+        exclude_idx: int,
+        min_metallicity: float,
+    ) -> List[int]:
         """
         Find nearest uncolonized stars with sufficient metallicity for replication.
 
@@ -1658,7 +1659,7 @@ class GalaxySimulation:
 
         return targets
 
-    def _check_sensor_retargeting(self, civ: CivilizationState, probe: 'ProbeState') -> None:
+    def _check_sensor_retargeting(self, civ: CivilizationState, probe: "ProbeState") -> None:
         """
         Check if probe sensors detect a more favorable target and adjust course.
 
@@ -1673,7 +1674,7 @@ class GalaxySimulation:
             probe: Probe in transit
         """
         # Only retarget once to avoid repeated course changes
-        if hasattr(probe, '_has_retargeted') and probe._has_retargeted:
+        if hasattr(probe, "_has_retargeted") and probe._has_retargeted:
             return
 
         # Calculate probe's current position along trajectory
@@ -1686,7 +1687,9 @@ class GalaxySimulation:
         fraction_complete = min(elapsed_time_myr / total_time_myr, 1.0)
 
         # Interpolate position
-        source_idx = probe.source_star_idx if hasattr(probe, 'source_star_idx') else civ.parent_star_idx
+        source_idx = (
+            probe.source_star_idx if hasattr(probe, "source_star_idx") else civ.parent_star_idx
+        )
         source_pos = self.galaxy.positions[source_idx]
         target_pos = self.galaxy.positions[probe.target_star_idx]
         current_pos = source_pos + fraction_complete * (target_pos - source_pos)
@@ -1698,7 +1701,9 @@ class GalaxySimulation:
         # Filter: within sensor range, meets metallicity, uncolonized
         sensor_mask = distances_pc <= civ.probe_sensor_range_pc
         metallicity_mask = self.galaxy.metallicities >= civ.probe_min_metallicity
-        not_colonized = ~np.isin(np.arange(len(self.galaxy.positions)), civ.colonized_stars)  # PRIORITY 1B: No list() needed
+        not_colonized = ~np.isin(
+            np.arange(len(self.galaxy.positions)), civ.colonized_stars
+        )  # PRIORITY 1B: No list() needed
         not_current_target = np.arange(len(self.galaxy.positions)) != probe.target_star_idx
 
         candidate_mask = sensor_mask & metallicity_mask & not_colonized & not_current_target
@@ -1739,7 +1744,9 @@ class GalaxySimulation:
             self._retarget_probe(probe, nearest_idx, current_pos)
             probe._has_retargeted = True  # type: ignore
 
-    def _retarget_probe(self, probe: 'ProbeState', new_target_idx: int, current_pos: np.ndarray) -> None:
+    def _retarget_probe(
+        self, probe: "ProbeState", new_target_idx: int, current_pos: np.ndarray
+    ) -> None:
         """
         Retarget probe to new destination from current position.
 
@@ -1770,8 +1777,9 @@ class GalaxySimulation:
         component-dependent supernova rates, and local density effects.
         """
         # Initialize hazard evaluator on first call
-        if not hasattr(self, 'hazard_evaluator'):
+        if not hasattr(self, "hazard_evaluator"):
             from ..astrophysics.hazards import HazardEvaluator
+
             self.hazard_evaluator = HazardEvaluator(self.config.astrophysics)
 
         dt_myr = self._current_dt_myr
@@ -1793,11 +1801,11 @@ class GalaxySimulation:
                 component_types=self.galaxy.component_type,
                 dt_myr=dt_myr,
                 rng=self.rng,
-                spatial_index=self._spatial_index if hasattr(self, '_spatial_index') else None
+                spatial_index=self._spatial_index if hasattr(self, "_spatial_index") else None,
             )
 
             # Store hazard statistics on civilization object for analysis
-            if not hasattr(civ, 'hazard_stats'):
+            if not hasattr(civ, "hazard_stats"):
                 civ.hazard_stats = {}
             civ.hazard_stats.update(sn_info)
 
@@ -1813,25 +1821,25 @@ class GalaxySimulation:
                     # No mature colonies - civilization extinct
                     civ.is_active = False
                     civ.death_time_myr = self.current_time_myr
-                    civ.death_cause = 'supernova'
+                    civ.death_cause = "supernova"
                 # else: civilization continues from colonies with fragility penalty
 
                 # Record hazard event for visualization
                 hazard = HazardEvent(
                     time_myr=self.current_time_myr,
-                    event_type='supernova',
+                    event_type="supernova",
                     position=civ_pos.copy(),  # Approximate location
                     energy=1e51,  # Typical supernova energy in ergs
-                    sterilization_radius_pc=sn_info.get('sn_distance_pc', self.config.astrophysics.sn_sterilization_range_pc),
-                    affected_civ_ids=[civ.civ_id]
+                    sterilization_radius_pc=sn_info.get(
+                        "sn_distance_pc", self.config.astrophysics.sn_sterilization_range_pc
+                    ),
+                    affected_civ_ids=[civ.civ_id],
                 )
                 self.hazard_events.append(hazard)
 
                 # Archive disaster
                 if self.disaster_archiver is not None:
-                    self.disaster_archiver.archive_disaster(
-                        hazard, self.current_time_myr
-                    )
+                    self.disaster_archiver.archive_disaster(hazard, self.current_time_myr)
 
                 # Sterilize star in recovery queue
                 if self.recovery_queue is not None:
@@ -1841,7 +1849,7 @@ class GalaxySimulation:
                         civ.parent_star_idx,
                         self.current_time_myr,
                         recovery_time,
-                        permanent=(hazard.energy > 1e52)  # Permanent for very energetic events
+                        permanent=(hazard.energy > 1e52),  # Permanent for very energetic events
                     )
 
                 if not civ.is_active:
@@ -1856,7 +1864,7 @@ class GalaxySimulation:
                 metallicities=self.galaxy.metallicities,
                 dt_myr=dt_myr,
                 rng=self.rng,
-                spatial_index=self._spatial_index if hasattr(self, '_spatial_index') else None
+                spatial_index=self._spatial_index if hasattr(self, "_spatial_index") else None,
             )
 
             # Store GRB statistics
@@ -1874,25 +1882,24 @@ class GalaxySimulation:
                     # No mature colonies - civilization extinct
                     civ.is_active = False
                     civ.death_time_myr = self.current_time_myr
-                    civ.death_cause = 'grb'
+                    civ.death_cause = "grb"
                 # else: civilization continues from colonies with fragility penalty
 
                 # Record hazard event for visualization
                 hazard = HazardEvent(
                     time_myr=self.current_time_myr,
-                    event_type='grb',
+                    event_type="grb",
                     position=civ_pos.copy(),  # Approximate location
                     energy=1e54,  # Typical GRB energy in ergs
-                    sterilization_radius_pc=grb_info.get('grb_distance_kpc', 1.0) * 1000.0,  # Convert kpc to pc
-                    affected_civ_ids=[civ.civ_id]
+                    sterilization_radius_pc=grb_info.get("grb_distance_kpc", 1.0)
+                    * 1000.0,  # Convert kpc to pc
+                    affected_civ_ids=[civ.civ_id],
                 )
                 self.hazard_events.append(hazard)
 
                 # Archive disaster
                 if self.disaster_archiver is not None:
-                    self.disaster_archiver.archive_disaster(
-                        hazard, self.current_time_myr
-                    )
+                    self.disaster_archiver.archive_disaster(hazard, self.current_time_myr)
 
                 # Sterilize star in recovery queue
                 if self.recovery_queue is not None:
@@ -1902,14 +1909,12 @@ class GalaxySimulation:
                         civ.parent_star_idx,
                         self.current_time_myr,
                         recovery_time,
-                        permanent=(hazard.energy > 1e52)  # Permanent for very energetic events
+                        permanent=(hazard.energy > 1e52),  # Permanent for very energetic events
                     )
 
         # Process recoveries after all hazards processed
         if self.recovery_queue is not None:
-            recovered = self.recovery_queue.process_recoveries(
-                self.current_time_myr
-            )
+            recovered = self.recovery_queue.process_recoveries(self.current_time_myr)
             # Log recovery statistics
             if len(recovered) > 0:
                 pass  # Stars have recovered, habitable status updated
@@ -1971,7 +1976,7 @@ class GalaxySimulation:
                     arrival_time_myr=probe.arrival_time_myr,
                     progress_fraction=progress,
                     velocity_c=probe.velocity_c,
-                    generation=probe.generation
+                    generation=probe.generation,
                 )
                 probe_snapshots.append(probe_snapshot)
 
@@ -1986,12 +1991,18 @@ class GalaxySimulation:
 
         # Collect hazard events since last snapshot
         hazard_events_since_snapshot = []
-        if hasattr(self, 'hazard_events'):
-            hazard_events_since_snapshot = [
-                h for h in self.hazard_events
-                if h.time_myr > self._last_snapshot_time_myr
-                if h.time_myr <= self.current_time_myr
-            ] if hasattr(self, '_last_snapshot_time_myr') and self._last_snapshot_time_myr is not None else []
+        if hasattr(self, "hazard_events"):
+            hazard_events_since_snapshot = (
+                [
+                    h
+                    for h in self.hazard_events
+                    if h.time_myr > self._last_snapshot_time_myr
+                    if h.time_myr <= self.current_time_myr
+                ]
+                if hasattr(self, "_last_snapshot_time_myr")
+                and self._last_snapshot_time_myr is not None
+                else []
+            )
 
         # Collect colony positions
         colony_positions = []
@@ -2000,21 +2011,29 @@ class GalaxySimulation:
             civ_birth_ages.append((civ.civ_id, civ.birth_time_myr / 1000.0))
             if civ.is_active and civ.colonized_stars:
                 for star_idx in civ.colonized_stars:
-                    pos = self.galaxy.positions[star_idx] if self.galaxy.positions is not None else np.array([0.0, 0.0, 0.0])
+                    pos = (
+                        self.galaxy.positions[star_idx]
+                        if self.galaxy.positions is not None
+                        else np.array([0.0, 0.0, 0.0])
+                    )
                     colony_positions.append((civ.civ_id, pos.copy()))
 
         snapshot = SimulationSnapshot(
             time_myr=self.current_time_myr,
             active_civilizations=active_civs,
             total_civilizations_ever=self.next_civ_id,
-            colonized_systems=sum(len(c.colonized_stars) for c in self.civilizations if c.is_active),
+            colonized_systems=sum(
+                len(c.colonized_stars) for c in self.civilizations if c.is_active
+            ),
             civilization_states=[c for c in self.civilizations],
-            stellar_positions=self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([]),
+            stellar_positions=(
+                self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([])
+            ),
             active_probes_in_flight=probe_snapshots,
             total_active_probes=len(probe_snapshots),
             hazard_events=hazard_events_since_snapshot,
             colony_positions=colony_positions,
-            civ_birth_ages=civ_birth_ages
+            civ_birth_ages=civ_birth_ages,
         )
 
         self._last_snapshot_time_myr = self.current_time_myr
@@ -2025,10 +2044,467 @@ class GalaxySimulation:
         active_civs = sum(c.is_active for c in self.civilizations)
 
         return {
-            'total_civilizations': self.next_civ_id,
-            'active_civilizations': active_civs,
-            'extinct_civilizations': self.next_civ_id - active_civs,
-            'total_colonized_systems': sum(len(c.colonized_stars) for c in self.civilizations),
-            'current_time_gyr': self.current_time_myr / 1000.0,
-            'snapshots_saved': len(self.snapshots)
+            "total_civilizations": self.next_civ_id,
+            "active_civilizations": active_civs,
+            "extinct_civilizations": self.next_civ_id - active_civs,
+            "total_colonized_systems": sum(len(c.colonized_stars) for c in self.civilizations),
+            "current_time_gyr": self.current_time_myr / 1000.0,
+            "snapshots_saved": len(self.snapshots),
         }
+
+    def _scan_for_encounters(self, dt_myr: float) -> None:
+        """
+        Scan for new encounters between civilizations using spatial index.
+
+        O(N) scan using spatial index instead of O(N²) brute force.
+        """
+        if self.civ_spatial_index is None:
+            return
+
+        active_civs = [c for c in self.civilizations if c.is_active]
+
+        for civ in active_civs:
+            if len(civ.colonized_stars) == 0:
+                continue
+
+            overlaps = self.civ_spatial_index.find_territory_overlaps([civ.civ_id])
+
+            for civ_a_id, civ_b_id, overlapping_stars in overlaps:
+                if civ_b_id in civ.known_civilizations:
+                    continue
+
+                civ_a = next((c for c in active_civs if c.civ_id == civ_a_id), None)
+                civ_b = next((c for c in active_civs if c.civ_id == civ_b_id), None)
+
+                if civ_a is None or civ_b is None:
+                    continue
+
+                star_idx = next(iter(overlapping_stars))
+                self._handle_encounter(civ_a, civ_b, star_idx, "shared_colony")
+
+    def _handle_encounter(
+        self,
+        civ_a: CivilizationState,
+        civ_b: CivilizationState,
+        location_idx: int,
+        encounter_type: str,
+    ) -> None:
+        """
+        Handle first contact between two civilizations.
+        """
+        civ_a.known_civilizations.add(civ_b.civ_id)
+        civ_b.known_civilizations.add(civ_a.civ_id)
+
+        civ_a.reputation[civ_b.civ_id] = 0.0
+        civ_b.reputation[civ_a.civ_id] = 0.0
+
+        p_war = self._calculate_encounter_war_probability(civ_a, civ_b)
+
+        if self.rng.uniform(0, 1) < p_war:
+            self._start_war(civ_a, civ_b, [location_idx])
+            outcome = "war_started"
+        else:
+            if self.config.civilization.alliance_formation_enabled:
+                if civ_a.personality_type == "xenophile" and civ_b.personality_type == "xenophile":
+                    self._form_alliance(civ_a, civ_b)
+                    outcome = "alliance_formed"
+                else:
+                    outcome = "peace"
+            else:
+                outcome = "peace"
+
+        pos_a = (
+            self.galaxy.positions[civ_a.parent_star_idx]
+            if self.galaxy.positions is not None
+            else np.array([0.0, 0.0, 0.0])
+        )
+        pos_b = (
+            self.galaxy.positions[civ_b.parent_star_idx]
+            if self.galaxy.positions is not None
+            else np.array([0.0, 0.0, 0.0])
+        )
+        is_causal = is_communication_possible(
+            pos_a, pos_b, self.current_time_myr, self.current_time_myr
+        )
+
+        self.encounter_events.append(
+            EncounterEvent(
+                time_myr=self.current_time_myr,
+                civ_1_id=civ_a.civ_id,
+                civ_2_id=civ_b.civ_id,
+                encounter_type=encounter_type,
+                outcome=outcome,
+                resolution_details=f"K: {civ_a.kardashev_scale:.2f} vs {civ_b.kardashev_scale:.2f}",
+                is_within_light_cone=is_causal,
+            )
+        )
+
+    def _calculate_encounter_war_probability(
+        self, civ_a: CivilizationState, civ_b: CivilizationState
+    ) -> float:
+        """
+        Calculate probability that encounter leads to war.
+        """
+        base_war_prob = 1.0 - (civ_a.friendliness * civ_b.friendliness)
+
+        tech_gap = abs(civ_a.kardashev_scale - civ_b.kardashev_scale)
+        tech_factor = tech_gap * self.config.civilization.tech_advantage_sensitivity
+
+        rep_modifier = 0.0
+        if self.config.civilization.reputation_enabled:
+            civ_a_rep = civ_a.reputation.get(civ_b.civ_id, 0.0)
+            civ_b_rep = civ_b.reputation.get(civ_a.civ_id, 0.0)
+            rep_modifier = (civ_a_rep + civ_b_rep) * -0.3
+
+            for ally_id in civ_a.allies:
+                if ally_id == civ_b.civ_id:
+                    rep_modifier -= 0.2
+
+        p_war = base_war_prob + tech_factor + rep_modifier
+        return np.clip(p_war, 0.0, 1.0)
+
+    def _start_war(
+        self, aggressor: CivilizationState, defender: CivilizationState, disputed_stars: List[int]
+    ) -> None:
+        """
+        Initialize war between two civilizations.
+        """
+        aggressor.war_state = WarState(
+            enemy_civ_id=defender.civ_id,
+            start_time_myr=self.current_time_myr,
+            last_encounter_time_myr=self.current_time_myr,
+            territory_disputed=set(disputed_stars),
+            casualties_suffered=0.0,
+        )
+
+        defender.war_state = WarState(
+            enemy_civ_id=aggressor.civ_id,
+            start_time_myr=self.current_time_myr,
+            last_encounter_time_myr=self.current_time_myr,
+            territory_disputed=set(disputed_stars),
+            casualties_suffered=0.0,
+        )
+
+        aggressor.enemies.add(defender.civ_id)
+        defender.enemies.add(aggressor.civ_id)
+
+        aggressor.reputation[defender.civ_id] -= 0.4
+
+        if self.config.civilization.alliance_propagation_enabled:
+            pos_defender = (
+                self.galaxy.positions[defender.parent_star_idx]
+                if self.galaxy.positions is not None
+                else np.array([0.0, 0.0, 0.0])
+            )
+            ally_positions = {
+                ally_id: (
+                    self.galaxy.positions[
+                        next(
+                            (c for c in self.civilizations if c.civ_id == ally_id and c.is_active)
+                        ).parent_star_idx
+                    ]
+                    if self.galaxy.positions is not None
+                    else np.array([0.0, 0.0, 0.0])
+                )
+                for ally_id in defender.allies
+            }
+
+            can_join = check_alliance_cascade_light_cone(
+                attacker_civ_id=aggressor.civ_id,
+                defender_civ_id=defender.civ_id,
+                ally_positions=ally_positions,
+                war_start_time_myr=self.current_time_myr,
+            )
+
+            for ally_id in can_join:
+                ally = next((c for c in self.civilizations if c.civ_id == ally_id), None)
+                if ally is not None:
+                    ally.enemies.add(aggressor.civ_id)
+                    aggressor.reputation[ally_id] -= 0.2
+
+    def _resolve_wars(self, dt_myr: float) -> None:
+        """
+        Resolve ongoing wars for this time step.
+
+        War resolution mechanics:
+        - Battles occur periodically at disputed territories
+        - Fleets move and engage
+        - Territory transferred based on battle outcomes
+        - Wars end with victory, stalemate, or destruction
+        """
+        active_civs = [c for c in self.civilizations if c.is_active]
+
+        for civ in active_civs:
+            if civ.war_state is None:
+                continue
+
+            enemy = next((c for c in active_civs if c.civ_id == civ.war_state.enemy_civ_id), None)
+            if enemy is None or not enemy.is_active:
+                self._end_war(civ, victor=civ)
+                continue
+
+            war_duration = self.current_time_myr - civ.war_state.start_time_myr
+            if war_duration > self.config.civilization.war_duration_max_myr:
+                if self.rng.uniform(0, 1) < self.config.civilization.war_stalemate_probability:
+                    self._end_war(civ, enemy, stalemate=True)
+                    continue
+
+            battles_this_step = int(
+                dt_myr / self.config.civilization.battle_resolution_interval_myr
+            )
+            for _ in range(max(1, battles_this_step)):
+                if len(civ.war_state.territory_disputed) == 0:
+                    break
+
+                star_idx = self.rng.choice(list(civ.war_state.territory_disputed))
+                self._resolve_battle_at_star(civ, enemy, star_idx)
+
+            new_overlap = civ.colonized_stars & enemy.colonized_stars
+            civ.war_state.territory_disputed = new_overlap
+            enemy.war_state.territory_disputed = new_overlap
+
+            if len(enemy.colonized_stars) == 0:
+                self._end_war(civ, enemy, total_destruction=True)
+                continue
+
+            if len(civ.colonized_stars) == 0:
+                self._end_war(enemy, civ, total_destruction=True)
+                continue
+
+    def _resolve_battle_at_star(
+        self, civ_a: CivilizationState, civ_b: CivilizationState, star_idx: int
+    ) -> None:
+        """
+        Resolve a single battle at a disputed star.
+        """
+        colony_strength_a = civ_a.colony_strengths.get(star_idx, 1.0)
+        colony_strength_b = civ_b.colony_strengths.get(star_idx, 1.0)
+
+        is_home_world_a = star_idx == civ_a.parent_star_idx
+        is_home_world_b = star_idx == civ_b.parent_star_idx
+
+        if is_home_world_a:
+            colony_strength_a *= 2.0
+        if is_home_world_b:
+            colony_strength_b *= 2.0
+
+        colony_age_a = self.current_time_myr - civ_a.colony_arrival_times.get(
+            star_idx, self.current_time_myr
+        )
+        colony_age_b = self.current_time_myr - civ_b.colony_arrival_times.get(
+            star_idx, self.current_time_myr
+        )
+
+        strength_a = (
+            calculate_colony_strength(
+                colony_age_myr=colony_age_a,
+                kardashev_scale=civ_a.kardashev_scale,
+                population=1.0,
+                is_home_world=is_home_world_a,
+            )
+            * colony_strength_a
+        )
+
+        strength_b = (
+            calculate_colony_strength(
+                colony_age_myr=colony_age_b,
+                kardashev_scale=civ_b.kardashev_scale,
+                population=1.0,
+                is_home_world=is_home_world_b,
+            )
+            * colony_strength_b
+        )
+
+        tech_gap = civ_a.kardashev_scale - civ_b.kardashev_scale
+
+        from scipy.special import expit
+
+        win_prob_a = 0.5 + 0.4 * expit(
+            tech_gap / self.config.civilization.tech_advantage_sensitivity
+        )
+
+        if self.rng.uniform(0, 1) < win_prob_a:
+            winner, loser = civ_a, civ_b
+        else:
+            winner, loser = civ_b, civ_a
+
+        if star_idx in loser.colonized_stars:
+            loser.colonized_stars.remove(star_idx)
+            loser.colony_strengths.pop(star_idx, None)
+            loser.colony_arrival_times.pop(star_idx, None)
+            if self.civ_spatial_index is not None:
+                self.civ_spatial_index.remove_colony(loser.civ_id, star_idx)
+
+            winner.colonized_stars.add(star_idx)
+            winner.colony_strengths[star_idx] = loser.colony_strengths.get(star_idx, 1.0) * 0.9
+            winner.colony_arrival_times[star_idx] = self.current_time_myr
+            if self.civ_spatial_index is not None:
+                self.civ_spatial_index.add_colony(
+                    civ_id=winner.civ_id,
+                    star_idx=star_idx,
+                    strength=winner.colony_strengths[star_idx],
+                    arrival_time_myr=self.current_time_myr,
+                    is_home_world=star_idx == winner.parent_star_idx,
+                )
+
+            winner.reputation[loser.civ_id] = winner.reputation.get(loser.civ_id, 0.0) + 0.1
+            loser.reputation[winner.civ_id] = loser.reputation.get(winner.civ_id, 0.0) - 0.2
+
+            if self.config.civilization.personality_evolution_enabled:
+                winner.personality = evolve_personality(
+                    winner,
+                    "victory",
+                    num_wars_lost=loser.wars_lost,
+                    num_wars_won=winner.wars_won,
+                    rng=self.rng,
+                    evolution_rate=self.config.civilization.personality_evolution_rate,
+                )
+                loser.personality = evolve_personality(
+                    loser,
+                    "defeat",
+                    num_wars_lost=loser.wars_lost + 1,
+                    num_wars_won=loser.wars_won,
+                    rng=self.rng,
+                    evolution_rate=self.config.civilization.personality_evolution_rate,
+                )
+
+            winner.wars_won += 1
+            loser.wars_lost += 1
+            winner.war_state.victories += 1
+            loser.war_state.defeats += 1
+
+            if star_idx == loser.parent_star_idx:
+                loser.home_world_destroyed = True
+                loser.home_world_destruction_time_myr = self.current_time_myr
+
+            self.battle_events.append(
+                BattleEvent(
+                    time_myr=self.current_time_myr,
+                    star_idx=star_idx,
+                    attacker_civ_id=civ_a.civ_id,
+                    defender_civ_id=civ_b.civ_id,
+                    attacker_fleet_id=None,
+                    defender_fleet_id=None,
+                    outcome=(
+                        BattleOutcome.ATTACKER_WIN
+                        if winner == civ_a
+                        else BattleOutcome.DEFENDER_WIN
+                    ),
+                    attacker_casualties=0.1 * strength_a,
+                    defender_casualties=0.2 * strength_b,
+                    territory_transferred=True,
+                )
+            )
+
+    def _end_war(
+        self,
+        civ_a: CivilizationState,
+        civ_b: Optional[CivilizationState] = None,
+        victor: Optional[CivilizationState] = None,
+        stalemate: bool = False,
+        total_destruction: bool = False,
+    ) -> None:
+        """
+        End war between civilizations.
+        """
+        if civ_a.war_state:
+            civ_a.war_state = None
+
+        if civ_b and civ_b.war_state:
+            civ_b.war_state = None
+
+        if total_destruction and civ_b and victor:
+            civ_b.is_active = False
+            civ_b.death_time_myr = self.current_time_myr
+            civ_b.death_cause = "war"
+
+            victor.kardashev_scale += 0.05 * (1.0 - victor.kardashev_scale / 3.0)
+
+            for star_idx in civ_b.colonized_stars:
+                if star_idx not in victor.colonized_stars:
+                    victor.colonized_stars.add(star_idx)
+                    victor.colony_strengths[star_idx] = (
+                        civ_b.colony_strengths.get(star_idx, 1.0) * 0.5
+                    )
+                    victor.colony_arrival_times[star_idx] = self.current_time_myr
+                    if self.civ_spatial_index is not None:
+                        self.civ_spatial_index.add_colony(
+                            civ_id=victor.civ_id,
+                            star_idx=star_idx,
+                            strength=victor.colony_strengths[star_idx],
+                            arrival_time_myr=self.current_time_myr,
+                            is_home_world=False,
+                        )
+
+    def _form_alliance(self, civ_a: CivilizationState, civ_b: CivilizationState) -> None:
+        """
+        Form alliance between two civilizations.
+        """
+        civ_a.allies.add(civ_b.civ_id)
+        civ_b.allies.add(civ_a.civ_id)
+
+        civ_a.reputation[civ_b.civ_id] = 0.8
+        civ_b.reputation[civ_a.civ_id] = 0.8
+
+        civ_a.enemies.discard(civ_b.civ_id)
+        civ_b.enemies.discard(civ_a.civ_id)
+
+    def _decay_reputations(self, dt_myr: float) -> None:
+        """
+        Decay reputation values towards neutral (0.0) over time.
+        """
+        decay = self.config.civilization.reputation_decay_rate * (dt_myr / 1000.0)
+
+        for civ in self.civilizations:
+            for other_civ_id in list(civ.reputation.keys()):
+                if civ.reputation[other_civ_id] > 0:
+                    civ.reputation[other_civ_id] = max(0.0, civ.reputation[other_civ_id] - decay)
+                else:
+                    civ.reputation[other_civ_id] = min(0.0, civ.reputation[other_civ_id] + decay)
+
+    def _update_colony_strengths(self, dt_myr: float) -> None:
+        """
+        Update colony strengths based on age and civilization K level.
+        """
+        for civ in self.civilizations:
+            if not civ.is_active:
+                continue
+
+            for star_idx in civ.colonized_stars:
+                colony_age = self.current_time_myr - civ.colony_arrival_times.get(star_idx, 0.0)
+                age_factor = 1.0 + np.log10(1.0 + colony_age / 0.05)
+
+                is_home_world = star_idx == civ.parent_star_idx
+                home_bonus = 2.0 if is_home_world else 1.0
+
+                tech_bonus = np.exp(civ.kardashev_scale * 0.5)
+
+                civ.colony_strengths[star_idx] = age_factor * home_bonus * tech_bonus
+
+                if self.civ_spatial_index is not None:
+                    colony_info = self.civ_spatial_index.get_colony_info(civ.civ_id, star_idx)
+                    if colony_info is not None:
+                        colony_info.strength = civ.colony_strengths[star_idx]
+
+    def _manage_strategic_resources(self, dt_myr: float) -> None:
+        """
+        Manage strategic resources for civilizations in war.
+        """
+        war_cost = self.config.civilization.war_resource_cost_myr * dt_myr
+        generation = self.config.civilization.resource_generation_rate * dt_myr
+
+        for civ in self.civilizations:
+            if not civ.is_active:
+                continue
+
+            if civ.war_state is not None:
+                civ.strategic_resource_stockpile -= war_cost
+                civ.resource_debt += war_cost * 0.1
+                civ.war_exhaustion += 0.01 * dt_myr
+            else:
+                civ.strategic_resource_stockpile = min(
+                    200.0, civ.strategic_resource_stockpile + generation
+                )
+                civ.war_exhaustion = max(0.0, civ.war_exhaustion - 0.05 * dt_myr)
+
+            civ.strategic_resource_stockpile = max(0.0, civ.strategic_resource_stockpile)

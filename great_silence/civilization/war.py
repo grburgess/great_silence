@@ -102,10 +102,7 @@ class VassalState:
 
 
 def calculate_fleet_strength(
-    kardashev_scale: float,
-    num_ships: int,
-    colony_strength: float,
-    fleet_age_myr: float
+    kardashev_scale: float, num_ships: int, colony_strength: float, fleet_age_myr: float
 ) -> float:
     """
     Calculate fleet strength.
@@ -132,10 +129,7 @@ def calculate_fleet_strength(
 
 
 def calculate_colony_strength(
-    colony_age_myr: float,
-    kardashev_scale: float,
-    population: float,
-    is_home_world: bool
+    colony_age_myr: float, kardashev_scale: float, population: float, is_home_world: bool
 ) -> float:
     """
     Calculate colony strength for defense/offense.
@@ -166,7 +160,7 @@ def resolve_battle(
     defender_fleet: FleetState,
     colony_strength_defender: float,
     tech_gap: float,
-    rng: np.random.Generator
+    rng: np.random.Generator,
 ) -> Tuple[BattleOutcome, float, float]:
     """
     Resolve a single battle.
@@ -189,17 +183,14 @@ def resolve_battle(
         (BattleOutcome, attacker_casualties, defender_casualties)
     """
     attacker_strength = calculate_fleet_strength(
-        kardashev_scale=1.0,
-        num_ships=attacker_fleet.ships,
-        colony_strength=1.0,
-        fleet_age_myr=0.01
+        kardashev_scale=1.0, num_ships=attacker_fleet.ships, colony_strength=1.0, fleet_age_myr=0.01
     )
 
     defender_strength = calculate_fleet_strength(
         kardashev_scale=1.0,
         num_ships=defender_fleet.ships,
         colony_strength=colony_strength_defender,
-        fleet_age_myr=0.01
+        fleet_age_myr=0.01,
     )
 
     from scipy.special import expit
@@ -234,9 +225,7 @@ def resolve_battle(
 
 
 def calculate_war_duration(
-    kardashev_gap: float,
-    territory_importance: float,
-    initial_strength_ratio: float
+    kardashev_gap: float, territory_importance: float, initial_strength_ratio: float
 ) -> float:
     """
     Estimate war duration in Myr.
@@ -264,9 +253,7 @@ def calculate_war_duration(
 
 
 def calculate_light_cone_arrival(
-    sender_pos: np.ndarray,
-    receiver_pos: np.ndarray,
-    send_time_myr: float
+    sender_pos: np.ndarray, receiver_pos: np.ndarray, send_time_myr: float
 ) -> float:
     """
     Calculate when message arrives given speed of light.
@@ -290,10 +277,7 @@ def calculate_light_cone_arrival(
 
 
 def is_communication_possible(
-    sender_pos: np.ndarray,
-    receiver_pos: np.ndarray,
-    send_time_myr: float,
-    receive_time_myr: float
+    sender_pos: np.ndarray, receiver_pos: np.ndarray, send_time_myr: float, receive_time_myr: float
 ) -> bool:
     """
     Check if communication is causally possible.
@@ -317,7 +301,7 @@ def check_alliance_cascade_light_cone(
     attacker_civ_id: int,
     defender_civ_id: int,
     ally_positions: Dict[int, np.ndarray],
-    war_start_time_myr: float
+    war_start_time_myr: float,
 ) -> List[int]:
     """
     Determine which allies can join war based on light cone constraints.
@@ -346,9 +330,7 @@ def check_alliance_cascade_light_cone(
         if ally_id == defender_civ_id:
             continue
 
-        arrival_time = calculate_light_cone_arrival(
-            defender_pos, ally_pos, war_start_time_myr
-        )
+        arrival_time = calculate_light_cone_arrival(defender_pos, ally_pos, war_start_time_myr)
 
         if arrival_time <= war_start_time_myr + 1.0:
             can_join.append(ally_id)

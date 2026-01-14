@@ -46,7 +46,7 @@ class CivilizationSpatialIndex:
         star_idx: int,
         strength: float = 1.0,
         arrival_time_myr: float = 0.0,
-        is_home_world: bool = False
+        is_home_world: bool = False,
     ) -> None:
         """
         Add a colony to the spatial index.
@@ -70,7 +70,7 @@ class CivilizationSpatialIndex:
             position=self.positions[star_idx],
             strength=strength,
             arrival_time_myr=arrival_time_myr,
-            is_home_world=is_home_world
+            is_home_world=is_home_world,
         )
 
     def remove_colony(self, civ_id: int, star_idx: int) -> None:
@@ -87,11 +87,7 @@ class CivilizationSpatialIndex:
         if civ_id in self.civ_colony_info:
             self.civ_colony_info[civ_id].pop(star_idx, None)
 
-    def get_colony_info(
-        self,
-        civ_id: int,
-        star_idx: int
-    ) -> Optional[ColonyInfo]:
+    def get_colony_info(self, civ_id: int, star_idx: int) -> Optional[ColonyInfo]:
         """
         Get colony information.
 
@@ -106,11 +102,7 @@ class CivilizationSpatialIndex:
             return self.civ_colony_info[civ_id].get(star_idx)
         return None
 
-    def find_civilizations_in_range(
-        self,
-        center_star_idx: int,
-        radius_pc: float
-    ) -> Set[int]:
+    def find_civilizations_in_range(self, center_star_idx: int, radius_pc: float) -> Set[int]:
         """
         Find all civilizations with colonies within range of a star.
 
@@ -135,8 +127,7 @@ class CivilizationSpatialIndex:
         return civs_in_range
 
     def find_territory_overlaps(
-        self,
-        civ_ids: Optional[List[int]] = None
+        self, civ_ids: Optional[List[int]] = None
     ) -> List[Tuple[int, int, Set[int]]]:
         """
         Find all territory overlaps between civilizations.
@@ -174,8 +165,9 @@ class CivilizationSpatialIndex:
 
                         existing = None
                         for overlap in overlaps:
-                            if (overlap[0] == civ_a and overlap[1] == civ_b) or \
-                               (overlap[0] == civ_b and overlap[1] == civ_a):
+                            if (overlap[0] == civ_a and overlap[1] == civ_b) or (
+                                overlap[0] == civ_b and overlap[1] == civ_a
+                            ):
                                 existing = overlap
                                 break
 
@@ -187,11 +179,7 @@ class CivilizationSpatialIndex:
         return overlaps
 
     def find_nearby_enemy_colonies(
-        self,
-        civ_id: int,
-        enemy_civ_ids: Set[int],
-        radius_pc: float,
-        min_stars: int = 1
+        self, civ_id: int, enemy_civ_ids: Set[int], radius_pc: float, min_stars: int = 1
     ) -> List[Tuple[int, float, float]]:
         """
         Find enemy colonies near this civilization's territory.
@@ -224,9 +212,10 @@ class CivilizationSpatialIndex:
                     if enemy_id in self.civ_colony_info:
                         if nearby_star_idx in self.civ_colony_info[enemy_id]:
                             colony = self.civ_colony_info[enemy_id][nearby_star_idx]
-                            distance_pc = np.linalg.norm(
-                                self.positions[nearby_star_idx] - center_pos
-                            ) * 1000.0
+                            distance_pc = (
+                                np.linalg.norm(self.positions[nearby_star_idx] - center_pos)
+                                * 1000.0
+                            )
 
                             nearby_enemy_cols.append(
                                 (nearby_star_idx, distance_pc, colony.strength)
@@ -237,11 +226,7 @@ class CivilizationSpatialIndex:
 
         return []
 
-    def get_frontier_colonies(
-        self,
-        civ_id: int,
-        radius_pc: float
-    ) -> List[Tuple[int, int]]:
+    def get_frontier_colonies(self, civ_id: int, radius_pc: float) -> List[Tuple[int, int]]:
         """
         Identify frontier colonies (colonies near other civs).
 
@@ -276,11 +261,7 @@ class CivilizationSpatialIndex:
         return sorted(frontier_cols, key=lambda x: x[1], reverse=True)
 
     def find_path_between_colonies(
-        self,
-        civ_id: int,
-        start_star_idx: int,
-        end_star_idx: int,
-        max_hops: int = 10
+        self, civ_id: int, start_star_idx: int, end_star_idx: int, max_hops: int = 10
     ) -> Optional[List[int]]:
         """
         Find path through this civilization's colonies.
@@ -299,8 +280,10 @@ class CivilizationSpatialIndex:
         if civ_id not in self.civ_colonies:
             return None
 
-        if start_star_idx not in self.civ_colonies[civ_id] or \
-           end_star_idx not in self.civ_colonies[civ_id]:
+        if (
+            start_star_idx not in self.civ_colonies[civ_id]
+            or end_star_idx not in self.civ_colonies[civ_id]
+        ):
             return None
 
         if start_star_idx == end_star_idx:
