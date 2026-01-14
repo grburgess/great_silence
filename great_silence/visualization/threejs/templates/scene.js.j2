@@ -8,6 +8,16 @@ let hazardGeometry, hazardMaterial, hazardMeshes;
 
 let clock;
 
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    
+    if (composer) {
+        composer.setSize(window.innerWidth, window.innerHeight);
+    }
+}
+
 function initScene() {
     clock = new THREE.Clock();
     
@@ -140,16 +150,6 @@ function createProbeTrails() {
 
 function createHazardMarkers() {
     hazardMeshes = [];
-}
-
-function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    
-    if (composer) {
-        composer.setSize(window.innerWidth, window.innerHeight);
-    }
 }
 
 function renderStatic() {

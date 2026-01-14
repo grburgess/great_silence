@@ -6,9 +6,21 @@ let civGeometry, civMaterial, civSprites;
 let probeGeometry, probeMaterial, probeLines;
 let hazardGeometry, hazardMaterial, hazardMeshes;
 
-const clock = new THREE.Clock();
+let clock;
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    
+    if (composer) {
+        composer.setSize(window.innerWidth, window.innerHeight);
+    }
+}
 
 function initScene() {
+    clock = new THREE.Clock();
+    
     const container = document.getElementById('canvas-container');
 
     scene = new THREE.Scene();
@@ -138,16 +150,6 @@ function createProbeTrails() {
 
 function createHazardMarkers() {
     hazardMeshes = [];
-}
-
-function initScene() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-
-    if (composer) {
-        composer.setSize(window.innerWidth, window.innerHeight);
-    }
 }
 
 function renderStatic() {
