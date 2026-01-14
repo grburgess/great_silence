@@ -509,6 +509,21 @@ class GalaxySimulation:
         # Evolve existing civilizations
         self._evolve_civilizations()
 
+        # Update colony strengths
+        self._update_colony_strengths(dt_myr)
+
+        # Scan for encounters between civilizations
+        self._scan_for_encounters(dt_myr)
+
+        # Resolve ongoing wars
+        self._resolve_wars(dt_myr)
+
+        # Manage strategic resources
+        self._manage_strategic_resources(dt_myr)
+
+        # Decay reputations
+        self._decay_reputations(dt_myr)
+
         # PRIORITY 2: Process probe events (arrival, replication) from event queue
         self._process_probe_events()
 
@@ -1160,11 +1175,32 @@ class GalaxySimulation:
             self.current_time_myr + probe.replication_delay_yr / 1e6
         )
 
+        # Check if star already colonized by another civ (encounter!)
+        for other_civ in self.civilizations:
+            if other_civ.civ_id == civ.civ_id or not other_civ.is_active:
+                continue
+
+            if probe.target_star_idx in other_civ.colonized_stars:
+                # First contact!
+                if civ.civ_id not in other_civ.known_civilizations:
+                    self._handle_encounter(civ, other_civ, probe.target_star_idx, "probe_arrival")
+                break
+
         # Mark target as colonized
         if probe.target_star_idx not in civ.colonized_stars:
             civ.colonized_stars.add(probe.target_star_idx)
             civ.colony_arrival_times[probe.target_star_idx] = probe.arrival_time_myr
+            civ.colony_strengths[probe.target_star_idx] = 1.0
             self._colonized_mask[probe.target_star_idx] = True
+
+            if self.civ_spatial_index is not None:
+                self.civ_spatial_index.add_colony(
+                    civ_id=civ.civ_id,
+                    star_idx=probe.target_star_idx,
+                    strength=1.0,
+                    arrival_time_myr=probe.arrival_time_myr,
+                    is_home_world=False
+                )
 
         # Schedule replication complete event
         heapq.heappush(
