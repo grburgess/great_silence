@@ -244,8 +244,56 @@ Replace with JavaScript defaults: `|| defaultValue`
 - Script loading order looks correct
 - Still getting "THREE is not defined" error
 
-**Next Steps:**
-1. Verify actual HTML output has correct script order
-2. Check if Three.js CDN is loading properly
-3. Add error handling for missing window.config
-4. Consider using defer or async loading for scripts
+**Root Cause Identified:**
+CDN scripts failing to load despite correct order and HTTP server usage.
+
+## Fixes Applied (Jan 14, 2026)
+
+### 1. Added CDN Fallbacks
+All Three.js scripts now fallback from cdnjs/cdnjs to unpkg:
+```html
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r150/three.min.js"
+        onerror="this.src='https://unpkg.com/three@0.150.0/build/three.min.js'">
+```
+
+### 2. Added Global Error Detection
+Script listener detects loading failures:
+```javascript
+window.addEventListener('error', function(e) {
+    if (e.target.tagName === 'SCRIPT') {
+        console.error('Script failed to load:', e.target.src);
+    }
+}, true);
+```
+
+### 3. Added THREE Availability Check
+Graceful error message if Three.js fails to load:
+```javascript
+if (typeof THREE === 'undefined') {
+    document.getElementById('loading-text').textContent = 'Error: Three.js failed to load...';
+    return;
+}
+```
+
+## Testing After Fixes
+
+1. Re-export visualization:
+   ```bash
+   python examples/quick_viz_example.py
+   ```
+
+2. Start server:
+   ```bash
+   cd examples && python -m http.server 8080
+   ```
+
+3. Check console:
+   - No "THREE is not defined" errors
+   - No CDN 404 errors
+   - Fallback messages if primary CDN fails
+
+## Future Improvements
+
+- Consider bundling Three.js locally for offline use
+- Add script loading progress indicator
+- Implement local Three.js download in html_exporter.py
