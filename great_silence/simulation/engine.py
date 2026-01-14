@@ -1199,7 +1199,7 @@ class GalaxySimulation:
                     star_idx=probe.target_star_idx,
                     strength=1.0,
                     arrival_time_myr=probe.arrival_time_myr,
-                    is_home_world=False
+                    is_home_world=False,
                 )
 
         # Schedule replication complete event
