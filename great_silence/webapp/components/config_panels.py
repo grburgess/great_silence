@@ -38,12 +38,13 @@ def create_slider(
             display_text = f"{current_val:.3g} {unit}".strip()
         value_label = ui.label(display_text).classes("w-28 text-right text-cyan-400 font-mono text-sm")
 
-        def on_change(e, pname=param_name, cfg=config_obj, vlbl=value_label, fmt=format_fn, u=unit):
-            setattr(cfg, pname, e.value)
+        def on_change(e, pname=param_name, cfg=config_obj, vlbl=value_label, fmt=format_fn, u=unit, sl=slider):
+            val = e.args if isinstance(e.args, (int, float)) else sl.value
+            setattr(cfg, pname, val)
             if fmt:
-                vlbl.text = fmt(e.value)
+                vlbl.text = fmt(val)
             else:
-                vlbl.text = f"{e.value:.3g} {u}".strip()
+                vlbl.text = f"{val:.3g} {u}".strip()
 
         slider.on("update:model-value", on_change)
 
@@ -75,9 +76,10 @@ def create_number_input(
         if unit:
             ui.label(unit).classes("text-gray-500 text-sm")
 
-        def on_change(e, pname=param_name, cfg=config_obj):
-            if e.value is not None:
-                setattr(cfg, pname, type(getattr(cfg, pname))(e.value))
+        def on_change(e, pname=param_name, cfg=config_obj, ni=num_input):
+            val = e.args if isinstance(e.args, (int, float)) else ni.value
+            if val is not None:
+                setattr(cfg, pname, type(getattr(cfg, pname))(val))
 
         num_input.on("update:model-value", on_change)
 
@@ -98,8 +100,9 @@ def create_toggle(
 
         toggle = ui.switch(value=current_val).classes("text-cyan-400")
 
-        def on_change(e, pname=param_name, cfg=config_obj):
-            setattr(cfg, pname, e.value)
+        def on_change(e, pname=param_name, cfg=config_obj, tg=toggle):
+            val = e.args if isinstance(e.args, bool) else tg.value
+            setattr(cfg, pname, val)
 
         toggle.on("update:model-value", on_change)
 
@@ -121,8 +124,9 @@ def create_dropdown(
 
         select = ui.select(options, value=current_val).classes("w-40").props("dense outlined dark")
 
-        def on_change(e, pname=param_name, cfg=config_obj):
-            setattr(cfg, pname, e.value)
+        def on_change(e, pname=param_name, cfg=config_obj, sel=select):
+            val = e.args if e.args is not None else sel.value
+            setattr(cfg, pname, val)
 
         select.on("update:model-value", on_change)
 

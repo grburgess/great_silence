@@ -40,8 +40,9 @@ class BasicSettings:
             )
 
             def on_stars_change(e):
-                app_state.config.galaxy.total_stars = int(e.value)
-                self._stars_label.text = f"{int(e.value):,}"
+                val = e.args if isinstance(e.args, (int, float)) else self._stars_slider.value
+                app_state.config.galaxy.total_stars = int(val)
+                self._stars_label.text = f"{int(val):,}"
                 if self.on_change:
                     self.on_change()
 
@@ -65,8 +66,9 @@ class BasicSettings:
             ).classes("w-24 text-right text-cyan-400 font-mono")
 
             def on_duration_change(e):
-                app_state.config.simulation.simulation_duration_gyr = float(e.value)
-                self._duration_label.text = f"{float(e.value):.1f} Gyr"
+                val = e.args if isinstance(e.args, (int, float)) else self._duration_slider.value
+                app_state.config.simulation.simulation_duration_gyr = float(val)
+                self._duration_label.text = f"{float(val):.1f} Gyr"
                 if self.on_change:
                     self.on_change()
 
@@ -92,8 +94,9 @@ class BasicSettings:
             )
 
             def on_seed_change(e):
-                if e.value is not None:
-                    app_state.config.simulation.random_seed = int(e.value)
+                val = e.args if isinstance(e.args, (int, float)) else self._seed_input.value
+                if val is not None:
+                    app_state.config.simulation.random_seed = int(val)
                     if self.on_change:
                         self.on_change()
 
@@ -129,8 +132,9 @@ class BasicSettings:
             ui.label("realizations").classes("text-gray-400 text-sm")
 
             def on_mc_toggle(e):
-                self._mc_count.visible = e.value
-                if e.value:
+                val = e.args if isinstance(e.args, bool) else self._mc_enabled.value
+                self._mc_count.visible = val
+                if val:
                     app_state.config.simulation.num_realizations = int(self._mc_count.value)
                 else:
                     app_state.config.simulation.num_realizations = 1
@@ -138,8 +142,9 @@ class BasicSettings:
                     self.on_change()
 
             def on_mc_count_change(e):
-                if e.value is not None and self._mc_enabled.value:
-                    app_state.config.simulation.num_realizations = int(e.value)
+                val = e.args if isinstance(e.args, (int, float)) else self._mc_count.value
+                if val is not None and self._mc_enabled.value:
+                    app_state.config.simulation.num_realizations = int(val)
                     if self.on_change:
                         self.on_change()
 
