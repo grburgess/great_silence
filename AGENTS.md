@@ -386,3 +386,6 @@ python scripts/benchmark_baseline.py  # Detailed profiling
 - **Colonization-cancels-emergence**: If a probe colonizes a star before native life emerges, emergence is cancelled
   - This is physically correct: if aliens arrive first, the pre-scheduled native emergence is skipped
   - Tests added: `test_colonization_cancels_emergence`, `test_emergence_heap_respects_colonization`
+- **Sterilization-cancels-emergence**: If a disaster sterilizes a star, scheduled emergences at that star are cancelled
+  - Checks `recovery_queue.status` before allowing emergence (0=habitable, 1=temp, 2=permanent)
+  - Test added: `test_sterilized_stars_no_emergence`

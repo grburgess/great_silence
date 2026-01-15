@@ -213,6 +213,12 @@ class SimulationDataExtractor:
             
             if hasattr(self.source.galaxy, "masses") and self.source.galaxy.masses is not None:
                 self.simulation_data["galaxy_masses"] = self.source.galaxy.masses.copy()
+            
+            if hasattr(self.source.galaxy, "ages") and self.source.galaxy.ages is not None:
+                self.simulation_data["galaxy_ages"] = self.source.galaxy.ages.copy()
+            
+            if hasattr(self.source.galaxy, "habitable_indices") and self.source.galaxy.habitable_indices is not None:
+                self.simulation_data["habitable_indices"] = self.source.galaxy.habitable_indices.copy()
 
         if hasattr(self.source, "snapshots"):
             self.snapshots = [
@@ -222,6 +228,7 @@ class SimulationDataExtractor:
                     "probes": _extract_probe_list(snap),
                     "hazards": _extract_hazard_list(snap),
                     "trajectories": _extract_expansion_trajectories(snap),
+                    "stellar_ages": snap.stellar_ages.tolist() if hasattr(snap, 'stellar_ages') and snap.stellar_ages is not None else None,
                 }
                 for snap in self.source.snapshots
             ]
@@ -528,4 +535,179 @@ class SimulationDataExtractor:
             "types": types,
             "times_gyr": times_gyr if times_gyr else [],
             "time_since": time_since if time_since else [],
+        }
+
+    def extract_stellar_hr_data(
+        self, subsample: int = 5000, seed: int = 42
+    ) -> dict:
+        """Extract stellar data for HR diagram visualization.
+
+        Returns per-frame HR data if stellar ages are available in snapshots.
+
+        Args:
+            subsample: Number of stars to include
+            seed: Random seed for subsampling
+
+        Returns:
+            Dict with temperatures, luminosities, colors, habitable flags, and per-frame data
+        """
+        from great_silence.astrophysics.stellar_evolution import StellarEvolution
+
+        masses = self.simulation_data.get("galaxy_masses", np.array([]))
+        habitable_indices = self.simulation_data.get("habitable_indices", np.array([]))
+
+        if len(masses) == 0:
+            return {
+                "temperatures": [],
+                "luminosities": [],
+                "colors": [],
+                "is_habitable": [],
+                "masses": [],
+                "per_frame": [],
+            }
+
+        rng = np.random.default_rng(seed)
+        if len(masses) > subsample:
+            indices = rng.choice(len(masses), subsample, replace=False)
+        else:
+            indices = np.arange(len(masses))
+        
+        masses_sub = masses[indices]
+        temperatures = StellarEvolution.effective_temperature(masses_sub)
+        luminosities = StellarEvolution.luminosity(masses_sub)
+        colors = StellarEvolution.temperature_to_rgb(temperatures)
+
+        habitable_set = set(habitable_indices.tolist()) if len(habitable_indices) > 0 else set()
+        is_habitable = [int(idx) in habitable_set for idx in indices]
+
+        per_frame_data = []
+        if self.snapshots:
+            for snap in self.snapshots:
+                frame_hr = {"time": snap.get("time", 0)}
+                if "stellar_ages" in snap and snap["stellar_ages"] is not None:
+                    ages = np.array(snap["stellar_ages"])
+                    if len(ages) > 0:
+                        ages_sub = ages[indices] if len(ages) > len(indices) else ages
+                        
+                        temps, lums, phases, colors = StellarEvolution.evolved_properties(
+                            masses_sub, ages_sub
+                        )
+                        
+                        frame_hr["temperatures"] = temps.tolist()
+                        frame_hr["luminosities"] = lums.tolist()
+                        frame_hr["phases"] = phases.tolist()
+                        frame_hr["colors"] = colors.tolist()
+                per_frame_data.append(frame_hr)
+
+        return {
+            "temperatures": temperatures.tolist(),
+            "luminosities": luminosities.tolist(),
+            "colors": colors.tolist(),
+            "is_habitable": is_habitable,
+            "masses": masses_sub.tolist(),
+            "per_frame": per_frame_data,
+            "indices": indices.tolist(),
+        }
+
+    def extract_civ_statistics(self) -> dict:
+        """Extract civilization statistics for chart visualization.
+
+        Returns:
+            Dict with time series data for civilization charts:
+            - times: list of time points (Gyr)
+            - active_counts: active civs at each time
+            - extinct_counts: cumulative extinct civs
+            - total_births: cumulative births
+            - kardashev_values: all K values per frame (including recently extinct)
+            - colony_counts: total colonies per frame
+            - lifespans: list of civilization lifespans (Gyr)
+        """
+        if not self.snapshots:
+            return {
+                "times": [],
+                "active_counts": [],
+                "extinct_counts": [],
+                "total_births": [],
+                "kardashev_values": [],
+                "colony_counts": [],
+                "lifespans": [],
+                "birth_times": [],
+                "death_times": [],
+                "peak_kardashev": [],
+            }
+
+        times = []
+        active_counts = []
+        extinct_counts = []
+        total_births = []
+        kardashev_values = []
+        colony_counts = []
+        peak_kardashev = []
+
+        seen_civs = set()
+        dead_civs = set()
+        birth_times = {}
+        death_times = {}
+        civ_peak_k = {}
+        lifespans = []
+
+        for snapshot in self.snapshots:
+            t = snapshot["time"]
+            times.append(t)
+
+            civs = snapshot.get("civilizations", [])
+            active = 0
+            extinct = 0
+            frame_kardashev = []
+            frame_colonies = 0
+
+            for civ in civs:
+                civ_id = civ.get("civ_id", -1)
+                is_active = civ.get("is_active", False)
+                k_value = civ.get("kardashev", 0.7)
+
+                if civ_id not in seen_civs:
+                    seen_civs.add(civ_id)
+                    birth_times[civ_id] = t - civ.get("age", 0)
+                    civ_peak_k[civ_id] = k_value
+
+                civ_peak_k[civ_id] = max(civ_peak_k.get(civ_id, 0.7), k_value)
+
+                if is_active:
+                    active += 1
+                    frame_kardashev.append(k_value)
+                else:
+                    extinct += 1
+                    if civ_id not in dead_civs:
+                        dead_civs.add(civ_id)
+                        death_times[civ_id] = t
+                        if civ_id in birth_times:
+                            lifespan = t - birth_times[civ_id]
+                            lifespans.append(lifespan)
+
+            if not frame_kardashev and civs:
+                for civ in civs:
+                    frame_kardashev.append(civ.get("kardashev", 0.7))
+
+            active_counts.append(active)
+            extinct_counts.append(extinct)
+            total_births.append(len(seen_civs))
+            kardashev_values.append(frame_kardashev)
+            colony_counts.append(frame_colonies)
+            peak_kardashev.append(list(civ_peak_k.values()) if civ_peak_k else [])
+
+        birth_time_list = sorted(birth_times.values())
+        death_time_list = sorted(death_times.values())
+
+        return {
+            "times": times,
+            "active_counts": active_counts,
+            "extinct_counts": extinct_counts,
+            "total_births": total_births,
+            "kardashev_values": kardashev_values,
+            "colony_counts": colony_counts,
+            "lifespans": lifespans,
+            "birth_times": birth_time_list,
+            "death_times": death_time_list,
+            "peak_kardashev": peak_kardashev,
         }

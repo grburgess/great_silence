@@ -37,6 +37,9 @@ class ThreeJSRenderer:
             animated: Include animation frames
         """
         galaxy_data = self.extractor.extract_galaxy_data()
+        
+        hr_data = self.extractor.extract_stellar_hr_data()
+        civ_stats = self.extractor.extract_civ_statistics()
 
         if animated:
             frames = []
@@ -64,6 +67,8 @@ class ThreeJSRenderer:
                 "galaxy": galaxy_data,
                 "frames": frames,
                 "time_range": time_range,
+                "hr_data": hr_data,
+                "civ_stats": civ_stats,
             }
 
             frames_json = json.dumps(frames)
@@ -83,6 +88,8 @@ class ThreeJSRenderer:
                 "trajectories": trajectory_data,
                 "probes": probe_data,
                 "hazards": hazard_data,
+                "hr_data": hr_data,
+                "civ_stats": civ_stats,
             }
 
     def render(

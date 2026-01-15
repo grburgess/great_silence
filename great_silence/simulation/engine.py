@@ -215,6 +215,7 @@ class SimulationSnapshot:
     colonized_systems: int
     civilization_states: List[CivilizationState]
     stellar_positions: np.ndarray  # For visualization
+    stellar_ages: Optional[np.ndarray] = None  # Stellar ages in Gyr for HR diagram evolution
     active_probes_in_flight: List[ProbeSnapshot] = field(default_factory=list)
     total_active_probes: int = 0
     hazard_events: List[HazardEvent] = field(default_factory=list)  # Disasters since last snapshot
@@ -2478,6 +2479,9 @@ class GalaxySimulation:
             civilization_states=[c for c in self.civilizations],
             stellar_positions=(
                 self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([])
+            ),
+            stellar_ages=(
+                self.galaxy.ages.copy() if self.galaxy.ages is not None else None
             ),
             active_probes_in_flight=probe_snapshots,
             total_active_probes=len(probe_snapshots),

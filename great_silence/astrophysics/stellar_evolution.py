@@ -140,3 +140,62 @@ class StellarEvolution:
         """
         luminosities = StellarEvolution.luminosity(masses)
         return base_size * np.sqrt(np.clip(luminosities, 0.01, 100))
+
+    @staticmethod
+    def evolved_properties(
+        masses: np.ndarray,
+        ages: np.ndarray
+    ) -> tuple:
+        """Calculate evolved stellar properties based on mass and age.
+        
+        Tracks stellar evolution through phases:
+        - Main sequence: stable temperature/luminosity
+        - Red giant: cooler (~3500K), brighter (10-1000x MS luminosity)
+        - Dead: supernova/white dwarf (removed from visualization)
+        
+        Args:
+            masses: (N,) stellar masses in M_sun
+            ages: (N,) stellar ages in Gyr
+            
+        Returns:
+            Tuple of:
+            - temperatures: (N,) effective temperatures in K
+            - luminosities: (N,) luminosities in L_sun
+            - phases: (N,) phase codes (0=MS, 1=RGB, 2=dead)
+            - colors: (N,3) RGB colors
+        """
+        n = len(masses)
+        ms_lifetimes = StellarEvolution.main_sequence_lifetime(masses, np.zeros(n))
+        
+        ms_temps = StellarEvolution.effective_temperature(masses)
+        ms_lums = StellarEvolution.luminosity(masses)
+        
+        age_fraction = ages / np.maximum(ms_lifetimes, 0.001)
+        
+        phases = np.zeros(n, dtype=int)
+        phases[age_fraction > 0.9] = 1  # Red giant phase (last 10% of MS life)
+        phases[age_fraction >= 1.0] = 2  # Dead
+        
+        temperatures = ms_temps.copy()
+        luminosities = ms_lums.copy()
+        
+        rgb_mask = phases == 1
+        if np.any(rgb_mask):
+            rgb_progress = (age_fraction[rgb_mask] - 0.9) / 0.1
+            rgb_progress = np.clip(rgb_progress, 0, 1)
+            
+            temperatures[rgb_mask] = ms_temps[rgb_mask] * (1 - 0.5 * rgb_progress) + 3500 * 0.5 * rgb_progress
+            
+            lum_boost = 10 ** (2 * rgb_progress)
+            luminosities[rgb_mask] = ms_lums[rgb_mask] * lum_boost
+        
+        dead_mask = phases == 2
+        temperatures[dead_mask] = 0
+        luminosities[dead_mask] = 0
+        
+        colors = np.zeros((n, 3))
+        alive_mask = phases < 2
+        if np.any(alive_mask):
+            colors[alive_mask] = StellarEvolution.temperature_to_rgb(temperatures[alive_mask])
+        
+        return temperatures, luminosities, phases, colors

@@ -291,6 +291,145 @@
             margin: 3px 0;
             color: #ccc;
         }
+
+        /* Floating Chart Panels */
+        .chart-panel {
+            position: absolute;
+            background: rgba(10, 10, 20, 0.92);
+            border: 1px solid #2a4a6a;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            min-width: 320px;
+            min-height: 200px;
+            display: none;
+            z-index: 100;
+            backdrop-filter: blur(4px);
+        }
+
+        .chart-panel.visible {
+            display: block;
+        }
+
+        .chart-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: linear-gradient(180deg, rgba(40, 60, 90, 0.8) 0%, rgba(20, 35, 55, 0.8) 100%);
+            border-bottom: 1px solid #2a4a6a;
+            border-radius: 7px 7px 0 0;
+            cursor: move;
+            user-select: none;
+        }
+
+        .chart-panel-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #8ac4ff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .chart-panel-close {
+            background: none;
+            border: none;
+            color: #667;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 0 4px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        .chart-panel-close:hover {
+            color: #ff6666;
+        }
+
+        .chart-panel-content {
+            padding: 12px;
+            overflow: hidden;
+        }
+
+        .chart-panel-content canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .chart-panel.focused {
+            z-index: 101;
+            border-color: #4a8aff;
+        }
+
+        /* Chart toggle buttons */
+        #chart-controls {
+            display: flex;
+            gap: 5px;
+            padding-top: 8px;
+            border-top: 1px solid #333;
+            margin-top: 8px;
+        }
+
+        #chart-controls .btn {
+            background: #1a2a3a;
+            border-color: #2a4a6a;
+            font-size: 11px;
+            padding: 6px 10px;
+        }
+
+        #chart-controls .btn:hover {
+            background: #2a3a4a;
+        }
+
+        #chart-controls .btn.active {
+            background: #2a5a8a;
+            border-color: #4a8aff;
+            color: #fff;
+        }
+
+        /* Chart-specific styles */
+        .hr-legend {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 8px;
+            font-size: 10px;
+        }
+
+        .hr-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .hr-legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .chart-stats {
+            display: flex;
+            justify-content: space-around;
+            padding: 8px 0;
+            border-top: 1px solid #2a4a6a;
+            margin-top: 8px;
+            font-size: 11px;
+        }
+
+        .chart-stat {
+            text-align: center;
+        }
+
+        .chart-stat-value {
+            color: #8ac4ff;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .chart-stat-label {
+            color: #667;
+        }
     </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -348,6 +487,84 @@
             <div class="tooltip" id="tooltip">
                 <h4 id="tooltip-title">Civilization</h4>
                 <p id="tooltip-content"></p>
+            </div>
+
+            <!-- Floating Chart Panels -->
+            <div class="chart-panel" id="panel-hr" style="top: 70px; left: 10px; width: 380px; height: 320px;">
+                <div class="chart-panel-header">
+                    <span class="chart-panel-title">HR Diagram</span>
+                    <button class="chart-panel-close" data-panel="panel-hr">&times;</button>
+                </div>
+                <div class="chart-panel-content">
+                    <canvas id="chart-hr" width="356" height="240"></canvas>
+                    <div class="hr-legend">
+                        <div class="hr-legend-item"><span class="hr-legend-dot" style="background: #9bb0ff;"></span>O/B</div>
+                        <div class="hr-legend-item"><span class="hr-legend-dot" style="background: #fff;"></span>A/F</div>
+                        <div class="hr-legend-item"><span class="hr-legend-dot" style="background: #ffcc6f;"></span>G</div>
+                        <div class="hr-legend-item"><span class="hr-legend-dot" style="background: #ff8a00;"></span>K</div>
+                        <div class="hr-legend-item"><span class="hr-legend-dot" style="background: #ff3300;"></span>M</div>
+                        <div class="hr-legend-item"><span class="hr-legend-dot" style="background: #00ff88; border: 1px solid #00ff88;"></span>Habitable</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-panel" id="panel-kardashev" style="top: 70px; left: 400px; width: 340px; height: 280px;">
+                <div class="chart-panel-header">
+                    <span class="chart-panel-title">Kardashev Distribution</span>
+                    <button class="chart-panel-close" data-panel="panel-kardashev">&times;</button>
+                </div>
+                <div class="chart-panel-content">
+                    <canvas id="chart-kardashev" width="316" height="200"></canvas>
+                    <div class="chart-stats" id="kardashev-stats">
+                        <div class="chart-stat"><span class="chart-stat-value" id="k-min">-</span><br><span class="chart-stat-label">Min</span></div>
+                        <div class="chart-stat"><span class="chart-stat-value" id="k-avg">-</span><br><span class="chart-stat-label">Avg</span></div>
+                        <div class="chart-stat"><span class="chart-stat-value" id="k-max">-</span><br><span class="chart-stat-label">Max</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-panel" id="panel-timeline" style="top: 360px; left: 10px; width: 400px; height: 260px;">
+                <div class="chart-panel-header">
+                    <span class="chart-panel-title">Birth / Death Timeline</span>
+                    <button class="chart-panel-close" data-panel="panel-timeline">&times;</button>
+                </div>
+                <div class="chart-panel-content">
+                    <canvas id="chart-timeline" width="376" height="180"></canvas>
+                    <div class="chart-stats" id="timeline-stats">
+                        <div class="chart-stat"><span class="chart-stat-value" id="total-births">0</span><br><span class="chart-stat-label">Births</span></div>
+                        <div class="chart-stat"><span class="chart-stat-value" id="total-deaths">0</span><br><span class="chart-stat-label">Deaths</span></div>
+                        <div class="chart-stat"><span class="chart-stat-value" id="survival-rate">-</span><br><span class="chart-stat-label">Survival</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-panel" id="panel-colony" style="top: 360px; left: 420px; width: 340px; height: 260px;">
+                <div class="chart-panel-header">
+                    <span class="chart-panel-title">Colony Expansion</span>
+                    <button class="chart-panel-close" data-panel="panel-colony">&times;</button>
+                </div>
+                <div class="chart-panel-content">
+                    <canvas id="chart-colony" width="316" height="180"></canvas>
+                    <div class="chart-stats" id="colony-stats">
+                        <div class="chart-stat"><span class="chart-stat-value" id="total-colonies">0</span><br><span class="chart-stat-label">Colonies</span></div>
+                        <div class="chart-stat"><span class="chart-stat-value" id="expanding-civs">0</span><br><span class="chart-stat-label">Expanding</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-panel" id="panel-lifespan" style="top: 70px; left: 750px; width: 320px; height: 280px;">
+                <div class="chart-panel-header">
+                    <span class="chart-panel-title">Civilization Lifespans</span>
+                    <button class="chart-panel-close" data-panel="panel-lifespan">&times;</button>
+                </div>
+                <div class="chart-panel-content">
+                    <canvas id="chart-lifespan" width="296" height="180"></canvas>
+                    <div class="chart-stats" id="lifespan-stats">
+                        <div class="chart-stat"><span class="chart-stat-value" id="avg-lifespan">-</span><br><span class="chart-stat-label">Avg (Myr)</span></div>
+                        <div class="chart-stat"><span class="chart-stat-value" id="max-lifespan">-</span><br><span class="chart-stat-label">Max (Myr)</span></div>
+                        <div class="chart-stat"><span class="chart-stat-value" id="median-lifespan">-</span><br><span class="chart-stat-label">Median</span></div>
+                    </div>
+                </div>
             </div>
 
             <div id="controls-panel">
@@ -441,6 +658,16 @@
                     <button class="btn" id="btn-cam-angle">Angled View</button>
                     <button class="btn" id="btn-cam-autorotate">Auto-Rotate</button>
                 </div>
+
+                <!-- Chart Toggle Controls -->
+                <div id="chart-controls">
+                    <span style="font-size: 11px; color: #8ac4ff; font-weight: bold; margin-right: 5px;">CHARTS</span>
+                    <button class="btn" id="btn-chart-hr" title="HR Diagram">HR</button>
+                    <button class="btn" id="btn-chart-kardashev" title="Kardashev Distribution">K-Scale</button>
+                    <button class="btn" id="btn-chart-timeline" title="Birth/Death Timeline">Timeline</button>
+                    <button class="btn" id="btn-chart-colony" title="Colony Expansion">Colonies</button>
+                    <button class="btn" id="btn-chart-lifespan" title="Civilization Lifespans">Lifespan</button>
+                </div>
             </div>
         </div>
     </div>
@@ -458,6 +685,7 @@
     <script src="particles.js?v={{ range(1000000) | random }}"></script>
     <script src="layers.js?v={{ range(1000000) | random }}"></script>
     <script src="lod.js?v={{ range(1000000) | random }}"></script>
+    <script src="charts.js?v={{ range(1000000) | random }}"></script>
     <script src="ui.js?v={{ range(1000000) | random }}"></script>
     <script src="postprocess.js?v={{ range(1000000) | random }}"></script>
 
@@ -481,6 +709,14 @@
         window.cameraPresets = {{ data.camera_presets | tojson | safe }};
         {% endif %}
 
+        {% if data.hr_data %}
+        window.hrData = {{ data.hr_data | tojson | safe }};
+        {% endif %}
+
+        {% if data.civ_stats %}
+        window.civStatsData = {{ data.civ_stats | tojson | safe }};
+        {% endif %}
+
         function init() {
             if (typeof THREE === 'undefined') {
                 document.getElementById('loading-text').textContent = 'Error: Three.js failed to load. Please check your internet connection and refresh.';
@@ -495,6 +731,11 @@
             // Initialize disaster visualization layers
             if (window.initializeDisasterLayers) {
                 window.initializeDisasterLayers(window.config);
+            }
+            
+            // Initialize chart panels
+            if (window.initCharts) {
+                window.initCharts();
             }
             
             initUI();

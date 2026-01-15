@@ -14,6 +14,7 @@ let downsamplePercent = 0;
 function initUI() {
     initPlaybackControls();
     initLayerControls();
+    initChartToggleControls();
     initDisasterControls();
     initSpeedControl();
     initDownsampleControl();
@@ -88,6 +89,43 @@ function initLayerControls() {
         usePostProcessing = !usePostProcessing;
         e.target.classList.toggle('active', usePostProcessing);
         window.usePostProcessing = usePostProcessing;
+    });
+}
+
+function initChartToggleControls() {
+    const chartButtons = {
+        'btn-chart-hr': 'panel-hr',
+        'btn-chart-kardashev': 'panel-kardashev',
+        'btn-chart-timeline': 'panel-timeline',
+        'btn-chart-colony': 'panel-colony',
+        'btn-chart-lifespan': 'panel-lifespan'
+    };
+    
+    Object.entries(chartButtons).forEach(([btnId, panelId]) => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.addEventListener('click', (e) => {
+                e.target.classList.toggle('active');
+                if (window.toggleChartPanel) {
+                    window.toggleChartPanel(panelId);
+                }
+                
+                if (e.target.classList.contains('active')) {
+                    const frameIdx = window.currentFrame || 0;
+                    if (panelId === 'panel-hr' && window.renderHRDiagram) {
+                        window.renderHRDiagram(frameIdx);
+                    } else if (panelId === 'panel-kardashev' && window.renderKardashevHistogram) {
+                        window.renderKardashevHistogram(frameIdx);
+                    } else if (panelId === 'panel-timeline' && window.renderBirthDeathTimeline) {
+                        window.renderBirthDeathTimeline(frameIdx);
+                    } else if (panelId === 'panel-colony' && window.renderColonyExpansion) {
+                        window.renderColonyExpansion(frameIdx);
+                    } else if (panelId === 'panel-lifespan' && window.renderLifespanChart) {
+                        window.renderLifespanChart();
+                    }
+                }
+            });
+        }
     });
 }
 
@@ -572,6 +610,11 @@ function updateFrame(frameIndex) {
     // Update enhanced disaster visualization
     if (window.updateDisasterVisualization && window.allDisasters) {
         window.updateDisasterVisualization(frameIndex, window.allDisasters, window.config);
+    }
+    
+    // Update chart panels
+    if (window.updateCharts) {
+        window.updateCharts(frameIndex);
     }
 }
 

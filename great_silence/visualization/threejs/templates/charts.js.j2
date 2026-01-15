@@ -1,0 +1,693 @@
+{# charts.js.j2 - Chart rendering for floating panels #}
+
+const chartState = {
+    panels: {},
+    currentFrame: 0,
+    hrData: null,
+    civStats: null
+};
+
+function initCharts() {
+    chartState.hrData = window.hrData || null;
+    chartState.civStats = window.civStatsData || null;
+    
+    initChartPanels();
+    initChartControls();
+    
+    if (chartState.hrData) {
+        renderHRDiagram(0);
+    }
+    
+    if (chartState.civStats) {
+        renderKardashevHistogram(0);
+        renderBirthDeathTimeline(0);
+        renderColonyExpansion(0);
+        renderLifespanChart();
+    }
+}
+
+function initChartPanels() {
+    const panels = ['panel-hr', 'panel-kardashev', 'panel-timeline', 'panel-colony', 'panel-lifespan'];
+    
+    panels.forEach(id => {
+        const panel = document.getElementById(id);
+        if (panel) {
+            chartState.panels[id] = {
+                element: panel,
+                visible: false,
+                x: parseInt(panel.style.left) || 10,
+                y: parseInt(panel.style.top) || 70
+            };
+            
+            const savedPos = localStorage.getItem(`chart_pos_${id}`);
+            if (savedPos) {
+                const pos = JSON.parse(savedPos);
+                panel.style.left = pos.x + 'px';
+                panel.style.top = pos.y + 'px';
+                chartState.panels[id].x = pos.x;
+                chartState.panels[id].y = pos.y;
+            }
+            
+            makePanelDraggable(panel);
+        }
+    });
+}
+
+function makePanelDraggable(panel) {
+    const header = panel.querySelector('.chart-panel-header');
+    if (!header) return;
+    
+    let isDragging = false;
+    let startX, startY, initialX, initialY;
+    
+    header.addEventListener('mousedown', (e) => {
+        if (e.target.classList.contains('chart-panel-close')) return;
+        
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        initialX = panel.offsetLeft;
+        initialY = panel.offsetTop;
+        
+        document.querySelectorAll('.chart-panel').forEach(p => p.classList.remove('focused'));
+        panel.classList.add('focused');
+        
+        e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        
+        const newX = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, initialX + dx));
+        const newY = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, initialY + dy));
+        
+        panel.style.left = newX + 'px';
+        panel.style.top = newY + 'px';
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (isDragging) {
+            isDragging = false;
+            localStorage.setItem(`chart_pos_${panel.id}`, JSON.stringify({
+                x: panel.offsetLeft,
+                y: panel.offsetTop
+            }));
+        }
+    });
+}
+
+function initChartControls() {
+    const closeButtons = document.querySelectorAll('.chart-panel-close');
+    closeButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const panelId = btn.getAttribute('data-panel');
+            toggleChartPanel(panelId, false);
+        });
+    });
+}
+
+function toggleChartPanel(panelId, forceState) {
+    const panelState = chartState.panels[panelId];
+    if (!panelState) return;
+    
+    const visible = forceState !== undefined ? forceState : !panelState.visible;
+    panelState.visible = visible;
+    
+    if (visible) {
+        panelState.element.classList.add('visible');
+    } else {
+        panelState.element.classList.remove('visible');
+    }
+    
+    const btnId = 'btn-chart-' + panelId.replace('panel-', '');
+    const btn = document.getElementById(btnId);
+    if (btn) {
+        btn.classList.toggle('active', visible);
+    }
+}
+
+function renderHRDiagram(frameIndex) {
+    const canvas = document.getElementById('chart-hr');
+    if (!canvas || !chartState.hrData) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    const padding = { top: 20, right: 20, bottom: 35, left: 45 };
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+    
+    ctx.fillStyle = '#0a0a14';
+    ctx.fillRect(0, 0, width, height);
+    
+    const tempMin = Math.log10(2500);
+    const tempMax = Math.log10(40000);
+    const lumMin = -4;
+    const lumMax = 6;
+    
+    ctx.strokeStyle = '#1a2a3a';
+    ctx.lineWidth = 1;
+    
+    for (let i = 0; i <= 5; i++) {
+        const y = padding.top + (plotHeight * i / 5);
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(width - padding.right, y);
+        ctx.stroke();
+    }
+    
+    for (let i = 0; i <= 4; i++) {
+        const x = padding.left + (plotWidth * i / 4);
+        ctx.beginPath();
+        ctx.moveTo(x, padding.top);
+        ctx.lineTo(x, height - padding.bottom);
+        ctx.stroke();
+    }
+    
+    ctx.fillStyle = 'rgba(255, 200, 100, 0.03)';
+    const habTempMin = Math.log10(4500);
+    const habTempMax = Math.log10(7000);
+    const habLumMin = Math.log10(0.5);
+    const habLumMax = Math.log10(2);
+    
+    const habX1 = padding.left + ((tempMax - habTempMax) / (tempMax - tempMin)) * plotWidth;
+    const habX2 = padding.left + ((tempMax - habTempMin) / (tempMax - tempMin)) * plotWidth;
+    const habY1 = padding.top + ((lumMax - habLumMax) / (lumMax - lumMin)) * plotHeight;
+    const habY2 = padding.top + ((lumMax - habLumMin) / (lumMax - lumMin)) * plotHeight;
+    
+    ctx.fillRect(habX1, habY1, habX2 - habX1, habY2 - habY1);
+    ctx.strokeStyle = 'rgba(0, 255, 136, 0.3)';
+    ctx.strokeRect(habX1, habY1, habX2 - habX1, habY2 - habY1);
+    
+    const { temperatures: baseTemps, luminosities: baseLums, colors: baseColors, is_habitable, per_frame } = chartState.hrData;
+    
+    let frameData = null;
+    if (per_frame && frameIndex !== undefined && per_frame[frameIndex]) {
+        frameData = per_frame[frameIndex];
+    }
+    
+    const useEvolved = frameData && frameData.temperatures && frameData.temperatures.length > 0;
+    const temperatures = useEvolved ? frameData.temperatures : baseTemps;
+    const luminosities = useEvolved ? frameData.luminosities : baseLums;
+    const colors = useEvolved ? frameData.colors : baseColors;
+    const phases = useEvolved ? frameData.phases : null;
+    
+    let aliveCount = 0;
+    let deadCount = 0;
+    let rgbCount = 0;
+    
+    for (let i = 0; i < temperatures.length; i++) {
+        const temp = temperatures[i];
+        const lum = luminosities[i];
+        const color = colors[i];
+        const habitable = is_habitable[i];
+        const phase = phases ? phases[i] : 0;
+        
+        if (phase === 2 || temp === 0) {
+            deadCount++;
+            continue;
+        }
+        
+        if (phase === 1) rgbCount++;
+        aliveCount++;
+        
+        const logTemp = Math.log10(Math.max(temp, 1000));
+        const logLum = Math.log10(Math.max(0.0001, lum));
+        
+        const x = padding.left + ((tempMax - logTemp) / (tempMax - tempMin)) * plotWidth;
+        const y = padding.top + ((lumMax - logLum) / (lumMax - lumMin)) * plotHeight;
+        
+        if (x < padding.left || x > width - padding.right || y < padding.top || y > height - padding.bottom) continue;
+        
+        const isRGB = phase === 1;
+        const pointSize = isRGB ? 4 : (habitable ? 3 : 2);
+        
+        ctx.beginPath();
+        ctx.arc(x, y, pointSize, 0, Math.PI * 2);
+        
+        if (habitable && phase === 0) {
+            ctx.fillStyle = 'rgba(0, 255, 136, 0.9)';
+        } else if (isRGB) {
+            ctx.fillStyle = `rgba(${Math.floor(color[0] * 255)}, ${Math.floor(color[1] * 255)}, ${Math.floor(color[2] * 255)}, 0.95)`;
+        } else {
+            ctx.fillStyle = `rgba(${Math.floor(color[0] * 255)}, ${Math.floor(color[1] * 255)}, ${Math.floor(color[2] * 255)}, 0.6)`;
+        }
+        ctx.fill();
+    }
+    
+    ctx.fillStyle = '#667';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    
+    const tempLabels = [30000, 10000, 5000, 3000];
+    tempLabels.forEach(t => {
+        const logT = Math.log10(t);
+        const x = padding.left + ((tempMax - logT) / (tempMax - tempMin)) * plotWidth;
+        ctx.fillText(t >= 1000 ? (t / 1000) + 'K' : t + 'K', x, height - padding.bottom + 15);
+    });
+    
+    ctx.textAlign = 'right';
+    const lumLabels = [-2, 0, 2, 4];
+    lumLabels.forEach(l => {
+        const y = padding.top + ((lumMax - l) / (lumMax - lumMin)) * plotHeight;
+        ctx.fillText('10^' + l, padding.left - 5, y + 4);
+    });
+    
+    ctx.fillStyle = '#8ac4ff';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Temperature (K) →', width / 2, height - 5);
+    
+    ctx.save();
+    ctx.translate(12, height / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('Luminosity (L☉) →', 0, 0);
+    ctx.restore();
+    
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'right';
+    let yOffset = padding.top + 10;
+    
+    if (rgbCount > 0) {
+        ctx.fillStyle = '#ff8844';
+        ctx.fillText(`Red Giants: ${rgbCount}`, width - padding.right, yOffset);
+        yOffset += 12;
+    }
+    
+    if (deadCount > 0) {
+        ctx.fillStyle = '#ff4466';
+        ctx.fillText(`Dead: ${deadCount}`, width - padding.right, yOffset);
+    }
+}
+
+function renderKardashevHistogram(frameIndex) {
+    const canvas = document.getElementById('chart-kardashev');
+    if (!canvas || !chartState.civStats) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    const padding = { top: 15, right: 15, bottom: 30, left: 35 };
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+    
+    ctx.fillStyle = '#0a0a14';
+    ctx.fillRect(0, 0, width, height);
+    
+    const peakKardashev = chartState.civStats.peak_kardashev;
+    const kardashevValues = chartState.civStats.kardashev_values;
+    
+    let currentValues = [];
+    if (peakKardashev && frameIndex < peakKardashev.length && peakKardashev[frameIndex].length > 0) {
+        currentValues = peakKardashev[frameIndex];
+    } else if (kardashevValues && frameIndex < kardashevValues.length) {
+        currentValues = kardashevValues[frameIndex];
+    }
+    
+    if (!currentValues || currentValues.length === 0) {
+        ctx.fillStyle = '#445';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No civilizations yet', width / 2, height / 2);
+        
+        document.getElementById('k-min').textContent = '-';
+        document.getElementById('k-max').textContent = '-';
+        document.getElementById('k-avg').textContent = '-';
+        return;
+    }
+    
+    const bins = [
+        { label: '0.7-1.0', min: 0.7, max: 1.0, count: 0, color: '#3b528b' },
+        { label: '1.0-1.5', min: 1.0, max: 1.5, count: 0, color: '#21918c' },
+        { label: '1.5-2.0', min: 1.5, max: 2.0, count: 0, color: '#5ec962' },
+        { label: '2.0-2.5', min: 2.0, max: 2.5, count: 0, color: '#fde725' },
+        { label: '2.5-3.0', min: 2.5, max: 3.0, count: 0, color: '#ff6600' }
+    ];
+    
+    currentValues.forEach(k => {
+        for (let bin of bins) {
+            if (k >= bin.min && k < bin.max) {
+                bin.count++;
+                break;
+            }
+        }
+    });
+    bins[bins.length - 1].count += currentValues.filter(v => v >= 2.5).length - bins[bins.length - 1].count;
+    
+    const maxCount = Math.max(...bins.map(b => b.count), 1);
+    const barWidth = plotWidth / bins.length - 8;
+    
+    bins.forEach((bin, i) => {
+        const x = padding.left + i * (plotWidth / bins.length) + 4;
+        const barHeight = (bin.count / maxCount) * plotHeight;
+        const y = padding.top + plotHeight - barHeight;
+        
+        ctx.fillStyle = bin.color;
+        ctx.fillRect(x, y, barWidth, barHeight);
+        
+        if (bin.count > 0) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(bin.count, x + barWidth / 2, y - 5);
+        }
+        
+        ctx.fillStyle = '#667';
+        ctx.font = '9px sans-serif';
+        ctx.fillText(bin.label, x + barWidth / 2, height - padding.bottom + 12);
+    });
+    
+    ctx.fillStyle = '#8ac4ff';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Kardashev Scale (Peak Values)', width / 2, height - 3);
+    
+    const minK = Math.min(...currentValues).toFixed(2);
+    const maxK = Math.max(...currentValues).toFixed(2);
+    const avgK = (currentValues.reduce((a, b) => a + b, 0) / currentValues.length).toFixed(2);
+    
+    document.getElementById('k-min').textContent = minK;
+    document.getElementById('k-max').textContent = maxK;
+    document.getElementById('k-avg').textContent = avgK;
+}
+
+function renderBirthDeathTimeline(frameIndex) {
+    const canvas = document.getElementById('chart-timeline');
+    if (!canvas || !chartState.civStats) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    const padding = { top: 15, right: 15, bottom: 30, left: 40 };
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+    
+    ctx.fillStyle = '#0a0a14';
+    ctx.fillRect(0, 0, width, height);
+    
+    const { times, total_births, extinct_counts } = chartState.civStats;
+    if (!times || times.length === 0) return;
+    
+    const currentIdx = Math.min(frameIndex, times.length - 1);
+    const displayTimes = times.slice(0, currentIdx + 1);
+    const displayBirths = total_births.slice(0, currentIdx + 1);
+    const displayDeaths = extinct_counts.slice(0, currentIdx + 1);
+    
+    const maxTime = Math.max(...times);
+    const maxCount = Math.max(...total_births, ...extinct_counts, 1);
+    
+    const toX = (t) => padding.left + (t / maxTime) * plotWidth;
+    const toY = (c) => padding.top + plotHeight - (c / maxCount) * plotHeight;
+    
+    ctx.strokeStyle = '#1a2a3a';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (plotHeight * i / 4);
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(width - padding.right, y);
+        ctx.stroke();
+    }
+    
+    if (displayTimes.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(toX(displayTimes[0]), toY(displayBirths[0]));
+        for (let i = 1; i < displayTimes.length; i++) {
+            ctx.lineTo(toX(displayTimes[i]), toY(displayBirths[i]));
+        }
+        ctx.strokeStyle = '#00ff88';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(toX(displayTimes[0]), toY(displayDeaths[0]));
+        for (let i = 1; i < displayTimes.length; i++) {
+            ctx.lineTo(toX(displayTimes[i]), toY(displayDeaths[i]));
+        }
+        ctx.strokeStyle = '#ff4466';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+    
+    if (frameIndex < times.length) {
+        const currentTime = times[frameIndex];
+        ctx.strokeStyle = 'rgba(138, 196, 255, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(toX(currentTime), padding.top);
+        ctx.lineTo(toX(currentTime), height - padding.bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+    
+    ctx.fillStyle = '#667';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i <= 4; i++) {
+        const t = (maxTime * i / 4).toFixed(1);
+        ctx.fillText(t, toX(maxTime * i / 4), height - padding.bottom + 12);
+    }
+    ctx.fillText('Time (Gyr)', width / 2, height - 3);
+    
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+        const c = Math.round(maxCount * (4 - i) / 4);
+        ctx.fillText(c, padding.left - 5, padding.top + (plotHeight * i / 4) + 4);
+    }
+    
+    ctx.font = '9px sans-serif';
+    ctx.fillStyle = '#00ff88';
+    ctx.textAlign = 'left';
+    ctx.fillText('● Births', padding.left + 5, padding.top + 10);
+    ctx.fillStyle = '#ff4466';
+    ctx.fillText('● Deaths', padding.left + 60, padding.top + 10);
+    
+    const totalBirths = displayBirths[displayBirths.length - 1] || 0;
+    const totalDeaths = displayDeaths[displayDeaths.length - 1] || 0;
+    const survivalRate = totalBirths > 0 ? ((totalBirths - totalDeaths) / totalBirths * 100).toFixed(0) : '-';
+    
+    document.getElementById('total-births').textContent = totalBirths;
+    document.getElementById('total-deaths').textContent = totalDeaths;
+    document.getElementById('survival-rate').textContent = survivalRate + '%';
+}
+
+function renderColonyExpansion(frameIndex) {
+    const canvas = document.getElementById('chart-colony');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    const padding = { top: 15, right: 15, bottom: 30, left: 40 };
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+    
+    ctx.fillStyle = '#0a0a14';
+    ctx.fillRect(0, 0, width, height);
+    
+    if (!window.animationData || !window.animationData.frames) {
+        ctx.fillStyle = '#445';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No animation data', width / 2, height / 2);
+        return;
+    }
+    
+    const frames = window.animationData.frames;
+    const currentIdx = Math.min(frameIndex, frames.length - 1);
+    
+    const colonyCounts = [];
+    const times = [];
+    let totalColonies = 0;
+    let expandingCivs = 0;
+    
+    for (let i = 0; i <= currentIdx; i++) {
+        const frame = frames[i];
+        times.push(frame.time);
+        
+        let frameColonies = 0;
+        const civColonyCounts = {};
+        
+        if (frame.trajectories) {
+            const civColonies = {};
+            frame.trajectories.forEach(t => {
+                if (!civColonies[t.civ_id]) civColonies[t.civ_id] = new Set();
+                civColonies[t.civ_id].add(JSON.stringify(t.end));
+            });
+            Object.keys(civColonies).forEach(civId => {
+                civColonyCounts[civId] = civColonies[civId].size;
+                frameColonies += civColonies[civId].size;
+            });
+        }
+        
+        colonyCounts.push(frameColonies);
+        
+        if (i === currentIdx) {
+            totalColonies = frameColonies;
+            expandingCivs = Object.keys(civColonyCounts).filter(k => civColonyCounts[k] > 0).length;
+        }
+    }
+    
+    const maxTime = times.length > 0 ? Math.max(...times) : 1;
+    const maxColonies = Math.max(...colonyCounts, 1);
+    
+    const toX = (t) => padding.left + (t / maxTime) * plotWidth;
+    const toY = (c) => padding.top + plotHeight - (c / maxColonies) * plotHeight;
+    
+    ctx.strokeStyle = '#1a2a3a';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (plotHeight * i / 4);
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(width - padding.right, y);
+        ctx.stroke();
+    }
+    
+    if (times.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(toX(times[0]), toY(colonyCounts[0]));
+        for (let i = 1; i < times.length; i++) {
+            ctx.lineTo(toX(times[i]), toY(colonyCounts[i]));
+        }
+        ctx.strokeStyle = '#8ac4ff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        ctx.lineTo(toX(times[times.length - 1]), height - padding.bottom);
+        ctx.lineTo(toX(times[0]), height - padding.bottom);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(138, 196, 255, 0.15)';
+        ctx.fill();
+    }
+    
+    ctx.fillStyle = '#667';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Time (Gyr)', width / 2, height - 3);
+    
+    document.getElementById('total-colonies').textContent = totalColonies;
+    document.getElementById('expanding-civs').textContent = expandingCivs;
+}
+
+function renderLifespanChart() {
+    const canvas = document.getElementById('chart-lifespan');
+    if (!canvas || !chartState.civStats) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    const padding = { top: 15, right: 15, bottom: 30, left: 40 };
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+    
+    ctx.fillStyle = '#0a0a14';
+    ctx.fillRect(0, 0, width, height);
+    
+    const lifespans = chartState.civStats.lifespans || [];
+    
+    if (lifespans.length === 0) {
+        ctx.fillStyle = '#445';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No extinct civilizations yet', width / 2, height / 2);
+        
+        document.getElementById('avg-lifespan').textContent = '-';
+        document.getElementById('max-lifespan').textContent = '-';
+        document.getElementById('median-lifespan').textContent = '-';
+        return;
+    }
+    
+    const lifespansMyr = lifespans.map(l => l * 1000);
+    
+    const bins = [];
+    const maxLifespan = Math.max(...lifespansMyr);
+    const binCount = Math.min(10, Math.ceil(maxLifespan / 50));
+    const binSize = maxLifespan / binCount;
+    
+    for (let i = 0; i < binCount; i++) {
+        bins.push({
+            min: i * binSize,
+            max: (i + 1) * binSize,
+            count: 0
+        });
+    }
+    
+    lifespansMyr.forEach(l => {
+        const binIdx = Math.min(Math.floor(l / binSize), binCount - 1);
+        if (binIdx >= 0) bins[binIdx].count++;
+    });
+    
+    const maxCount = Math.max(...bins.map(b => b.count), 1);
+    const barWidth = plotWidth / bins.length - 4;
+    
+    bins.forEach((bin, i) => {
+        const x = padding.left + i * (plotWidth / bins.length) + 2;
+        const barHeight = (bin.count / maxCount) * plotHeight;
+        const y = padding.top + plotHeight - barHeight;
+        
+        const hue = 200 + (i / bins.length) * 60;
+        ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+        ctx.fillRect(x, y, barWidth, barHeight);
+        
+        if (bin.count > 0) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '9px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(bin.count, x + barWidth / 2, y - 3);
+        }
+    });
+    
+    ctx.fillStyle = '#667';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Lifespan (Myr)', width / 2, height - 3);
+    
+    const sorted = [...lifespansMyr].sort((a, b) => a - b);
+    const avg = (sorted.reduce((a, b) => a + b, 0) / sorted.length).toFixed(0);
+    const max = Math.max(...sorted).toFixed(0);
+    const median = sorted.length % 2 === 0 
+        ? ((sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2).toFixed(0)
+        : sorted[Math.floor(sorted.length / 2)].toFixed(0);
+    
+    document.getElementById('avg-lifespan').textContent = avg;
+    document.getElementById('max-lifespan').textContent = max;
+    document.getElementById('median-lifespan').textContent = median;
+}
+
+function updateCharts(frameIndex) {
+    chartState.currentFrame = frameIndex;
+    
+    if (chartState.panels['panel-hr']?.visible) {
+        renderHRDiagram(frameIndex);
+    }
+    
+    if (chartState.panels['panel-kardashev']?.visible) {
+        renderKardashevHistogram(frameIndex);
+    }
+    
+    if (chartState.panels['panel-timeline']?.visible) {
+        renderBirthDeathTimeline(frameIndex);
+    }
+    
+    if (chartState.panels['panel-colony']?.visible) {
+        renderColonyExpansion(frameIndex);
+    }
+    
+    if (chartState.panels['panel-lifespan']?.visible) {
+        renderLifespanChart();
+    }
+}
+
+window.initCharts = initCharts;
+window.toggleChartPanel = toggleChartPanel;
+window.updateCharts = updateCharts;
+window.renderHRDiagram = renderHRDiagram;
+window.renderKardashevHistogram = renderKardashevHistogram;
+window.renderBirthDeathTimeline = renderBirthDeathTimeline;
+window.renderColonyExpansion = renderColonyExpansion;
+window.renderLifespanChart = renderLifespanChart;
