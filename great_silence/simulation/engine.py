@@ -1623,11 +1623,12 @@ class GalaxySimulation:
             probe_id = self.next_probe_id
             self.next_probe_id += 1
 
-            target_pos = self.galaxy.positions[target_idx]
-            distance_pc = np.linalg.norm(target_pos - source_pos)
-            travel_time_yr = distance_pc / (civ.probe_velocity_c * C_PC_YR)
-            travel_time_myr = travel_time_yr / 1e6
-
+            # Calculate intercept position for moving target
+            intercept_pos, travel_time_myr = self._calculate_intercept_position(
+                source_pos=source_pos,
+                target_idx=target_idx,
+                velocity_c=civ.probe_velocity_c,
+            )
             arrival_time_myr = self.current_time_myr + travel_time_myr
 
             # Create probe
@@ -1690,6 +1691,60 @@ class GalaxySimulation:
         # We retrieve it from archived_probes to access its target location for offspring launch
         self._launch_offspring_probes(civ, probe)
 
+    def _calculate_intercept_position(
+        self,
+        source_pos: np.ndarray,
+        target_idx: int,
+        velocity_c: float,
+        max_iterations: int = 3,
+    ) -> Tuple[np.ndarray, float]:
+        """
+        Calculate intercept position for a moving target star.
+        
+        Uses iterative refinement to find where the target will be when
+        the probe arrives. Converges in 2-3 iterations for typical stellar
+        velocities (~30 km/s) and probe velocities (~0.01c).
+        
+        Args:
+            source_pos: Launch position (kpc)
+            target_idx: Index of target star
+            velocity_c: Probe velocity as fraction of c
+            max_iterations: Maximum iterations for convergence
+            
+        Returns:
+            Tuple of (intercept_position_kpc, travel_time_myr)
+        """
+        target_pos = self.galaxy.positions[target_idx].copy()
+        
+        # If stellar motion disabled or no velocities, use current position
+        if (not self.config.simulation.enable_stellar_motion or 
+            not self.config.simulation.probe_intercept_enabled or
+            self.galaxy.velocities is None):
+            distance_kpc = np.linalg.norm(target_pos - source_pos)
+            distance_pc = distance_kpc * 1000.0
+            travel_time_yr = distance_pc / (velocity_c * C_PC_YR)
+            travel_time_myr = travel_time_yr / 1e6
+            return target_pos, travel_time_myr
+        
+        # Get target velocity (km/s -> kpc/Myr)
+        target_vel_kms = self.galaxy.velocities[target_idx]
+        target_vel_kpc_myr = target_vel_kms * 0.001022
+        
+        # Iterative intercept calculation
+        intercept_pos = target_pos.copy()
+        travel_time_myr = 0.0
+        
+        for _ in range(max_iterations):
+            distance_kpc = np.linalg.norm(intercept_pos - source_pos)
+            distance_pc = distance_kpc * 1000.0
+            travel_time_yr = distance_pc / (velocity_c * C_PC_YR)
+            travel_time_myr = travel_time_yr / 1e6
+            
+            # Update intercept position based on travel time
+            intercept_pos = target_pos + target_vel_kpc_myr * travel_time_myr
+        
+        return intercept_pos, travel_time_myr
+
     def _launch_initial_probes(self, civ: CivilizationState) -> None:
         """Launch initial wave of probes from home world."""
         home_idx = civ.parent_star_idx
@@ -1707,13 +1762,13 @@ class GalaxySimulation:
 
         # Launch probes
         for target_idx in targets:
-            target_pos = self.galaxy.positions[target_idx]
-            distance_kpc = np.linalg.norm(target_pos - home_pos)
-            distance_pc = distance_kpc * 1000.0
-
-            # Calculate travel time
-            travel_time_yr = distance_pc / (civ.probe_velocity_c * C_PC_YR)
-            arrival_time_myr = self.current_time_myr + travel_time_yr / 1e6
+            # Calculate intercept position for moving target
+            intercept_pos, travel_time_myr = self._calculate_intercept_position(
+                source_pos=home_pos,
+                target_idx=target_idx,
+                velocity_c=civ.probe_velocity_c,
+            )
+            arrival_time_myr = self.current_time_myr + travel_time_myr
 
             # Create probe
             probe = ProbeState(
@@ -1755,13 +1810,13 @@ class GalaxySimulation:
 
         # Launch offspring probes
         for target_idx in targets:
-            target_pos = self.galaxy.positions[target_idx]
-            distance_kpc = np.linalg.norm(target_pos - source_pos)
-            distance_pc = distance_kpc * 1000.0
-
-            # Calculate travel time
-            travel_time_yr = distance_pc / (civ.probe_velocity_c * C_PC_YR)
-            arrival_time_myr = self.current_time_myr + travel_time_yr / 1e6
+            # Calculate intercept position for moving target
+            intercept_pos, travel_time_myr = self._calculate_intercept_position(
+                source_pos=source_pos,
+                target_idx=target_idx,
+                velocity_c=civ.probe_velocity_c,
+            )
+            arrival_time_myr = self.current_time_myr + travel_time_myr
 
             # Create offspring probe
             probe = ProbeState(
@@ -1977,13 +2032,12 @@ class GalaxySimulation:
             new_target_idx: New target star index
             current_pos: Probe's current position (kpc)
         """
-        new_target_pos = self.galaxy.positions[new_target_idx]
-        distance_kpc = np.linalg.norm(new_target_pos - current_pos)
-        distance_pc = distance_kpc * 1000.0
-
-        # Calculate new travel time from current position
-        travel_time_yr = distance_pc / (probe.velocity_c * C_PC_YR)
-        travel_time_myr = travel_time_yr / 1e6
+        # Calculate intercept position for moving target
+        intercept_pos, travel_time_myr = self._calculate_intercept_position(
+            source_pos=current_pos,
+            target_idx=new_target_idx,
+            velocity_c=probe.velocity_c,
+        )
 
         # Update probe parameters
         probe.target_star_idx = new_target_idx
