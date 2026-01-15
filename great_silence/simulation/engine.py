@@ -2870,15 +2870,34 @@ class GalaxySimulation:
     def _decay_reputations(self, dt_myr: float) -> None:
         """
         Decay reputation values towards neutral (0.0) over time.
+        Only processes active civilizations with non-empty reputations.
         """
         decay = self.config.civilization.reputation_decay_rate * (dt_myr / 1000.0)
+        
+        if decay <= 0.0:
+            return
 
         for civ in self.civilizations:
-            for other_civ_id in list(civ.reputation.keys()):
-                if civ.reputation[other_civ_id] > 0:
-                    civ.reputation[other_civ_id] = max(0.0, civ.reputation[other_civ_id] - decay)
-                else:
-                    civ.reputation[other_civ_id] = min(0.0, civ.reputation[other_civ_id] + decay)
+            if not civ.is_active or not civ.reputation:
+                continue
+            
+            keys_to_remove = []
+            for other_civ_id, rep_value in civ.reputation.items():
+                if rep_value > 0:
+                    new_val = rep_value - decay
+                    if new_val <= 0.001:
+                        keys_to_remove.append(other_civ_id)
+                    else:
+                        civ.reputation[other_civ_id] = new_val
+                elif rep_value < 0:
+                    new_val = rep_value + decay
+                    if new_val >= -0.001:
+                        keys_to_remove.append(other_civ_id)
+                    else:
+                        civ.reputation[other_civ_id] = new_val
+            
+            for key in keys_to_remove:
+                del civ.reputation[key]
 
     def _update_colony_strengths(self, dt_myr: float) -> None:
         """
