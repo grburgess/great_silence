@@ -60,6 +60,7 @@ dev = [
 
 [project.scripts]
 great-silence = "great_silence.cli:main"
+great-silence-webapp = "great_silence.webapp.__main__:main"
 
 [tool.setuptools]
 packages = ["great_silence", "great_silence.galaxy", "great_silence.astrophysics", "great_silence.civilization", "great_silence.simulation", "great_silence.visualization", "great_silence.config", "great_silence.utils", "great_silence.notebook", "great_silence.webapp", "great_silence.webapp.components"]

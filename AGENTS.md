@@ -280,7 +280,7 @@ python -c "from great_silence import SimulationConfig; c = SimulationConfig(); p
 
 ### Jan 2026 - NiceGUI Web Application Interface
 - Created `great_silence/webapp/` module with NiceGUI-based web interface
-- Launch with: `mamba run -n galaticbot python -m great_silence.webapp --port 8081`
+- Launch with: `great-silence-webapp --port 8081` (after `pip install -e .`)
 - Features implemented (GitHub issues #47-51):
   - **Preset selector**: Clickable cards for 5 Drake equation scenarios
   - **Basic settings**: Stars, duration, seed, Monte Carlo toggle
