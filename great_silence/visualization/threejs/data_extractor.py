@@ -289,13 +289,14 @@ class SimulationDataExtractor:
         positions = self.simulation_data.get("galaxy_positions", np.array([]))
         masses = self.simulation_data.get("galaxy_masses", np.array([]))
         
-        indices = None
+        # Store indices for consistent subsampling across snapshots
+        self._subsample_indices = None
         if len(positions) > subsample:
             rng = np.random.default_rng(seed)
-            indices = rng.choice(len(positions), subsample, replace=False)
-            positions = positions[indices]
+            self._subsample_indices = rng.choice(len(positions), subsample, replace=False)
+            positions = positions[self._subsample_indices]
             if len(masses) > 0:
-                masses = masses[indices]
+                masses = masses[self._subsample_indices]
 
         if len(masses) > 0 and len(masses) == len(positions):
             colors = StellarEvolution.mass_to_color(masses)

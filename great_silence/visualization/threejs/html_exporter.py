@@ -63,8 +63,15 @@ class ThreeJSRenderer:
                         "trajectories": snapshot.get("trajectories", []),
                     }
                     # Include stellar positions if available (for stellar motion)
+                    # Apply same subsampling as galaxy data for consistency
                     if "stellar_positions" in snapshot and snapshot["stellar_positions"]:
-                        frame_data["stellar_positions"] = snapshot["stellar_positions"]
+                        positions = snapshot["stellar_positions"]
+                        if hasattr(self.extractor, '_subsample_indices') and self.extractor._subsample_indices is not None:
+                            # Convert to numpy, subsample, convert back to list
+                            import numpy as np
+                            pos_array = np.array(positions)
+                            positions = pos_array[self.extractor._subsample_indices].tolist()
+                        frame_data["stellar_positions"] = positions
                     frames.append(frame_data)
 
             self.data = {
