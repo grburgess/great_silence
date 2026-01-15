@@ -895,6 +895,117 @@ def compute_circular_velocities(
 
 
 # =============================================================================
+# Civilization Emergence Kernels
+# =============================================================================
+
+
+@numba.jit(nopython=True, fastmath=True, cache=True)
+def compute_emergence_probabilities_kernel(
+    habitable_indices: np.ndarray,
+    stellar_ages: np.ndarray,
+    metallicities: np.ndarray,
+    colonized_mask: np.ndarray,
+    min_age_gyr: float,
+    f_base: float,
+    n_habitable: float,
+    f_life: float,
+    f_intel: float,
+    f_tech: float,
+    dt_myr: float,
+    use_metallicity_gradient: bool,
+    random_values: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute emergence and sample which stars develop civilizations.
+    
+    Combines filtering, probability calculation, and random sampling
+    in a single Numba kernel for reduced Python overhead.
+    Uses cache=True for faster repeated calls.
+    
+    Args:
+        habitable_indices: Indices of habitable stars
+        stellar_ages: Ages of all stars in Gyr
+        metallicities: Metallicities of all stars [Fe/H]
+        colonized_mask: Boolean mask of colonized stars
+        min_age_gyr: Minimum age for civilization development
+        f_base: Base fraction of stars with planets
+        n_habitable: Average habitable planets per system
+        f_life: Fraction developing life
+        f_intel: Fraction developing intelligence
+        f_tech: Fraction developing technology
+        dt_myr: Time step in Myr
+        use_metallicity_gradient: Use metallicity-dependent probability
+        random_values: Pre-generated random values [0, 1)
+        
+    Returns:
+        emerged_indices: Indices into habitable_indices of stars that emerged
+    """
+    n_habitable_stars = len(habitable_indices)
+    emerged = np.zeros(n_habitable_stars, dtype=np.bool_)
+    dt_gyr = dt_myr / 1000.0
+    
+    for i in range(n_habitable_stars):
+        star_idx = habitable_indices[i]
+        
+        if colonized_mask[star_idx]:
+            continue
+            
+        age = stellar_ages[star_idx]
+        if age <= min_age_gyr:
+            continue
+        
+        if use_metallicity_gradient:
+            feh = metallicities[star_idx]
+            f_planets = f_base * (10.0 ** feh)
+            if f_planets < 0.01:
+                f_planets = 0.01
+            elif f_planets > 1.0:
+                f_planets = 1.0
+        else:
+            f_planets = f_base
+        
+        p_emergence_gyr = f_planets * n_habitable * f_life * f_intel * f_tech
+        p_emergence = p_emergence_gyr * dt_gyr
+        
+        if random_values[i] < p_emergence:
+            emerged[i] = True
+    
+    return emerged
+
+
+@numba.jit(nopython=True, fastmath=True)
+def count_eligible_stars_kernel(
+    habitable_indices: np.ndarray,
+    stellar_ages: np.ndarray,
+    colonized_mask: np.ndarray,
+    min_age_gyr: float,
+) -> int:
+    """
+    Fast count of eligible stars for emergence probability estimation.
+    
+    Used by adaptive timestep to estimate emergence rate without
+    doing full probability calculation.
+    
+    Args:
+        habitable_indices: Indices of habitable stars
+        stellar_ages: Ages of all stars in Gyr
+        colonized_mask: Boolean mask of colonized stars
+        min_age_gyr: Minimum age for civilization development
+        
+    Returns:
+        Number of eligible stars
+    """
+    count = 0
+    for i in range(len(habitable_indices)):
+        star_idx = habitable_indices[i]
+        if colonized_mask[star_idx]:
+            continue
+        if stellar_ages[star_idx] > min_age_gyr:
+            count += 1
+    return count
+
+
+# =============================================================================
 # Utility Functions
 # =============================================================================
 

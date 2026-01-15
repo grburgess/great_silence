@@ -15,12 +15,23 @@ from pathlib import Path
 from great_silence import GalaxySimulation, SimulationConfig
 
 
-def run_benchmark(n_stars: int = 30_000, duration_gyr: float = 5.0, seed: int = 42):
+def run_benchmark(n_stars: int = 30_000, duration_gyr: float = 5.0, seed: int = 42, warmup: bool = True):
     """Run simulation and collect timing data."""
     
     print(f"=" * 60)
     print(f"BASELINE BENCHMARK: {n_stars:,} stars, {duration_gyr} Gyr")
     print(f"=" * 60)
+    
+    if warmup:
+        print("\nWarming up Numba kernels...")
+        warmup_config = SimulationConfig.with_preset("optimistic")
+        warmup_config.galaxy.total_stars = 1000
+        warmup_config.simulation.simulation_duration_gyr = 0.1
+        warmup_config.simulation.save_snapshots = False
+        warmup_sim = GalaxySimulation(warmup_config, seed=seed)
+        warmup_sim.initialize()
+        warmup_sim.run(verbose=False)
+        print("Warmup complete.\n")
     
     # Use optimistic preset
     config = SimulationConfig.with_preset("optimistic")

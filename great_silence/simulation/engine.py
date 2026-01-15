@@ -861,54 +861,69 @@ class GalaxySimulation:
 
         dt_myr = self._current_dt_myr
         params = self.config.civilization
-
-        # Check each habitable star
-        # Only consider stars old enough to have developed life
-        old_enough = (
-            self.galaxy.ages[self.habitable_star_indices]
-            > self.config.civilization.min_stellar_age_for_life_gyr
-        )
-        not_colonized = ~self._colonized_mask[self.habitable_star_indices]
-
-        eligible_mask = old_enough & not_colonized
-        eligible_stars = self.habitable_star_indices[eligible_mask]
-
-        if len(eligible_stars) == 0:
+        n_habitable_stars = len(self.habitable_star_indices)
+        
+        if n_habitable_stars == 0:
             return
 
-        # PRIORITY 1C OPTIMIZATION: Vectorize emergence probability calculation
-        # Drake equation factors (scalar constants)
-        f_life = params.fraction_develop_life
-        f_intel = params.fraction_develop_intelligence
-        f_tech = params.fraction_develop_technology
-        n_habitable = params.avg_habitable_planets_per_system
-        f_base = params.fraction_stars_with_planets
-
-        # Get all metallicities at once (vectorized)
-        metallicities = self.galaxy.metallicities[eligible_stars]
-
-        # Compute metallicity-dependent planet fraction (vectorized)
-        if self.config.galaxy.use_metallicity_gradient:
-            # Metallicity effect: factor of ~3 per 0.5 dex
-            # At solar metallicity (0.0): f_planets = f_base
-            # At +0.3 dex (bulge): f_planets = 2 * f_base
-            # At -0.5 dex (outer disk): f_planets = 0.3 * f_base
-            f_planets_array = f_base * np.power(10.0, metallicities)
-            f_planets_array = np.clip(f_planets_array, 0.01, 1.0)  # Physical bounds
+        random_values = self.rng.uniform(0, 1, n_habitable_stars)
+        
+        if self.config.simulation.use_numba:
+            from ..utils.numba_kernels import compute_emergence_probabilities_kernel
+            
+            emerged_mask = compute_emergence_probabilities_kernel(
+                self.habitable_star_indices,
+                self.galaxy.ages,
+                self.galaxy.metallicities,
+                self._colonized_mask,
+                params.min_stellar_age_for_life_gyr,
+                params.fraction_stars_with_planets,
+                params.avg_habitable_planets_per_system,
+                params.fraction_develop_life,
+                params.fraction_develop_intelligence,
+                params.fraction_develop_technology,
+                dt_myr,
+                self.config.galaxy.use_metallicity_gradient,
+                random_values,
+            )
+            
+            emerged_local_indices = np.where(emerged_mask)[0]
+            emerged_stars = self.habitable_star_indices[emerged_local_indices]
         else:
-            f_planets_array = np.full(len(eligible_stars), f_base)
+            old_enough = (
+                self.galaxy.ages[self.habitable_star_indices]
+                > params.min_stellar_age_for_life_gyr
+            )
+            not_colonized = ~self._colonized_mask[self.habitable_star_indices]
 
-        # Combined probability per Gyr (vectorized)
-        p_emergence_per_gyr = f_planets_array * n_habitable * f_life * f_intel * f_tech
+            eligible_mask = old_enough & not_colonized
+            eligible_stars = self.habitable_star_indices[eligible_mask]
 
-        # Scale to time step (vectorized)
-        p_emergence_array = p_emergence_per_gyr * dt_myr / 1000.0
+            if len(eligible_stars) == 0:
+                return
 
-        # Sample emergence (each star has its own probability)
-        emerge = self.rng.uniform(0, 1, len(eligible_stars)) < p_emergence_array
+            f_life = params.fraction_develop_life
+            f_intel = params.fraction_develop_intelligence
+            f_tech = params.fraction_develop_technology
+            n_habitable = params.avg_habitable_planets_per_system
+            f_base = params.fraction_stars_with_planets
 
-        # Create new civilizations
-        for star_idx in eligible_stars[emerge]:
+            metallicities = self.galaxy.metallicities[eligible_stars]
+
+            if self.config.galaxy.use_metallicity_gradient:
+                f_planets_array = f_base * np.power(10.0, metallicities)
+                f_planets_array = np.clip(f_planets_array, 0.01, 1.0)
+            else:
+                f_planets_array = np.full(len(eligible_stars), f_base)
+
+            p_emergence_per_gyr = f_planets_array * n_habitable * f_life * f_intel * f_tech
+            p_emergence_array = p_emergence_per_gyr * dt_myr / 1000.0
+
+            eligible_random = random_values[eligible_mask]
+            emerge = eligible_random < p_emergence_array
+            emerged_stars = eligible_stars[emerge]
+
+        for star_idx in emerged_stars:
             star_idx_int = int(star_idx)
 
             # Sample random initial Kardashev scale
