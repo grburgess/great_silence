@@ -57,10 +57,11 @@ class ParameterPlots:
                 'text-lg font-semibold text-gray-300 mb-2'
             )
 
-            with ui.element('div').classes('w-full grid grid-cols-2 gap-2'):
-                for i in range(4):
-                    container = ui.column().classes('w-full')
-                    self._plot_containers.append(container)
+            with ui.scroll_area().classes('w-full').style('height: calc(100vh - 150px);'):
+                with ui.column().classes('w-full gap-2'):
+                    for i in range(4):
+                        container = ui.column().classes('w-full')
+                        self._plot_containers.append(container)
 
             self.refresh()
 
@@ -70,7 +71,7 @@ class ParameterPlots:
             container.clear()
             with container:
                 fig = self._create_plot(self._plot_types[i])
-                ui.plotly(fig).classes('w-full').style('height: 220px;')
+                ui.plotly(fig).classes('w-full')
 
     def _create_plot(self, plot_type: str) -> go.Figure:
         if plot_type == 'kardashev':
@@ -157,7 +158,7 @@ class ParameterPlots:
                 x=1,
                 font=dict(size=9),
             ),
-            height=200,
+            height=250,
             **DARK_THEME,
         )
 
@@ -208,7 +209,7 @@ class ParameterPlots:
 
         fig.update_layout(
             title='Drake Equation Emergence Probability',
-            height=200,
+            height=250,
             **DARK_THEME,
         )
 
@@ -274,7 +275,7 @@ class ParameterPlots:
             yaxis_type='log',
             xaxis=dict(range=[-1, 2], **DARK_THEME['xaxis']),
             yaxis=dict(range=[-4, 0.1], **DARK_THEME['yaxis']),
-            height=200,
+            height=250,
             showlegend=False,
             **{k: v for k, v in DARK_THEME.items() if k not in ['xaxis', 'yaxis']},
         )
@@ -325,7 +326,7 @@ class ParameterPlots:
             yaxis_title='Range (parsecs)',
             yaxis_type='log',
             barmode='group',
-            height=200,
+            height=250,
             legend=dict(
                 orientation='h',
                 yanchor='bottom',
@@ -429,7 +430,7 @@ class ParameterPlots:
             yaxis_type='log',
             xaxis=dict(range=[-1, 2], **DARK_THEME['xaxis']),
             yaxis=dict(range=[-4, 0.1], **DARK_THEME['yaxis']),
-            height=200,
+            height=250,
             showlegend=False,
             **{k: v for k, v in DARK_THEME.items() if k not in ['xaxis', 'yaxis']},
         )

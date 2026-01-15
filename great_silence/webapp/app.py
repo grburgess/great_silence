@@ -70,24 +70,6 @@ def apply_dark_theme():
     """)
 
 
-basic_settings_component = None
-parameter_plots_component = None
-
-
-def on_preset_select(preset_name: str) -> None:
-    """Handle preset selection."""
-    app_state.apply_preset(preset_name)
-    ui.notify(f"Applied '{preset_name}' preset", type="positive", position="top")
-    refresh_plots()
-
-
-def refresh_plots() -> None:
-    """Refresh parameter visualization plots."""
-    global parameter_plots_component
-    if parameter_plots_component:
-        parameter_plots_component.refresh()
-
-
 def refresh_ui_from_state():
     """Refresh UI components after loading config."""
     app_state._notify_update()
@@ -97,8 +79,6 @@ def refresh_ui_from_state():
 @ui.page("/")
 def main_page():
     """Main application page."""
-    global basic_settings_component
-
     apply_dark_theme()
     ui.dark_mode().enable()
 
@@ -131,7 +111,16 @@ def main_page():
                     "Save as Preset"
                 ).classes("text-gray-400 hover:text-purple-400")
 
-    global basic_settings_component, parameter_plots_component
+    plots_ref = {'component': None}
+
+    def refresh_plots():
+        if plots_ref['component']:
+            plots_ref['component'].refresh()
+
+    def on_preset_select(preset_name: str):
+        app_state.apply_preset(preset_name)
+        ui.notify(f"Applied '{preset_name}' preset", type="positive", position="top")
+        refresh_plots()
 
     with ui.element('div').classes("w-full flex flex-row gap-4 p-4").style("max-width: 1800px; margin: 0 auto;"):
         with ui.column().classes("gap-4").style("flex: 1; min-width: 0;"):
@@ -147,7 +136,7 @@ def main_page():
 
             PresetSelector(on_select=on_preset_select)
 
-            basic_settings_component = BasicSettings(on_change=refresh_plots)
+            BasicSettings(on_change=refresh_plots)
 
             with ui.expansion("Advanced Settings", icon="tune", value=False).classes(
                 "w-full bg-gray-800"
@@ -167,7 +156,7 @@ def main_page():
             sim_runner.on_complete = on_simulation_complete
 
         with ui.column().classes("gap-4").style("flex: 1; min-width: 0;"):
-            parameter_plots_component = ParameterPlots()
+            plots_ref['component'] = ParameterPlots()
 
     with ui.footer().classes("bg-gray-900/50 border-t border-gray-700/50"):
         with ui.row().classes("w-full max-w-6xl mx-auto items-center px-4 py-2"):
