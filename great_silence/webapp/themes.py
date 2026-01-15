@@ -4,6 +4,142 @@ from typing import Dict, Any
 
 
 THEME_GRAPHICS = {
+    "event_horizon": """
+        .theme-bg-effect {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            overflow: hidden;
+        }
+        .theme-bg-effect::before {
+            content: '';
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: 
+                radial-gradient(circle, 
+                    #000 0%, 
+                    #000 20%,
+                    rgba(239,68,68,0.3) 25%,
+                    rgba(249,115,22,0.2) 35%,
+                    transparent 50%
+                );
+            border-radius: 50%;
+            animation: horizon-spin 30s linear infinite;
+        }
+        .theme-bg-effect::after {
+            content: '';
+            position: absolute;
+            width: 600px;
+            height: 200px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotateX(75deg);
+            background: 
+                conic-gradient(from 0deg, 
+                    transparent 0deg,
+                    rgba(239,68,68,0.4) 30deg,
+                    rgba(249,115,22,0.3) 60deg,
+                    transparent 120deg,
+                    rgba(239,68,68,0.3) 180deg,
+                    rgba(249,115,22,0.4) 240deg,
+                    transparent 300deg,
+                    transparent 360deg
+                );
+            border-radius: 50%;
+            filter: blur(20px);
+            animation: accretion-disk 20s linear infinite;
+        }
+        @keyframes horizon-spin {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        @keyframes accretion-disk {
+            from { transform: translate(-50%, -50%) rotateX(75deg) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotateX(75deg) rotate(360deg); }
+        }
+    """,
+    "spiral_galaxy": """
+        .theme-bg-effect {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            overflow: hidden;
+        }
+        .theme-bg-effect::before {
+            content: '';
+            position: absolute;
+            width: 700px;
+            height: 700px;
+            top: 50%;
+            right: -150px;
+            transform: translateY(-50%) rotateX(60deg);
+            background: 
+                conic-gradient(from 0deg at 50% 50%,
+                    transparent 0deg,
+                    rgba(147,197,253,0.4) 20deg,
+                    rgba(249,168,212,0.3) 40deg,
+                    transparent 80deg,
+                    transparent 100deg,
+                    rgba(147,197,253,0.35) 120deg,
+                    rgba(249,168,212,0.25) 140deg,
+                    transparent 180deg,
+                    transparent 200deg,
+                    rgba(147,197,253,0.3) 220deg,
+                    rgba(249,168,212,0.2) 240deg,
+                    transparent 280deg,
+                    transparent 300deg,
+                    rgba(147,197,253,0.25) 320deg,
+                    rgba(249,168,212,0.15) 340deg,
+                    transparent 360deg
+                ),
+                radial-gradient(circle at 50% 50%,
+                    rgba(252,211,77,0.6) 0%,
+                    rgba(245,158,11,0.4) 8%,
+                    rgba(252,211,77,0.2) 15%,
+                    transparent 30%
+                );
+            border-radius: 50%;
+            filter: blur(8px);
+            animation: galaxy-rotate 60s linear infinite;
+        }
+        .theme-bg-effect::after {
+            content: '';
+            position: absolute;
+            width: 900px;
+            height: 900px;
+            top: 50%;
+            right: -250px;
+            transform: translateY(-50%) rotateX(60deg);
+            background: 
+                radial-gradient(2px 2px at 15% 25%, rgba(255,255,255,0.8), transparent),
+                radial-gradient(2px 2px at 85% 35%, rgba(255,255,255,0.6), transparent),
+                radial-gradient(1px 1px at 25% 75%, rgba(255,255,255,0.7), transparent),
+                radial-gradient(2px 2px at 65% 85%, rgba(255,255,255,0.5), transparent),
+                radial-gradient(1px 1px at 45% 15%, rgba(255,255,255,0.9), transparent),
+                radial-gradient(2px 2px at 75% 55%, rgba(255,255,255,0.6), transparent),
+                radial-gradient(1px 1px at 35% 45%, rgba(255,255,255,0.7), transparent),
+                radial-gradient(1px 1px at 55% 65%, rgba(255,255,255,0.5), transparent),
+                radial-gradient(2px 2px at 20% 50%, rgba(147,197,253,0.8), transparent),
+                radial-gradient(2px 2px at 80% 70%, rgba(249,168,212,0.7), transparent);
+            animation: galaxy-rotate 60s linear infinite;
+        }
+        @keyframes galaxy-rotate {
+            from { transform: translateY(-50%) rotateX(60deg) rotate(0deg); }
+            to { transform: translateY(-50%) rotateX(60deg) rotate(360deg); }
+        }
+    """,
     "deep_space": """
         .theme-bg-effect {
             position: fixed;
@@ -170,68 +306,6 @@ THEME_GRAPHICS = {
             50% { transform: translateX(10%) skewX(5deg); }
         }
     """,
-    "event_horizon": """
-        .theme-bg-effect {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: -1;
-            overflow: hidden;
-        }
-        .theme-bg-effect::before {
-            content: '';
-            position: absolute;
-            width: 500px;
-            height: 500px;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: 
-                radial-gradient(circle, 
-                    #000 0%, 
-                    #000 20%,
-                    rgba(239,68,68,0.3) 25%,
-                    rgba(249,115,22,0.2) 35%,
-                    transparent 50%
-                );
-            border-radius: 50%;
-            animation: horizon-spin 30s linear infinite;
-        }
-        .theme-bg-effect::after {
-            content: '';
-            position: absolute;
-            width: 600px;
-            height: 200px;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotateX(75deg);
-            background: 
-                conic-gradient(from 0deg, 
-                    transparent 0deg,
-                    rgba(239,68,68,0.4) 30deg,
-                    rgba(249,115,22,0.3) 60deg,
-                    transparent 120deg,
-                    rgba(239,68,68,0.3) 180deg,
-                    rgba(249,115,22,0.4) 240deg,
-                    transparent 300deg,
-                    transparent 360deg
-                );
-            border-radius: 50%;
-            filter: blur(20px);
-            animation: accretion-disk 20s linear infinite;
-        }
-        @keyframes horizon-spin {
-            from { transform: translate(-50%, -50%) rotate(0deg); }
-            to { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-        @keyframes accretion-disk {
-            from { transform: translate(-50%, -50%) rotateX(75deg) rotate(0deg); }
-            to { transform: translate(-50%, -50%) rotateX(75deg) rotate(360deg); }
-        }
-    """,
     "cosmic_microwave": """
         .theme-bg-effect {
             position: fixed;
@@ -278,6 +352,40 @@ THEME_GRAPHICS = {
 
 
 SPACE_THEMES: Dict[str, Dict[str, Any]] = {
+    "event_horizon": {
+        "name": "Event Horizon",
+        "icon": "🕳️",
+        "background_gradient": "linear-gradient(135deg, #050505 0%, #0a0a0a 50%, #0f0f0f 100%)",
+        "card_bg": "rgba(10, 10, 10, 0.9)",
+        "card_border": "rgba(239, 68, 68, 0.3)",
+        "expansion_bg": "rgba(10, 10, 10, 0.7)",
+        "primary_accent": "#ef4444",
+        "secondary_accent": "#f97316",
+        "slider_track": "rgba(80, 30, 30, 0.4)",
+        "slider_selection": "#ef4444",
+        "progress_track": "rgba(80, 30, 30, 0.4)",
+        "progress_gradient": "linear-gradient(90deg, #ef4444, #f97316)",
+        "scrollbar_track": "rgba(10, 10, 10, 0.6)",
+        "scrollbar_thumb": "rgba(239, 68, 68, 0.5)",
+        "header_gradient": "from-red-500 to-orange-500",
+    },
+    "spiral_galaxy": {
+        "name": "Spiral Galaxy",
+        "icon": "🌀",
+        "background_gradient": "linear-gradient(135deg, #08090f 0%, #0d1117 50%, #111827 100%)",
+        "card_bg": "rgba(17, 24, 39, 0.85)",
+        "card_border": "rgba(234, 179, 8, 0.25)",
+        "expansion_bg": "rgba(17, 24, 39, 0.7)",
+        "primary_accent": "#eab308",
+        "secondary_accent": "#38bdf8",
+        "slider_track": "rgba(100, 80, 40, 0.3)",
+        "slider_selection": "#eab308",
+        "progress_track": "rgba(100, 80, 40, 0.3)",
+        "progress_gradient": "linear-gradient(90deg, #eab308, #fcd34d)",
+        "scrollbar_track": "rgba(17, 24, 39, 0.6)",
+        "scrollbar_thumb": "rgba(234, 179, 8, 0.5)",
+        "header_gradient": "from-yellow-400 to-sky-400",
+    },
     "deep_space": {
         "name": "Deep Space",
         "icon": "🌌",
@@ -345,23 +453,6 @@ SPACE_THEMES: Dict[str, Dict[str, Any]] = {
         "scrollbar_track": "rgba(15, 36, 24, 0.5)",
         "scrollbar_thumb": "rgba(16, 185, 129, 0.5)",
         "header_gradient": "from-emerald-400 to-teal-400",
-    },
-    "event_horizon": {
-        "name": "Event Horizon",
-        "icon": "🕳️",
-        "background_gradient": "linear-gradient(135deg, #050505 0%, #0a0a0a 50%, #0f0f0f 100%)",
-        "card_bg": "rgba(10, 10, 10, 0.9)",
-        "card_border": "rgba(239, 68, 68, 0.3)",
-        "expansion_bg": "rgba(10, 10, 10, 0.7)",
-        "primary_accent": "#ef4444",
-        "secondary_accent": "#f97316",
-        "slider_track": "rgba(80, 30, 30, 0.4)",
-        "slider_selection": "#ef4444",
-        "progress_track": "rgba(80, 30, 30, 0.4)",
-        "progress_gradient": "linear-gradient(90deg, #ef4444, #f97316)",
-        "scrollbar_track": "rgba(10, 10, 10, 0.6)",
-        "scrollbar_thumb": "rgba(239, 68, 68, 0.5)",
-        "header_gradient": "from-red-500 to-orange-500",
     },
     "cosmic_microwave": {
         "name": "Cosmic Microwave",
