@@ -34,6 +34,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+webapp = [
+    "nicegui>=2.0.0",
+]
 viz = [
     "plotly>=5.14.0",
     "mayavi>=4.8.0",
@@ -59,7 +62,7 @@ dev = [
 great-silence = "great_silence.cli:main"
 
 [tool.setuptools]
-packages = ["great_silence", "great_silence.galaxy", "great_silence.astrophysics", "great_silence.civilization", "great_silence.simulation", "great_silence.visualization", "great_silence.config", "great_silence.utils", "great_silence.notebook"]
+packages = ["great_silence", "great_silence.galaxy", "great_silence.astrophysics", "great_silence.civilization", "great_silence.simulation", "great_silence.visualization", "great_silence.config", "great_silence.utils", "great_silence.notebook", "great_silence.webapp", "great_silence.webapp.components"]
 
 [tool.black]
 line-length = 100

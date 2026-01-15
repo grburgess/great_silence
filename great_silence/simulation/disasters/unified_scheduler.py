@@ -131,6 +131,7 @@ class UnifiedDisasterScheduler:
         simulation_duration_myr: float,
         enable_star_formation: bool = True,
         galaxy_scale_radius_kpc: float = 3.0,
+        spread_initial_disasters: bool = False,
     ):
         """
         Initialize unified disaster scheduler.
@@ -145,6 +146,7 @@ class UnifiedDisasterScheduler:
             simulation_duration_myr: Total simulation duration
             enable_star_formation: If True, schedule continuous star births
             galaxy_scale_radius_kpc: Galaxy scale radius for star formation
+            spread_initial_disasters: If True, artificially spread disasters for visualization
         """
         self.positions = positions
         self.masses = masses
@@ -155,6 +157,7 @@ class UnifiedDisasterScheduler:
         self.simulation_duration_myr = simulation_duration_myr
         self.enable_star_formation = enable_star_formation
         self.galaxy_scale_radius_kpc = galaxy_scale_radius_kpc
+        self.spread_initial_disasters = spread_initial_disasters
         
         self.n_stars = len(masses)
         
@@ -215,8 +218,21 @@ class UnifiedDisasterScheduler:
         future_mask = (sn_times_myr > 0) & (sn_times_myr < self.simulation_duration_myr)
         future_indices = np.where(future_mask)[0]
         
-        for idx in future_indices:
-            sn_time = sn_times_myr[idx]
+        # If spread mode enabled, redistribute disaster times uniformly across simulation
+        # This is NOT physically accurate but useful for visualization
+        if self.spread_initial_disasters and len(future_indices) > 0:
+            spread_times = self.rng.uniform(
+                0, self.simulation_duration_myr * 0.9, size=len(future_indices)
+            )
+            spread_times.sort()
+        else:
+            spread_times = None
+        
+        for i, idx in enumerate(future_indices):
+            if spread_times is not None:
+                sn_time = spread_times[i]
+            else:
+                sn_time = sn_times_myr[idx]
             
             disaster = ScheduledDisaster(
                 time_myr=sn_time,

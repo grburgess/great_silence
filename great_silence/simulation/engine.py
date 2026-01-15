@@ -396,16 +396,31 @@ class GalaxySimulation:
         self.galaxy.masses = self.imf.sample(self.config.galaxy.total_stars, seed=self.seed + 1)
 
         # Ensure massive stars have physically consistent ages
-        # Stars can only be as old as their main-sequence lifetime
-        # For M > 8 Msun, t_ms < 40 Myr, so these must be young
+        # To spread SNe/GRBs evenly across the simulation (not clustered at start),
+        # we assign time-until-death uniformly over the simulation duration,
+        # then compute age = t_ms - time_until_death
         massive_mask = self.galaxy.masses > 8.0
         if massive_mask.any():
             t_ms_gyr = 10.0 * self.galaxy.masses[massive_mask] ** (-2.5)
-            # Cap age at 90% of main-sequence lifetime for living massive stars
-            max_ages = 0.9 * t_ms_gyr
-            # Assign random age within allowed range (ongoing star formation)
+            t_ms_myr = t_ms_gyr * 1000.0
+            sim_duration_myr = self.config.simulation.simulation_duration_gyr * 1000.0
+            
             rng = np.random.default_rng(self.seed + 100)
-            self.galaxy.ages[massive_mask] = rng.uniform(0.001, 1.0, size=massive_mask.sum()) * max_ages
+            n_massive = massive_mask.sum()
+            
+            # Assign time-until-death uniformly across simulation + some buffer
+            # This spreads disasters evenly rather than clustering at start
+            time_until_death_myr = rng.uniform(0, sim_duration_myr * 1.2, size=n_massive)
+            
+            # Compute age from time_until_death: age = t_ms - time_until_death
+            ages_myr = t_ms_myr - time_until_death_myr
+            
+            # Clamp ages to valid range [0, t_ms]
+            # Stars with computed age < 0 are "just born" (assign small positive age)
+            # Stars with computed age > t_ms have "already died" (assign t_ms, scheduler handles)
+            ages_myr = np.clip(ages_myr, 0.001, t_ms_myr * 0.999)
+            
+            self.galaxy.ages[massive_mask] = ages_myr / 1000.0  # Convert to Gyr
 
         # Generate metallicities (with radial gradient if enabled)
         if self.config.galaxy.use_metallicity_gradient:
@@ -458,6 +473,7 @@ class GalaxySimulation:
             simulation_duration_myr=simulation_duration_myr,
             enable_star_formation=self.config.simulation.enable_star_formation,
             galaxy_scale_radius_kpc=self.config.galaxy.scale_length_kpc,
+            spread_initial_disasters=self.config.simulation.spread_initial_disasters,
         )
         disaster_stats = self.disaster_scheduler.get_statistics()
         print(f"  Scheduled disasters: {disaster_stats['total_scheduled']} "

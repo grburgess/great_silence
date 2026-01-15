@@ -263,6 +263,10 @@ class SimulationParameters:
         False  # Enable gravitational evolution of stellar positions (EXPERIMENTAL)
     )
     enable_star_formation: bool = True  # Enable continuous star formation during simulation
+    
+    # Disaster timing
+    disaster_start_offset_myr: float = 0.0  # Skip disasters occurring before this time
+    spread_initial_disasters: bool = False  # Artificially spread disasters for visualization
 
     # Output
     save_snapshots: bool = True
