@@ -294,29 +294,11 @@ class SimulationDataExtractor:
             "sizes": sizes.tolist() if len(sizes) > 0 else [],
         }
         
-        # Only include velocity data for GPU interpolation if stellar motion was enabled
-        # Check if any snapshots used delta compression (indicates stellar motion was enabled)
-        stellar_motion_enabled = False
-        if self.snapshots:
-            stellar_motion_enabled = any(
-                s.get("use_delta_compression", False) for s in self.snapshots
-            )
-        
-        if stellar_motion_enabled:
-            initial_positions = self.simulation_data.get("initial_positions", None)
-            velocities = self.simulation_data.get("stellar_velocities", None)
-            
-            if indices is not None:
-                if initial_positions is not None:
-                    initial_positions = initial_positions[indices]
-                if velocities is not None:
-                    velocities = velocities[indices]
-            
-            if initial_positions is not None:
-                result["initial_positions"] = initial_positions.tolist()
-            if velocities is not None:
-                result["velocities"] = velocities.tolist()
-                result["reference_time"] = 0.0  # Initial time in Myr
+        # NOTE: Do NOT include velocity data for GPU interpolation by default
+        # The GPU shader stellar motion feature is experimental and causes stars 
+        # to fly apart during animation playback. Only enable if explicitly 
+        # requested via include_stellar_motion parameter in the future.
+        # For now, stars remain static in the visualization.
         
         return result
 
