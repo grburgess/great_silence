@@ -489,6 +489,10 @@ class GalaxySimulation:
         n_stars = self.config.galaxy.total_stars
         self.recovery_queue = RecoveryQueue(n_stars)
 
+        # Pre-schedule civilization emergence events for O(1) emergence checks
+        self._emergence_heap: List[Tuple[float, int]] = []  # (time_myr, star_idx)
+        self._schedule_emergence_events(simulation_duration_myr)
+
         if self.config.simulation.save_snapshots:
             archive_path = Path(self.config.simulation.output_directory) / "disasters.h5"
             self.disaster_archiver = DisasterArchiver(
@@ -543,9 +547,12 @@ class GalaxySimulation:
 
         if active_civs > 0:
             candidate_dt = min(candidate_dt, cfg.medium_timestep_myr)
-        elif self.habitable_star_indices is not None and len(self.habitable_star_indices) > 0:
-            emergence_dt = self._estimate_emergence_timestep()
-            candidate_dt = min(candidate_dt, emergence_dt)
+        
+        if self._emergence_heap:
+            next_emergence_time = self._emergence_heap[0][0]
+            time_to_emergence = next_emergence_time - self.current_time_myr
+            if time_to_emergence > 0 and time_to_emergence <= cfg.max_adaptive_step_myr:
+                candidate_dt = min(candidate_dt, max(time_to_emergence + 0.001, cfg.min_timestep_myr))
 
         return candidate_dt
 
@@ -587,6 +594,59 @@ class GalaxySimulation:
             return target_dt
         
         return cfg.max_timestep_myr
+
+    def _schedule_emergence_events(self, simulation_duration_myr: float) -> None:
+        """
+        Pre-schedule all civilization emergence events using exponential sampling.
+        
+        Instead of checking every habitable star every timestep (O(N) per step),
+        we sample emergence times upfront using exponential inter-arrival times.
+        This reduces emergence checking to O(log N) heap operations.
+        """
+        if self.habitable_star_indices is None or len(self.habitable_star_indices) == 0:
+            return
+        
+        params = self.config.civilization
+        
+        f_life = params.fraction_develop_life
+        f_intel = params.fraction_develop_intelligence
+        f_tech = params.fraction_develop_technology
+        n_habitable = params.avg_habitable_planets_per_system
+        f_base = params.fraction_stars_with_planets
+        
+        eligible_mask = (
+            self.galaxy.ages[self.habitable_star_indices] > params.min_stellar_age_for_life_gyr
+        )
+        eligible_indices = self.habitable_star_indices[eligible_mask]
+        
+        if len(eligible_indices) == 0:
+            return
+        
+        metallicities = self.galaxy.metallicities[eligible_indices]
+        if self.config.galaxy.use_metallicity_gradient:
+            f_planets = f_base * np.power(10.0, metallicities)
+            f_planets = np.clip(f_planets, 0.01, 1.0)
+        else:
+            f_planets = np.full(len(eligible_indices), f_base)
+        
+        rates_per_myr = f_planets * n_habitable * f_life * f_intel * f_tech / 1000.0
+        
+        for i, star_idx in enumerate(eligible_indices):
+            rate = rates_per_myr[i]
+            if rate <= 0:
+                continue
+            
+            current_time = 0.0
+            while current_time < simulation_duration_myr:
+                wait_time = self.rng.exponential(1.0 / rate)
+                current_time += wait_time
+                
+                if current_time < simulation_duration_myr:
+                    heapq.heappush(self._emergence_heap, (current_time, int(star_idx)))
+        
+        n_scheduled = len(self._emergence_heap)
+        if n_scheduled > 0:
+            print(f"  Pre-scheduled emergence events: {n_scheduled}")
 
     def _step(self, dt_myr: Optional[float] = None) -> float:
         """
@@ -855,73 +915,20 @@ class GalaxySimulation:
         return groups
 
     def _check_civilization_emergence(self) -> None:
-        """Check for new civilization emergence based on Drake equation."""
-        if self.habitable_star_indices is None:
-            return
-
-        dt_myr = self._current_dt_myr
-        params = self.config.civilization
-        n_habitable_stars = len(self.habitable_star_indices)
+        """Check for new civilization emergence using pre-scheduled events.
         
-        if n_habitable_stars == 0:
-            return
-
-        random_values = self.rng.uniform(0, 1, n_habitable_stars)
+        Uses O(log N) heap operations instead of O(N_habitable) per-step checks.
+        Events are pre-scheduled at initialization based on Drake equation rates.
+        """
+        emerged_stars = []
         
-        if self.config.simulation.use_numba:
-            from ..utils.numba_kernels import compute_emergence_probabilities_kernel
+        while self._emergence_heap and self._emergence_heap[0][0] <= self.current_time_myr:
+            event_time, star_idx = heapq.heappop(self._emergence_heap)
             
-            emerged_mask = compute_emergence_probabilities_kernel(
-                self.habitable_star_indices,
-                self.galaxy.ages,
-                self.galaxy.metallicities,
-                self._colonized_mask,
-                params.min_stellar_age_for_life_gyr,
-                params.fraction_stars_with_planets,
-                params.avg_habitable_planets_per_system,
-                params.fraction_develop_life,
-                params.fraction_develop_intelligence,
-                params.fraction_develop_technology,
-                dt_myr,
-                self.config.galaxy.use_metallicity_gradient,
-                random_values,
-            )
+            if self._colonized_mask[star_idx]:
+                continue
             
-            emerged_local_indices = np.where(emerged_mask)[0]
-            emerged_stars = self.habitable_star_indices[emerged_local_indices]
-        else:
-            old_enough = (
-                self.galaxy.ages[self.habitable_star_indices]
-                > params.min_stellar_age_for_life_gyr
-            )
-            not_colonized = ~self._colonized_mask[self.habitable_star_indices]
-
-            eligible_mask = old_enough & not_colonized
-            eligible_stars = self.habitable_star_indices[eligible_mask]
-
-            if len(eligible_stars) == 0:
-                return
-
-            f_life = params.fraction_develop_life
-            f_intel = params.fraction_develop_intelligence
-            f_tech = params.fraction_develop_technology
-            n_habitable = params.avg_habitable_planets_per_system
-            f_base = params.fraction_stars_with_planets
-
-            metallicities = self.galaxy.metallicities[eligible_stars]
-
-            if self.config.galaxy.use_metallicity_gradient:
-                f_planets_array = f_base * np.power(10.0, metallicities)
-                f_planets_array = np.clip(f_planets_array, 0.01, 1.0)
-            else:
-                f_planets_array = np.full(len(eligible_stars), f_base)
-
-            p_emergence_per_gyr = f_planets_array * n_habitable * f_life * f_intel * f_tech
-            p_emergence_array = p_emergence_per_gyr * dt_myr / 1000.0
-
-            eligible_random = random_values[eligible_mask]
-            emerge = eligible_random < p_emergence_array
-            emerged_stars = eligible_stars[emerge]
+            emerged_stars.append(star_idx)
 
         for star_idx in emerged_stars:
             star_idx_int = int(star_idx)
