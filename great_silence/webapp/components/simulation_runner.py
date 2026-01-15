@@ -146,10 +146,6 @@ class SimulationRunner:
 
     def _update_progress_display(self) -> None:
         if self._is_cancelled:
-            if self._update_timer:
-                self._update_timer.deactivate()
-            self._add_event(self._sim.current_time_gyr, "cancel", "⏹️ Simulation cancelled")
-            self._finish_simulation()
             return
 
         if self._simulation_error:
@@ -237,7 +233,25 @@ class SimulationRunner:
                 pass
 
     def _cancel_simulation(self) -> None:
+        """Cancel the simulation and reset UI."""
         self._is_cancelled = True
+        
+        if self._update_timer:
+            self._update_timer.deactivate()
+            self._update_timer = None
+        
+        if self._sim:
+            self._add_event(
+                self._sim.current_time_gyr if hasattr(self._sim, 'current_time_gyr') else 0.0,
+                "cancel",
+                "⏹️ Simulation cancelled (background thread may still be running)"
+            )
+        
+        app_state.progress.is_running = False
+        self._run_button.visible = True
+        self._cancel_button.visible = False
+        
+        ui.notify("Simulation cancelled", type="warning")
 
     def _add_event(self, time_gyr: float, event_type: str, description: str) -> None:
         colors = {
