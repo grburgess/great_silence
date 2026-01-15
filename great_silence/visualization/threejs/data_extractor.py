@@ -302,24 +302,36 @@ class SimulationDataExtractor:
             "sizes": sizes.tolist() if len(sizes) > 0 else [],
         }
         
-        # Include velocity data for GPU interpolation if stellar motion is enabled
-        stellar_motion_enabled = False
-        if hasattr(self.source, 'config') and hasattr(self.source.config, 'simulation'):
-            stellar_motion_enabled = getattr(self.source.config.simulation, 'enable_stellar_motion', False)
+        # NOTE: GPU-based stellar motion interpolation is disabled because linear
+        # extrapolation (pos = initial + vel * t) doesn't model orbital motion.
+        # Stars orbit in the galactic potential, not fly in straight lines.
+        # 
+        # For physically correct motion visualization, the simulation must:
+        # 1. Run with enable_stellar_motion=True (uses leapfrog integrator)
+        # 2. Save frequent snapshots with evolved positions
+        # 3. Visualization shows actual snapshot positions (discrete, not interpolated)
+        #
+        # To enable experimental GPU motion (will look wrong over long timescales):
+        # Set GREAT_SILENCE_GPU_STELLAR_MOTION=1 environment variable
         
-        if stellar_motion_enabled:
-            initial_positions = self.simulation_data.get("initial_positions", None)
-            velocities = self.simulation_data.get("stellar_velocities", None)
+        import os
+        if os.environ.get('GREAT_SILENCE_GPU_STELLAR_MOTION') == '1':
+            stellar_motion_enabled = False
+            if hasattr(self.source, 'config') and hasattr(self.source.config, 'simulation'):
+                stellar_motion_enabled = getattr(self.source.config.simulation, 'enable_stellar_motion', False)
             
-            if initial_positions is not None and velocities is not None:
-                # Apply same subsampling if needed
-                if indices is not None:
-                    initial_positions = initial_positions[indices]
-                    velocities = velocities[indices]
+            if stellar_motion_enabled:
+                initial_positions = self.simulation_data.get("initial_positions", None)
+                velocities = self.simulation_data.get("stellar_velocities", None)
                 
-                result["initial_positions"] = initial_positions.tolist()
-                result["velocities"] = velocities.tolist()
-                result["reference_time"] = 0.0  # Initial positions are at t=0
+                if initial_positions is not None and velocities is not None:
+                    if indices is not None:
+                        initial_positions = initial_positions[indices]
+                        velocities = velocities[indices]
+                    
+                    result["initial_positions"] = initial_positions.tolist()
+                    result["velocities"] = velocities.tolist()
+                    result["reference_time"] = 0.0
         
         return result
 
