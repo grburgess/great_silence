@@ -603,11 +603,16 @@ class GalaxySimulation:
         Instead of checking every habitable star every timestep (O(N) per step),
         we sample emergence times upfront using exponential inter-arrival times.
         This reduces emergence checking to O(log N) heap operations.
+        
+        Stars that aren't old enough at simulation start but will become eligible
+        during the simulation have their emergence events scheduled starting from
+        the time they become eligible.
         """
         if self.habitable_star_indices is None or len(self.habitable_star_indices) == 0:
             return
         
         params = self.config.civilization
+        min_age_gyr = params.min_stellar_age_for_life_gyr
         
         f_life = params.fraction_develop_life
         f_intel = params.fraction_develop_intelligence
@@ -615,29 +620,32 @@ class GalaxySimulation:
         n_habitable = params.avg_habitable_planets_per_system
         f_base = params.fraction_stars_with_planets
         
-        eligible_mask = (
-            self.galaxy.ages[self.habitable_star_indices] > params.min_stellar_age_for_life_gyr
-        )
-        eligible_indices = self.habitable_star_indices[eligible_mask]
+        star_ages = self.galaxy.ages[self.habitable_star_indices]
+        time_until_eligible_myr = np.maximum(0.0, (min_age_gyr - star_ages) * 1000.0)
         
-        if len(eligible_indices) == 0:
+        will_be_eligible_mask = time_until_eligible_myr < simulation_duration_myr
+        candidate_indices = self.habitable_star_indices[will_be_eligible_mask]
+        candidate_eligible_times = time_until_eligible_myr[will_be_eligible_mask]
+        
+        if len(candidate_indices) == 0:
             return
         
-        metallicities = self.galaxy.metallicities[eligible_indices]
+        metallicities = self.galaxy.metallicities[candidate_indices]
         if self.config.galaxy.use_metallicity_gradient:
             f_planets = f_base * np.power(10.0, metallicities)
             f_planets = np.clip(f_planets, 0.01, 1.0)
         else:
-            f_planets = np.full(len(eligible_indices), f_base)
+            f_planets = np.full(len(candidate_indices), f_base)
         
         rates_per_myr = f_planets * n_habitable * f_life * f_intel * f_tech / 1000.0
         
-        for i, star_idx in enumerate(eligible_indices):
+        for i, star_idx in enumerate(candidate_indices):
             rate = rates_per_myr[i]
             if rate <= 0:
                 continue
             
-            current_time = 0.0
+            start_time = candidate_eligible_times[i]
+            current_time = start_time
             while current_time < simulation_duration_myr:
                 wait_time = self.rng.exponential(1.0 / rate)
                 current_time += wait_time

@@ -195,6 +195,48 @@ class TestSimulation:
             assert civ.parent_star_idx not in colonized_stars, \
                 f"Civilization emerged at pre-colonized star {civ.parent_star_idx}"
 
+    def test_young_stars_scheduled_for_future_emergence(self):
+        """Test that young stars get scheduled for emergence when they become old enough.
+        
+        Physical correctness: Stars that are too young at simulation start but will
+        cross the min_stellar_age_for_life_gyr threshold during the simulation
+        should be eligible for emergence events starting from when they become old enough.
+        """
+        import numpy as np
+        
+        config = SimulationConfig.with_preset("optimistic")
+        config.galaxy.total_stars = 30000
+        config.civilization.min_stellar_age_for_life_gyr = 4.0
+        config.simulation.simulation_duration_gyr = 5.0
+        config.simulation.save_snapshots = False
+        
+        sim = GalaxySimulation(config, seed=42)
+        sim.initialize()
+        
+        star_ages = sim.galaxy.ages[sim.habitable_star_indices]
+        
+        young_mask = (star_ages > 3.0) & (star_ages < 4.0)
+        young_stars = set(sim.habitable_star_indices[young_mask])
+        
+        if len(young_stars) == 0:
+            pytest.skip("No young stars in appropriate age range")
+        
+        scheduled_stars = {star_idx for _, star_idx in sim._emergence_heap}
+        young_stars_in_heap = young_stars & scheduled_stars
+        
+        assert len(young_stars_in_heap) > 0, \
+            f"Expected some young stars (3-4 Gyr) to be scheduled for emergence, " \
+            f"but none were. Young stars: {len(young_stars)}, " \
+            f"Total scheduled: {len(scheduled_stars)}"
+        
+        for event_time, star_idx in sim._emergence_heap:
+            if star_idx in young_stars:
+                star_age = sim.galaxy.ages[star_idx]
+                eligible_time_myr = (4.0 - star_age) * 1000.0
+                assert event_time >= eligible_time_myr, \
+                    f"Star {star_idx} (age {star_age:.2f} Gyr) has emergence at {event_time:.0f} Myr " \
+                    f"but becomes eligible at {eligible_time_myr:.0f} Myr"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
