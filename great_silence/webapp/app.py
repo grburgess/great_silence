@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .state import app_state
 from .components import PresetSelector, BasicSettings, SimulationRunner, ConfigPanels, ResultsDashboard
+from .config_io import create_load_config_dialog, create_save_config_dialog, create_save_preset_dialog
 
 
 def apply_dark_theme():
@@ -52,8 +53,24 @@ def apply_dark_theme():
             background: rgba(100, 100, 150, 0.5);
             border-radius: 4px;
         }
+        .star-field {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+        }
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
     </style>
     """)
+
+
+basic_settings_component = None
 
 
 def on_preset_select(preset_name: str) -> None:
@@ -62,37 +79,70 @@ def on_preset_select(preset_name: str) -> None:
     ui.notify(f"Applied '{preset_name}' preset", type="positive", position="top")
 
 
+def refresh_ui_from_state():
+    """Refresh UI components after loading config."""
+    app_state._notify_update()
+    ui.notify("Configuration loaded - UI updated", type="info")
+
+
 @ui.page("/")
 def main_page():
     """Main application page."""
+    global basic_settings_component
+
     apply_dark_theme()
     ui.dark_mode().enable()
+
+    load_dialog = create_load_config_dialog(on_load_callback=refresh_ui_from_state)
+    save_dialog = create_save_config_dialog()
+    preset_dialog = create_save_preset_dialog()
 
     with ui.header().classes(
         "bg-gray-900/80 backdrop-blur-sm border-b border-gray-700/50 items-center"
     ):
         with ui.row().classes("w-full max-w-6xl mx-auto items-center px-4"):
             ui.label("🌌").classes("text-3xl")
-            ui.label("GREAT SILENCE").classes(
-                "text-2xl font-bold tracking-wider text-transparent bg-clip-text "
-                "bg-gradient-to-r from-cyan-400 to-purple-500"
-            )
+            with ui.column().classes("gap-0"):
+                ui.label("GREAT SILENCE").classes(
+                    "text-xl font-bold tracking-wider text-transparent bg-clip-text "
+                    "bg-gradient-to-r from-cyan-400 to-purple-500"
+                )
+                ui.label("Galactic Civilization Simulator").classes("text-gray-500 text-xs")
+
             ui.space()
-            ui.label("Galactic Civilization Simulator").classes("text-gray-400 text-sm")
+
+            with ui.button_group().props("flat"):
+                ui.button(icon="folder_open", on_click=load_dialog.open).props("flat").tooltip(
+                    "Load Configuration"
+                ).classes("text-gray-400 hover:text-cyan-400")
+                ui.button(icon="save", on_click=save_dialog.open).props("flat").tooltip(
+                    "Save Configuration"
+                ).classes("text-gray-400 hover:text-cyan-400")
+                ui.button(icon="bookmark_add", on_click=preset_dialog.open).props("flat").tooltip(
+                    "Save as Preset"
+                ).classes("text-gray-400 hover:text-purple-400")
 
     with ui.column().classes("w-full max-w-4xl mx-auto p-6 gap-6"):
-        ui.label(
-            "Explore the Fermi Paradox through Monte Carlo simulation of "
-            "galactic civilizations, hazards, and the Great Filter."
-        ).classes("text-gray-400 text-center mb-4")
+        with ui.card().classes("w-full bg-gradient-to-r from-cyan-900/20 to-purple-900/20"):
+            ui.label(
+                "Explore the Fermi Paradox through Monte Carlo simulation of "
+                "galactic civilizations, hazards, and the Great Filter."
+            ).classes("text-gray-300 text-center")
+            with ui.row().classes("w-full justify-center gap-4 mt-2"):
+                ui.badge("Drake Equation", color="cyan").props("outline")
+                ui.badge("Kardashev Scale", color="purple").props("outline")
+                ui.badge("Great Filter", color="red").props("outline")
 
         PresetSelector(on_select=on_preset_select)
 
-        BasicSettings()
+        basic_settings_component = BasicSettings()
 
         with ui.expansion("Advanced Settings", icon="tune", value=False).classes(
             "w-full bg-gray-800"
         ):
+            ui.label(
+                "Fine-tune all simulation parameters. Changes apply immediately."
+            ).classes("text-gray-500 text-sm mb-4")
             ConfigPanels()
 
         results_dashboard = ResultsDashboard()
@@ -108,9 +158,17 @@ def main_page():
         with ui.row().classes("w-full max-w-6xl mx-auto items-center px-4 py-2"):
             ui.label("Great Silence v0.1.0").classes("text-gray-500 text-xs")
             ui.space()
-            ui.link("GitHub", "https://github.com/grburgess/great_silence", new_tab=True).classes(
-                "text-gray-500 text-xs hover:text-cyan-400"
-            )
+            with ui.row().classes("gap-4"):
+                ui.link(
+                    "Documentation",
+                    "https://github.com/grburgess/great_silence/blob/main/md_docs/README.md",
+                    new_tab=True,
+                ).classes("text-gray-500 text-xs hover:text-cyan-400")
+                ui.link(
+                    "GitHub",
+                    "https://github.com/grburgess/great_silence",
+                    new_tab=True,
+                ).classes("text-gray-500 text-xs hover:text-cyan-400")
 
 
 def run_app(host: str = "127.0.0.1", port: int = 8080, reload: bool = False):
