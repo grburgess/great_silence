@@ -340,6 +340,7 @@ class GalaxySimulation:
         self.current_time_myr: float = 0.0
         self.civilizations: List[CivilizationState] = []
         self.next_civ_id: int = 0
+        self._active_civ_count: int = 0  # Cached count for O(1) check
         
         # O(1) lookup indexes for civilizations and probes
         self._civ_by_id: Dict[int, CivilizationState] = {}
@@ -670,36 +671,41 @@ class GalaxySimulation:
         dt_gyr = dt_myr / 1000.0
         self.galaxy.ages += dt_gyr
 
-        # Evolve galaxy (stellar motion)
-        self.galaxy.evolve_positions(
-            dt_myr,
-            use_numba=self.config.simulation.use_numba,
-            enable_motion=self.config.simulation.enable_stellar_motion,
-        )
-
-        # Continuous star formation (new massive stars)
-        self._process_star_formation(dt_myr)
-
-        # Check for new civilization emergence
+        # Check for new civilization emergence (O(log N) with pre-scheduled events)
         self._check_civilization_emergence()
 
-        # Evolve existing civilizations
-        self._evolve_civilizations()
+        # Fast path: skip civilization-related work when no civs exist
+        has_active_civs = self._active_civ_count > 0
+        
+        if has_active_civs:
+            # Evolve galaxy (stellar motion) - only needed for civ interactions
+            if self.config.simulation.enable_stellar_motion:
+                self.galaxy.evolve_positions(
+                    dt_myr,
+                    use_numba=self.config.simulation.use_numba,
+                    enable_motion=True,
+                )
 
-        # Update colony strengths
-        self._update_colony_strengths(dt_myr)
+            # Evolve existing civilizations
+            self._evolve_civilizations()
 
-        # Scan for encounters between civilizations
-        self._scan_for_encounters(dt_myr)
+            # Update colony strengths
+            self._update_colony_strengths(dt_myr)
 
-        # Resolve ongoing wars
-        self._resolve_wars(dt_myr)
+            # Scan for encounters between civilizations
+            self._scan_for_encounters(dt_myr)
 
-        # Manage strategic resources
-        self._manage_strategic_resources(dt_myr)
+            # Resolve ongoing wars
+            self._resolve_wars(dt_myr)
 
-        # Decay reputations
-        self._decay_reputations(dt_myr)
+            # Manage strategic resources
+            self._manage_strategic_resources(dt_myr)
+
+            # Decay reputations
+            self._decay_reputations(dt_myr)
+
+        # Continuous star formation (new massive stars) - always process
+        self._process_star_formation(dt_myr)
 
         # PRIORITY 2: Process probe events (arrival, replication) from event queue
         self._process_probe_events()
@@ -980,6 +986,7 @@ class GalaxySimulation:
             self._civ_by_id[new_civ.civ_id] = new_civ
             self._colonized_mask[star_idx_int] = True
             self.next_civ_id += 1
+            self._active_civ_count += 1
 
     def _get_mature_colonies(self, civ: CivilizationState) -> int:
         """
@@ -1140,10 +1147,10 @@ class GalaxySimulation:
             if self.rng.uniform(0, 1) < p_total_extinction:
                 civ.is_active = False
                 civ.death_time_myr = self.current_time_myr
-                # Assign cause based on which was more likely
                 civ.death_cause = (
                     "colonial_war" if p_colonial_war > p_crisis_total else "self_destruction"
                 )
+                self._active_civ_count -= 1
                 continue
 
             # Check age-based death with colonization bonus and distributed resilience
@@ -1180,6 +1187,7 @@ class GalaxySimulation:
                     civ.is_active = False
                     civ.death_time_myr = self.current_time_myr
                     civ.death_cause = "old_age"
+                    self._active_civ_count -= 1
                     continue
 
             # Expansion (simplified - will be enhanced with proper light travel time)
@@ -1462,6 +1470,7 @@ class GalaxySimulation:
             civ.death_cause = (
                 "colonial_war" if p_colonial_war > p_crisis_total else "self_destruction"
             )
+            self._active_civ_count -= 1
             return True
 
         # Age-based death check
@@ -1493,6 +1502,7 @@ class GalaxySimulation:
                 civ.is_active = False
                 civ.death_time_myr = self.current_time_myr
                 civ.death_cause = "old_age"
+                self._active_civ_count -= 1
                 return True
 
         return False
@@ -2166,6 +2176,7 @@ class GalaxySimulation:
                             civ.is_active = False
                             civ.death_time_myr = self.current_time_myr
                             civ.death_cause = event_type_str
+                            self._active_civ_count -= 1
 
             self.hazard_events.append(hazard_event)
 
