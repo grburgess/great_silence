@@ -12,19 +12,29 @@ from .config import ThreeJSConfig
 def _extract_civ_list(snap):
     """Extract civilization list from snapshot."""
     if hasattr(snap, 'civilization_states'):
-        return [
-            {
+        # Get positions - use get_positions() for delta-compressed snapshots
+        positions = None
+        if hasattr(snap, 'get_positions') and getattr(snap, 'use_delta_compression', False):
+            positions = snap.get_positions()
+        elif hasattr(snap, 'stellar_positions') and snap.stellar_positions is not None and len(snap.stellar_positions) > 0:
+            positions = snap.stellar_positions
+        
+        civs = []
+        for c in snap.civilization_states:
+            if positions is not None and c.parent_star_idx < len(positions):
+                pos = positions[c.parent_star_idx].tolist()
+            else:
+                pos = [0.0, 0.0, 0.0]
+            
+            civs.append({
                 'civ_id': c.civ_id,
-                'position': snap.stellar_positions[c.parent_star_idx].tolist() 
-                           if hasattr(snap, 'stellar_positions') and snap.stellar_positions is not None 
-                           else [0.0, 0.0, 0.0],
+                'position': pos,
                 'kardashev': c.kardashev_scale,
                 'age': (snap.time_myr - c.birth_time_myr) / 1000.0 
                        if hasattr(snap, 'time_myr') else c.birth_time_myr / 1000.0,
                 'is_active': c.is_active
-            }
-            for c in snap.civilization_states
-        ]
+            })
+        return civs
     elif hasattr(snap, 'civilizations'):
         return snap.civilizations.copy()
     else:
@@ -278,28 +288,35 @@ class SimulationDataExtractor:
                 colors = np.ones((len(positions), 3)) * 0.9
             sizes = np.ones(len(positions)) * 0.03
 
-        # Include velocity data for GPU interpolation
-        initial_positions = self.simulation_data.get("initial_positions", None)
-        velocities = self.simulation_data.get("stellar_velocities", None)
-        
-        if indices is not None:
-            if initial_positions is not None:
-                initial_positions = initial_positions[indices]
-            if velocities is not None:
-                velocities = velocities[indices]
-        
         result = {
             "positions": positions.tolist() if len(positions) > 0 else [],
             "colors": colors.tolist() if len(colors) > 0 else [],
             "sizes": sizes.tolist() if len(sizes) > 0 else [],
         }
         
-        # Add delta compression data for GPU interpolation
-        if initial_positions is not None:
-            result["initial_positions"] = initial_positions.tolist()
-        if velocities is not None:
-            result["velocities"] = velocities.tolist()
-            result["reference_time"] = 0.0  # Initial time in Myr
+        # Only include velocity data for GPU interpolation if stellar motion was enabled
+        # Check if any snapshots used delta compression (indicates stellar motion was enabled)
+        stellar_motion_enabled = False
+        if self.snapshots:
+            stellar_motion_enabled = any(
+                s.get("use_delta_compression", False) for s in self.snapshots
+            )
+        
+        if stellar_motion_enabled:
+            initial_positions = self.simulation_data.get("initial_positions", None)
+            velocities = self.simulation_data.get("stellar_velocities", None)
+            
+            if indices is not None:
+                if initial_positions is not None:
+                    initial_positions = initial_positions[indices]
+                if velocities is not None:
+                    velocities = velocities[indices]
+            
+            if initial_positions is not None:
+                result["initial_positions"] = initial_positions.tolist()
+            if velocities is not None:
+                result["velocities"] = velocities.tolist()
+                result["reference_time"] = 0.0  # Initial time in Myr
         
         return result
 
