@@ -46,6 +46,7 @@ class GalaxyParameters:
     spiral_arm_count: int = 4
     spiral_arm_strength: float = 0.2
     enable_bar: bool = True
+    velocity_init_mode: str = "simple"  # "simple" (circular + empirical) or "jeans" (full equilibrium)
 
     # Star population
     total_stars: int = 100_000_000  # Total stars in simulation
@@ -262,6 +263,9 @@ class SimulationParameters:
     enable_stellar_motion: bool = (
         False  # Enable gravitational evolution of stellar positions (EXPERIMENTAL)
     )
+    stellar_motion_use_numba: bool = True  # Use Numba kernels for position evolution
+    probe_intercept_enabled: bool = True  # Probes calculate intercept position for moving targets
+    disaster_track_parent_star: bool = True  # Disasters occur at parent star's current position
     enable_star_formation: bool = True  # Enable continuous star formation during simulation
     
     # Disaster timing

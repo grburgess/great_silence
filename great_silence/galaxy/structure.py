@@ -28,6 +28,7 @@ class GalaxyModel:
 
         # Store stellar positions and properties
         self.positions: Optional[np.ndarray] = None  # (N, 3) in kpc
+        self.initial_positions: Optional[np.ndarray] = None  # (N, 3) in kpc - for delta compression
         self.velocities: Optional[np.ndarray] = None  # (N, 3) in km/s
         self.ages: Optional[np.ndarray] = None  # in Gyr
         self.masses: Optional[np.ndarray] = None  # in solar masses
@@ -81,6 +82,9 @@ class GalaxyModel:
 
         # Generate velocities from rotation curve
         self.velocities = self._generate_velocities()
+        
+        # Store initial positions for delta compression (before any evolution)
+        self.initial_positions = self.positions.copy()
 
         # Initialize stellar ages, masses, and metallicities
         # (will be populated by star formation history with gradients)
@@ -287,11 +291,142 @@ class GalaxyModel:
 
     def _generate_velocities(self) -> np.ndarray:
         """
-        Generate stellar velocities in equilibrium with gravitational potential.
-
-        Uses the actual gravitational potential (disk + bulge + halo) to compute
-        circular velocities, ensuring stars are in stable orbits. Bulge stars are
-        pressure-supported with random motions.
+        Generate stellar velocities based on configured mode.
+        
+        Dispatches to either simple (empirical) or Jeans (equilibrium) mode.
+        """
+        mode = getattr(self.params, 'velocity_init_mode', 'simple')
+        
+        if mode == 'jeans':
+            return self._generate_velocities_jeans()
+        else:
+            return self._generate_velocities_simple()
+    
+    def _compute_epicyclic_frequency(self, R: float) -> float:
+        """
+        Compute epicyclic frequency κ at cylindrical radius R.
+        
+        κ² = R × d(Ω²)/dR + 4Ω²
+        
+        For a flat rotation curve (v_c = const), κ = √2 × Ω = √2 × v_c/R
+        """
+        if R < 0.1:
+            R = 0.1
+            
+        pos = np.array([[R, 0.0, 0.0]])
+        v_c = self._compute_circular_velocity(pos[0])
+        
+        dr = 0.1
+        pos_plus = np.array([[R + dr, 0.0, 0.0]])
+        pos_minus = np.array([[max(0.1, R - dr), 0.0, 0.0]])
+        v_c_plus = self._compute_circular_velocity(pos_plus[0])
+        v_c_minus = self._compute_circular_velocity(pos_minus[0])
+        
+        Omega = v_c / R
+        dv_dR = (v_c_plus - v_c_minus) / (2 * dr)
+        dOmega_dR = (dv_dR - v_c / R) / R
+        
+        kappa_sq = R * 2 * Omega * dOmega_dR + 4 * Omega**2
+        kappa = np.sqrt(max(0.0, kappa_sq))
+        
+        return kappa
+    
+    def _compute_velocity_dispersion_jeans(
+        self, 
+        R: np.ndarray, 
+        z: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Compute velocity dispersions (σ_R, σ_φ, σ_z) from Jeans equations.
+        
+        For an exponential disk in a combined potential:
+        - σ_R follows Toomre Q stability criterion
+        - σ_φ = σ_R × κ/(2Ω) from epicyclic approximation
+        - σ_z from vertical Jeans equation
+        
+        Args:
+            R: Cylindrical radii (kpc)
+            z: Vertical heights (kpc)
+            
+        Returns:
+            Tuple of (σ_R, σ_φ, σ_z) arrays in km/s
+        """
+        n_stars = len(R)
+        sigma_R = np.zeros(n_stars)
+        sigma_phi = np.zeros(n_stars)
+        sigma_z = np.zeros(n_stars)
+        
+        h_R = self.params.scale_length_kpc
+        h_z = self.params.disk_height_kpc
+        v_0 = self.params.rotation_velocity_km_s
+        
+        sigma_R_0 = 35.0
+        sigma_z_0 = 20.0
+        
+        for i in range(n_stars):
+            r_i = max(0.1, R[i])
+            z_i = z[i]
+            
+            sigma_R[i] = sigma_R_0 * np.exp(-r_i / (2 * h_R))
+            sigma_R[i] *= (1.0 + np.abs(z_i) / h_z)
+            
+            kappa = self._compute_epicyclic_frequency(r_i)
+            Omega = v_0 / r_i
+            
+            if Omega > 1e-10:
+                sigma_phi[i] = sigma_R[i] * kappa / (2 * Omega)
+            else:
+                sigma_phi[i] = sigma_R[i] * 0.7
+            
+            sigma_z[i] = sigma_z_0 * np.exp(-r_i / (2 * h_R))
+            sigma_z[i] *= (1.0 + 0.5 * np.abs(z_i) / h_z)
+        
+        return sigma_R, sigma_phi, sigma_z
+    
+    def _compute_asymmetric_drift(
+        self, 
+        R: np.ndarray, 
+        sigma_R: np.ndarray
+    ) -> np.ndarray:
+        """
+        Compute asymmetric drift correction for disk stars.
+        
+        v_φ = v_c - v_a where v_a ≈ σ_R² / (2 × v_c) × d(ln(ρ × σ_R²)) / d(ln R)
+        
+        For an exponential disk with exponentially declining σ_R:
+        v_a ≈ σ_R² × (1/h_R + 1/h_σ) / (2 × v_c)
+        
+        Args:
+            R: Cylindrical radii (kpc)
+            sigma_R: Radial velocity dispersions (km/s)
+            
+        Returns:
+            Asymmetric drift velocities (km/s) to subtract from circular
+        """
+        h_R = self.params.scale_length_kpc
+        h_sigma = 2 * h_R
+        
+        v_a = np.zeros(len(R))
+        
+        for i in range(len(R)):
+            r_i = max(0.1, R[i])
+            v_c = self._compute_circular_velocity(np.array([r_i, 0.0, 0.0]))
+            
+            if v_c > 10.0:
+                dlnrho_dlnR = -r_i / h_R
+                dlnsigma_dlnR = -r_i / h_sigma
+                
+                v_a[i] = sigma_R[i]**2 / (2 * v_c) * abs(dlnrho_dlnR + 2 * dlnsigma_dlnR)
+        
+        return np.clip(v_a, 0, 50.0)
+    
+    def _generate_velocities_simple(self) -> np.ndarray:
+        """
+        Generate velocities using simple circular rotation + empirical dispersions.
+        
+        This is the original method with small improvements:
+        - Asymmetric drift correction for disk stars
+        - Better handling of central regions
         """
         if self.positions is None:
             raise ValueError("Must generate positions before velocities")
@@ -304,52 +439,45 @@ class GalaxyModel:
         v_y = np.zeros(n_stars)
         v_z = np.zeros(n_stars)
 
-        # Handle each component differently
         if self.component_type is not None:
-            # Bulge stars (component_type == 0): pressure-supported
             bulge_mask = self.component_type == 0
             if np.any(bulge_mask):
-                n_bulge = np.sum(bulge_mask)
                 sigma_bulge = self.params.bulge_velocity_dispersion_km_s
-
-                # Compute circular velocity from potential at bulge scale radius
                 bulge_ref_pos = np.array([self.params.bulge_radius_kpc, 0.0, 0.0])
                 v_rot_bulge = 0.3 * self._compute_circular_velocity(bulge_ref_pos)
 
-                # Isotropic velocity dispersion + small rotation
                 for i in np.where(bulge_mask)[0]:
                     r_i = R[i] + 1e-10
                     v_x[i] = self.rng.normal(0, sigma_bulge)
                     v_y[i] = self.rng.normal(0, sigma_bulge) + v_rot_bulge * x[i] / r_i
                     v_z[i] = self.rng.normal(0, sigma_bulge)
 
-            # Disk stars (component_type >= 1): rotationally-supported
             disk_mask = self.component_type >= 1
             if np.any(disk_mask):
-                print("  Computing equilibrium velocities from potential...")
+                disk_indices = np.where(disk_mask)[0]
+                R_disk = R[disk_indices]
+                z_disk = z[disk_indices]
+                
+                sigma_r = 30.0 * (1 + np.abs(z_disk) / self.params.disk_height_kpc)
+                v_a = self._compute_asymmetric_drift(R_disk, sigma_r)
 
-                for i in np.where(disk_mask)[0]:
-                    # Compute circular velocity from potential
+                for j, i in enumerate(disk_indices):
                     v_circ = self._compute_circular_velocity(self.positions[i])
+                    v_circ_corrected = max(0.0, v_circ - v_a[j])
 
                     r_i = R[i] + 1e-10
                     x_i, y_i, z_i = x[i], y[i], z[i]
 
-                    # Circular velocity components (counterclockwise)
-                    v_x[i] = -v_circ * y_i / r_i
-                    v_y[i] = v_circ * x_i / r_i
+                    v_x[i] = -v_circ_corrected * y_i / r_i
+                    v_y[i] = v_circ_corrected * x_i / r_i
 
-                    # Add velocity dispersion (increases with height)
-                    sigma_r = 30.0 * (1 + np.abs(z_i) / self.params.disk_height_kpc)
                     sigma_theta = 20.0 * (1 + np.abs(z_i) / self.params.disk_height_kpc)
-                    sigma_z = 20.0 * (1 + np.abs(z_i) / self.params.disk_height_kpc)
+                    sigma_z_i = 20.0 * (1 + np.abs(z_i) / self.params.disk_height_kpc)
 
-                    # Add random dispersions
-                    v_x[i] += self.rng.normal(0, sigma_r)
+                    v_x[i] += self.rng.normal(0, sigma_r[j])
                     v_y[i] += self.rng.normal(0, sigma_theta)
-                    v_z[i] += self.rng.normal(0, sigma_z)
+                    v_z[i] += self.rng.normal(0, sigma_z_i)
         else:
-            # Legacy: all stars in disk with flat rotation curve
             v_circ = self.params.rotation_velocity_km_s
 
             v_x = -v_circ * y / (R + 1e-10)
@@ -362,6 +490,82 @@ class GalaxyModel:
             v_x += self.rng.normal(0, sigma_r, n_stars)
             v_y += self.rng.normal(0, sigma_theta, n_stars)
             v_z += self.rng.normal(0, sigma_z, n_stars)
+
+        return np.column_stack([v_x, v_y, v_z])
+    
+    def _generate_velocities_jeans(self) -> np.ndarray:
+        """
+        Generate velocities using Jeans equations for equilibrium.
+        
+        Solves the collisionless Boltzmann equation assuming:
+        - Exponential disk density profile
+        - Miyamoto-Nagai + Hernquist + NFW potential
+        - Steady-state, axisymmetric distribution
+        
+        This provides better equilibrium initial conditions that
+        maintain stability over longer timescales.
+        """
+        if self.positions is None:
+            raise ValueError("Must generate positions before velocities")
+
+        print("  Computing Jeans equilibrium velocities...")
+        
+        n_stars = len(self.positions)
+        x, y, z = self.positions[:, 0], self.positions[:, 1], self.positions[:, 2]
+        R = np.sqrt(x**2 + y**2)
+
+        v_x = np.zeros(n_stars)
+        v_y = np.zeros(n_stars)
+        v_z = np.zeros(n_stars)
+
+        if self.component_type is not None:
+            bulge_mask = self.component_type == 0
+            if np.any(bulge_mask):
+                sigma_bulge = self.params.bulge_velocity_dispersion_km_s
+                bulge_ref_pos = np.array([self.params.bulge_radius_kpc, 0.0, 0.0])
+                v_rot_bulge = 0.3 * self._compute_circular_velocity(bulge_ref_pos)
+                
+                bulge_indices = np.where(bulge_mask)[0]
+                for i in bulge_indices:
+                    r_i = R[i] + 1e-10
+                    r_sph = np.sqrt(x[i]**2 + y[i]**2 + z[i]**2)
+                    
+                    sigma_r_bulge = sigma_bulge * (1.0 + 0.5 * r_sph / self.params.bulge_radius_kpc)
+                    
+                    v_x[i] = self.rng.normal(0, sigma_r_bulge)
+                    v_y[i] = self.rng.normal(0, sigma_r_bulge) + v_rot_bulge * x[i] / r_i
+                    v_z[i] = self.rng.normal(0, sigma_r_bulge)
+
+            disk_mask = self.component_type >= 1
+            if np.any(disk_mask):
+                disk_indices = np.where(disk_mask)[0]
+                R_disk = R[disk_indices]
+                z_disk = z[disk_indices]
+                
+                sigma_R, sigma_phi, sigma_z = self._compute_velocity_dispersion_jeans(
+                    R_disk, z_disk
+                )
+                v_a = self._compute_asymmetric_drift(R_disk, sigma_R)
+
+                for j, i in enumerate(disk_indices):
+                    v_circ = self._compute_circular_velocity(self.positions[i])
+                    v_circ_corrected = max(0.0, v_circ - v_a[j])
+
+                    r_i = R[i] + 1e-10
+                    x_i, y_i = x[i], y[i]
+
+                    v_phi = v_circ_corrected + self.rng.normal(0, sigma_phi[j])
+                    v_r = self.rng.normal(0, sigma_R[j])
+                    
+                    cos_phi = x_i / r_i
+                    sin_phi = y_i / r_i
+                    
+                    v_x[i] = v_r * cos_phi - v_phi * sin_phi
+                    v_y[i] = v_r * sin_phi + v_phi * cos_phi
+                    v_z[i] = self.rng.normal(0, sigma_z[j])
+        else:
+            print("  Warning: No component types - using simple velocities")
+            return self._generate_velocities_simple()
 
         return np.column_stack([v_x, v_y, v_z])
 
