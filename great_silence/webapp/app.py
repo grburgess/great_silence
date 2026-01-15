@@ -4,7 +4,7 @@ from nicegui import ui, app
 from pathlib import Path
 
 from .state import app_state
-from .components import PresetSelector, BasicSettings, SimulationRunner
+from .components import PresetSelector, BasicSettings, SimulationRunner, ConfigPanels
 
 
 def apply_dark_theme():
@@ -93,12 +93,7 @@ def main_page():
         with ui.expansion("Advanced Settings", icon="tune", value=False).classes(
             "w-full bg-gray-800"
         ):
-            ui.label("Advanced configuration options coming in Phase 2...").classes(
-                "text-gray-500 italic p-4"
-            )
-            ui.label("Galaxy structure, astrophysics, civilization parameters, and more.").classes(
-                "text-gray-600 text-sm px-4 pb-4"
-            )
+            ConfigPanels()
 
         SimulationRunner()
 
