@@ -25,6 +25,7 @@ class SimulationRunner:
         self._simulation_error = None
         self._update_timer = None
         self.on_complete = None
+        self._events_list = []
         self._build()
 
     def _build(self) -> None:
@@ -116,6 +117,7 @@ class SimulationRunner:
         app_state.reset_progress()
         app_state.progress.is_running = True
 
+        self._events_list = []
         self._events_container.clear()
         self._start_time = time.time()
         self._last_civs = 0
@@ -268,9 +270,17 @@ class SimulationRunner:
         }
         color = colors.get(event_type, "text-gray-400")
 
-        with self._events_container:
-            with ui.row().classes("w-full gap-2 items-center"):
-                ui.label(f"[{time_gyr:.2f} Gyr]").classes("text-xs text-gray-500 font-mono w-20")
-                ui.label(description).classes(f"text-sm {color}")
+        self._events_list.append((time_gyr, event_type, description, color))
+        self._refresh_events_display()
 
         app_state.add_event(SimulationEvent(time_gyr, event_type, description))
+
+    def _refresh_events_display(self) -> None:
+        """Refresh the events display from the events list."""
+        self._events_container.clear()
+        
+        for time_gyr, event_type, description, color in self._events_list[-20:]:
+            with self._events_container:
+                with ui.row().classes("w-full gap-2 items-center"):
+                    ui.label(f"[{time_gyr:.2f} Gyr]").classes("text-xs text-gray-500 font-mono w-20")
+                    ui.label(description).classes(f"text-sm {color}")
