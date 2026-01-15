@@ -340,6 +340,10 @@ class GalaxySimulation:
         self.current_time_myr: float = 0.0
         self.civilizations: List[CivilizationState] = []
         self.next_civ_id: int = 0
+        
+        # O(1) lookup indexes for civilizations and probes
+        self._civ_by_id: Dict[int, CivilizationState] = {}
+        self._probe_by_id: Dict[int, Tuple[int, "ProbeState"]] = {}  # probe_id -> (civ_id, probe)
 
         # History tracking
         self.snapshots: List[SimulationSnapshot] = []
@@ -951,6 +955,7 @@ class GalaxySimulation:
                 )
 
             self.civilizations.append(new_civ)
+            self._civ_by_id[new_civ.civ_id] = new_civ
             self._colonized_mask[star_idx_int] = True
             self.next_civ_id += 1
 
@@ -1210,38 +1215,20 @@ class GalaxySimulation:
         PRIORITY 2: Process probe arrival and replication events from event queue.
 
         Replaces O(N_probes) polling loop with O(log N) event-driven processing.
-        Expected speedup: 10-50x for expansion-heavy scenarios.
+        Uses O(1) lookup dicts for civilization and probe retrieval.
         """
-        # Process all events that should occur at or before current time
         while self.event_queue and self.event_queue[0][0] <= self.current_time_myr:
             event_time, event_type, civ_id, probe_id = heapq.heappop(self.event_queue)
 
-            # Find civilization and probe
-            civ = None
-            for c in self.civilizations:
-                if c.civ_id == civ_id:
-                    civ = c
-                    break
-
+            civ = self._civ_by_id.get(civ_id)
             if civ is None or not civ.is_active:
-                continue  # Civilization extinct, ignore event
+                continue
 
-            # Search for probe in both active and archived lists
-            # (probe may have been archived on arrival but still needs replication processing)
-            probe = None
-            for p in civ.active_probes:
-                if p.probe_id == probe_id:
-                    probe = p
-                    break
-
-            if probe is None:
-                for p in civ.archived_probes:
-                    if p.probe_id == probe_id:
-                        probe = p
-                        break
-
-            if probe is None:
-                continue  # Probe not found (shouldn't happen)
+            probe_entry = self._probe_by_id.get(probe_id)
+            if probe_entry is None:
+                continue
+            
+            _, probe = probe_entry
 
             if event_type == "probe_arrival":
                 self._handle_probe_arrival(civ, probe)
@@ -1588,11 +1575,10 @@ class GalaxySimulation:
         for buffer in buffers:
             # Merge probes into civilization lists
             for civ_id, probe in buffer.new_probes:
-                # Find owning civilization
-                for civ in self.civilizations:
-                    if civ.civ_id == civ_id:
-                        civ.active_probes.append(probe)
-                        break
+                civ = self._civ_by_id.get(civ_id)
+                if civ is not None:
+                    civ.active_probes.append(probe)
+                    self._probe_by_id[probe.probe_id] = (civ_id, probe)
 
             # Merge events into global event queue
             for event in buffer.new_events:
@@ -1600,12 +1586,11 @@ class GalaxySimulation:
 
             # Apply extinction updates
             for civ_id, is_active, death_time, death_cause in buffer.extinction_updates:
-                for civ in self.civilizations:
-                    if civ.civ_id == civ_id:
-                        civ.is_active = is_active
-                        civ.death_time_myr = death_time
-                        civ.death_cause = death_cause
-                        break
+                civ = self._civ_by_id.get(civ_id)
+                if civ is not None:
+                    civ.is_active = is_active
+                    civ.death_time_myr = death_time
+                    civ.death_cause = death_cause
 
     def _handle_replication_complete(self, civ: CivilizationState, probe: ProbeState) -> None:
         """Handle probe replication completion."""
@@ -1660,6 +1645,7 @@ class GalaxySimulation:
             )
             self.next_probe_id += 1
             civ.active_probes.append(probe)
+            self._probe_by_id[probe.probe_id] = (civ.civ_id, probe)
 
             # PRIORITY 2: Schedule probe arrival event
             heapq.heappush(
@@ -1707,6 +1693,7 @@ class GalaxySimulation:
             )
             self.next_probe_id += 1
             civ.active_probes.append(probe)
+            self._probe_by_id[probe.probe_id] = (civ.civ_id, probe)
 
             # PRIORITY 2: Schedule probe arrival event
             heapq.heappush(
