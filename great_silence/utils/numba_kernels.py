@@ -1053,6 +1053,260 @@ def count_within_radius(
 
 
 # =============================================================================
+# Leapfrog Integration with Gravitational Potential
+# =============================================================================
+
+
+@numba.jit(nopython=True, parallel=True, fastmath=True, cache=True)
+def leapfrog_integrate_positions_kernel(
+    positions: np.ndarray,
+    velocities: np.ndarray,
+    accelerations: np.ndarray,
+    dt_myr: float
+) -> None:
+    """
+    Perform leapfrog position update step (in-place).
+    
+    r(t+dt) = r(t) + v(t)×dt + 0.5×a(t)×dt²
+    
+    Velocities in km/s, positions in kpc, accelerations in kpc/Myr².
+    
+    Args:
+        positions: (N, 3) positions in kpc (modified in-place)
+        velocities: (N, 3) velocities in km/s
+        accelerations: (N, 3) accelerations in kpc/Myr²
+        dt_myr: Time step in Myr
+    """
+    n_stars = len(positions)
+    v_conv = 0.001022  # km/s to kpc/Myr
+    dt_sq = dt_myr * dt_myr * 0.5
+    
+    for i in numba.prange(n_stars):
+        positions[i, 0] += velocities[i, 0] * v_conv * dt_myr + accelerations[i, 0] * dt_sq
+        positions[i, 1] += velocities[i, 1] * v_conv * dt_myr + accelerations[i, 1] * dt_sq
+        positions[i, 2] += velocities[i, 2] * v_conv * dt_myr + accelerations[i, 2] * dt_sq
+
+
+@numba.jit(nopython=True, parallel=True, fastmath=True, cache=True)
+def leapfrog_integrate_velocities_kernel(
+    velocities: np.ndarray,
+    accel_old: np.ndarray,
+    accel_new: np.ndarray,
+    dt_myr: float
+) -> None:
+    """
+    Perform leapfrog velocity update step (in-place).
+    
+    v(t+dt) = v(t) + 0.5×(a(t) + a(t+dt))×dt
+    
+    Accelerations in kpc/Myr², velocities in km/s.
+    
+    Args:
+        velocities: (N, 3) velocities in km/s (modified in-place)
+        accel_old: (N, 3) accelerations at t in kpc/Myr²
+        accel_new: (N, 3) accelerations at t+dt in kpc/Myr²
+        dt_myr: Time step in Myr
+    """
+    n_stars = len(velocities)
+    v_conv_inv = 1.0 / 0.001022  # kpc/Myr to km/s
+    half_dt = 0.5 * dt_myr
+    
+    for i in numba.prange(n_stars):
+        velocities[i, 0] += (accel_old[i, 0] + accel_new[i, 0]) * half_dt * v_conv_inv
+        velocities[i, 1] += (accel_old[i, 1] + accel_new[i, 1]) * half_dt * v_conv_inv
+        velocities[i, 2] += (accel_old[i, 2] + accel_new[i, 2]) * half_dt * v_conv_inv
+
+
+@numba.jit(nopython=True, parallel=True, fastmath=True, cache=True)
+def compute_miyamoto_nagai_acceleration_kernel(
+    positions: np.ndarray,
+    out_accel: np.ndarray,
+    a: float,
+    b: float,
+    G_M: float
+) -> None:
+    """
+    Compute Miyamoto-Nagai disk acceleration (in-place).
+    
+    Φ_disk(R, z) = -GM / sqrt(R² + (a + sqrt(z² + b²))²)
+    
+    Args:
+        positions: (N, 3) positions in kpc
+        out_accel: (N, 3) output acceleration in kpc/Myr² (added to existing)
+        a: Disk scale length in kpc
+        b: Disk scale height in kpc
+        G_M: G × M_disk in kpc³/Myr²
+    """
+    n_stars = len(positions)
+    
+    for i in numba.prange(n_stars):
+        x = positions[i, 0]
+        y = positions[i, 1]
+        z = positions[i, 2]
+        
+        R_sq = x * x + y * y
+        R = np.sqrt(R_sq)
+        
+        sqrt_term = np.sqrt(z * z + b * b)
+        D_sq = R_sq + (a + sqrt_term) * (a + sqrt_term)
+        D_cubed = D_sq * np.sqrt(D_sq) + 1e-30
+        
+        # Radial component
+        a_R = -G_M * R / D_cubed
+        
+        # z component
+        a_z = -G_M * (a + sqrt_term) * z / ((sqrt_term + 1e-10) * D_cubed)
+        
+        # Convert to Cartesian
+        if R > 1e-10:
+            out_accel[i, 0] += a_R * x / R
+            out_accel[i, 1] += a_R * y / R
+        out_accel[i, 2] += a_z
+
+
+@numba.jit(nopython=True, parallel=True, fastmath=True, cache=True)
+def compute_hernquist_acceleration_kernel(
+    positions: np.ndarray,
+    out_accel: np.ndarray,
+    a_bulge: float,
+    G_M: float
+) -> None:
+    """
+    Compute Hernquist bulge acceleration (in-place).
+    
+    Φ_bulge(r) = -GM / (r + a)
+    
+    Args:
+        positions: (N, 3) positions in kpc
+        out_accel: (N, 3) output acceleration in kpc/Myr² (added to existing)
+        a_bulge: Bulge scale radius in kpc
+        G_M: G × M_bulge in kpc³/Myr²
+    """
+    n_stars = len(positions)
+    
+    for i in numba.prange(n_stars):
+        x = positions[i, 0]
+        y = positions[i, 1]
+        z = positions[i, 2]
+        
+        r = np.sqrt(x * x + y * y + z * z)
+        factor = -G_M / ((r + a_bulge) * (r + a_bulge) + 1e-30)
+        
+        if r > 1e-10:
+            out_accel[i, 0] += factor * x / r
+            out_accel[i, 1] += factor * y / r
+            out_accel[i, 2] += factor * z / r
+
+
+@numba.jit(nopython=True, parallel=True, fastmath=True, cache=True)
+def compute_isothermal_halo_acceleration_kernel(
+    positions: np.ndarray,
+    out_accel: np.ndarray,
+    v_halo_sq: float
+) -> None:
+    """
+    Compute isothermal halo acceleration (in-place).
+    
+    Gives flat rotation curve: a = v²/r (radially inward)
+    
+    Args:
+        positions: (N, 3) positions in kpc
+        out_accel: (N, 3) output acceleration in kpc/Myr² (added to existing)
+        v_halo_sq: v_halo² in kpc²/Myr²
+    """
+    n_stars = len(positions)
+    
+    for i in numba.prange(n_stars):
+        x = positions[i, 0]
+        y = positions[i, 1]
+        z = positions[i, 2]
+        
+        r = np.sqrt(x * x + y * y + z * z)
+        factor = -v_halo_sq / (r + 1e-10)
+        
+        if r > 1e-10:
+            out_accel[i, 0] += factor * x / r
+            out_accel[i, 1] += factor * y / r
+            out_accel[i, 2] += factor * z / r
+
+
+@numba.jit(nopython=True, parallel=True, fastmath=True, cache=True)
+def compute_total_acceleration_kernel(
+    positions: np.ndarray,
+    out_accel: np.ndarray,
+    disk_a: float,
+    disk_b: float,
+    disk_G_M: float,
+    bulge_a: float,
+    bulge_G_M: float,
+    halo_v_sq: float,
+    include_bulge: bool
+) -> None:
+    """
+    Compute total gravitational acceleration from all components.
+    
+    Combines Miyamoto-Nagai disk + Hernquist bulge + isothermal halo.
+    
+    Args:
+        positions: (N, 3) positions in kpc
+        out_accel: (N, 3) output acceleration in kpc/Myr² (overwritten)
+        disk_a: Disk scale length (kpc)
+        disk_b: Disk scale height (kpc)
+        disk_G_M: G × M_disk (kpc³/Myr²)
+        bulge_a: Bulge scale radius (kpc)
+        bulge_G_M: G × M_bulge (kpc³/Myr²)
+        halo_v_sq: v_halo² (kpc²/Myr²)
+        include_bulge: Whether to include bulge component
+    """
+    n_stars = len(positions)
+    
+    for i in numba.prange(n_stars):
+        x = positions[i, 0]
+        y = positions[i, 1]
+        z = positions[i, 2]
+        
+        # Initialize to zero
+        ax = 0.0
+        ay = 0.0
+        az = 0.0
+        
+        R_sq = x * x + y * y
+        R = np.sqrt(R_sq)
+        r = np.sqrt(R_sq + z * z)
+        
+        # Miyamoto-Nagai disk
+        sqrt_term = np.sqrt(z * z + disk_b * disk_b)
+        D_sq = R_sq + (disk_a + sqrt_term) * (disk_a + sqrt_term)
+        D_cubed = D_sq * np.sqrt(D_sq) + 1e-30
+        
+        a_R_disk = -disk_G_M * R / D_cubed
+        a_z_disk = -disk_G_M * (disk_a + sqrt_term) * z / ((sqrt_term + 1e-10) * D_cubed)
+        
+        if R > 1e-10:
+            ax += a_R_disk * x / R
+            ay += a_R_disk * y / R
+        az += a_z_disk
+        
+        # Hernquist bulge
+        if include_bulge and r > 1e-10:
+            factor_bulge = -bulge_G_M / ((r + bulge_a) * (r + bulge_a) + 1e-30)
+            ax += factor_bulge * x / r
+            ay += factor_bulge * y / r
+            az += factor_bulge * z / r
+        
+        # Isothermal halo
+        if r > 1e-10:
+            factor_halo = -halo_v_sq / (r + 1e-10)
+            ax += factor_halo * x / r
+            ay += factor_halo * y / r
+            az += factor_halo * z / r
+        
+        out_accel[i, 0] = ax
+        out_accel[i, 1] = ay
+        out_accel[i, 2] = az
+
+
+# =============================================================================
 # Benchmark Utilities
 # =============================================================================
 
