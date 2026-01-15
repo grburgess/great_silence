@@ -4,7 +4,7 @@ from nicegui import ui, app
 from pathlib import Path
 
 from .state import app_state
-from .components import PresetSelector, BasicSettings, SimulationRunner, ConfigPanels
+from .components import PresetSelector, BasicSettings, SimulationRunner, ConfigPanels, ResultsDashboard
 
 
 def apply_dark_theme():
@@ -95,12 +95,14 @@ def main_page():
         ):
             ConfigPanels()
 
-        SimulationRunner()
+        results_dashboard = ResultsDashboard()
 
-        with ui.card().classes("w-full") as results_card:
-            results_card.visible = False
-            ui.label("📊 Results").classes("text-lg font-semibold text-gray-300 mb-4")
-            ui.label("Results dashboard coming in Phase 4...").classes("text-gray-500 italic")
+        def on_simulation_complete():
+            if app_state.results and app_state.results.get("simulation"):
+                results_dashboard.show_results(app_state.results["simulation"])
+
+        sim_runner = SimulationRunner()
+        sim_runner.on_complete = on_simulation_complete
 
     with ui.footer().classes("bg-gray-900/50 border-t border-gray-700/50"):
         with ui.row().classes("w-full max-w-6xl mx-auto items-center px-4 py-2"):

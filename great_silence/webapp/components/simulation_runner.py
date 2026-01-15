@@ -24,6 +24,7 @@ class SimulationRunner:
         self._simulation_done = False
         self._simulation_error = None
         self._update_timer = None
+        self.on_complete = None
         self._build()
 
     def _build(self) -> None:
@@ -228,6 +229,12 @@ class SimulationRunner:
         }
         self._run_button.visible = True
         self._cancel_button.visible = False
+
+        if self.on_complete and not self._simulation_error and not self._is_cancelled:
+            try:
+                self.on_complete()
+            except Exception:
+                pass
 
     def _cancel_simulation(self) -> None:
         self._is_cancelled = True
