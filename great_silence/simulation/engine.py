@@ -505,7 +505,9 @@ class GalaxySimulation:
         Considers:
         - Probe arrival/replication events
         - Scheduled disaster events (SN, GRB, NS merger)
+        - Scheduled star birth events
         - Civilization activity level
+        - Expected emergence time (prevents long stalls in quiet periods)
 
         Returns:
             Next timestep in Myr
@@ -526,13 +528,61 @@ class GalaxySimulation:
                 time_to_disaster = next_disaster_time - self.current_time_myr
                 if time_to_disaster > 0 and time_to_disaster <= cfg.max_adaptive_step_myr:
                     candidate_dt = min(candidate_dt, max(time_to_disaster + 0.001, cfg.min_timestep_myr))
+            
+            next_birth_time = self.disaster_scheduler.peek_next_star_birth_time()
+            if next_birth_time is not None:
+                time_to_birth = next_birth_time - self.current_time_myr
+                if time_to_birth > 0 and time_to_birth <= cfg.max_adaptive_step_myr:
+                    candidate_dt = min(candidate_dt, max(time_to_birth + 0.001, cfg.min_timestep_myr))
 
         active_civs = sum(1 for c in self.civilizations if c.is_active)
 
         if active_civs > 0:
             candidate_dt = min(candidate_dt, cfg.medium_timestep_myr)
+        elif self.habitable_star_indices is not None and len(self.habitable_star_indices) > 0:
+            emergence_dt = self._estimate_emergence_timestep()
+            candidate_dt = min(candidate_dt, emergence_dt)
 
         return candidate_dt
+
+    def _estimate_emergence_timestep(self) -> float:
+        """
+        Estimate appropriate timestep for emergence probability accuracy.
+        
+        Uses the expected emergence rate to choose a timestep that won't
+        skip emergence windows, while staying efficient during quiet periods.
+        
+        Returns:
+            Suggested timestep in Myr
+        """
+        cfg = self.config.simulation
+        params = self.config.civilization
+        
+        f_life = params.fraction_develop_life
+        f_intel = params.fraction_develop_intelligence
+        f_tech = params.fraction_develop_technology
+        n_habitable = params.avg_habitable_planets_per_system
+        f_base = params.fraction_stars_with_planets
+        
+        p_emergence_per_star_gyr = f_base * n_habitable * f_life * f_intel * f_tech
+        
+        if self.habitable_star_indices is None:
+            return cfg.max_timestep_myr
+        
+        n_eligible = len(self.habitable_star_indices)
+        if n_eligible == 0:
+            return cfg.max_timestep_myr
+        
+        expected_emergence_per_gyr = p_emergence_per_star_gyr * n_eligible
+        
+        if expected_emergence_per_gyr > 0:
+            expected_time_between_myr = 1000.0 / expected_emergence_per_gyr
+            target_dt = expected_time_between_myr / 10.0
+            
+            target_dt = max(cfg.medium_timestep_myr, min(target_dt, cfg.max_timestep_myr))
+            return target_dt
+        
+        return cfg.max_timestep_myr
 
     def _step(self, dt_myr: Optional[float] = None) -> float:
         """
