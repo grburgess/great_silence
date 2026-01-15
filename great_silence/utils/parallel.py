@@ -1,9 +1,9 @@
 """Parallel processing utilities for civilization expansion."""
 
 import numpy as np
+from scipy.spatial import cKDTree
 from typing import List, Dict, Set, Tuple
 from dataclasses import dataclass, field
-from numba import jit, prange
 
 
 @dataclass
@@ -13,12 +13,18 @@ class ThreadLocalProbeBuffer:
     probe_states: List = field(default_factory=list)
     arrivals: List = field(default_factory=list)
     replications: List = field(default_factory=list)
+    new_probes: List = field(default_factory=list)
+    new_events: List = field(default_factory=list)
+    extinction_updates: List = field(default_factory=list)
 
     def clear(self) -> None:
         """Clear all buffers."""
         self.probe_states.clear()
         self.arrivals.clear()
         self.replications.clear()
+        self.new_probes.clear()
+        self.new_events.clear()
+        self.extinction_updates.clear()
 
 
 def compute_light_travel_distance(dt_myr: float) -> float:
@@ -36,151 +42,137 @@ def compute_light_travel_distance(dt_myr: float) -> float:
 
 
 def find_causal_groups_simple(
-    civilizations: List,
-    dt_myr: float,
     positions: np.ndarray,
-    check_sharing: bool = False
-) -> List[List]:
+    civ_ids: List[int],
+    max_distance_kpc: float
+) -> List[List[int]]:
     """Partition civilizations into causally independent groups.
+
+    Uses scipy KD-tree for O(N log N) pair finding instead of O(N²).
 
     Two civilizations are causally connected if light can travel
     between them within the timestep.
 
     Args:
-        civilizations: List of CivilizationState objects
-        dt_myr: Timestep in million years
-        positions: (N, 3) array of civilization positions
-        check_sharing: Check for shared colonized systems
+        positions: (N, 3) array of civilization positions in kpc
+        civ_ids: List of civilization IDs (used to map back)
+        max_distance_kpc: Maximum causal connection distance in kpc
 
     Returns:
-        List of causally independent groups
+        List of groups, where each group is a list of indices into positions
     """
-    if len(civilizations) == 0:
+    n = len(positions)
+    
+    if n == 0:
         return []
-
-    if len(civilizations) == 1:
-        return [[civilizations[0]]]
-
-    light_travel_distance = compute_light_travel_distance(dt_myr)
-    max_distance = light_travel_distance
-
-    n = len(civilizations)
-    adjacency = np.zeros((n, n), dtype=bool)
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            dist = np.linalg.norm(positions[i] - positions[j])
-            if dist <= max_distance:
-                adjacency[i, j] = True
-                adjacency[j, i] = True
-
+    
+    if n == 1:
+        return [[0]]
+    
+    tree = cKDTree(positions)
+    pairs = tree.query_pairs(max_distance_kpc)
+    
+    adjacency = {i: set() for i in range(n)}
+    for i, j in pairs:
+        adjacency[i].add(j)
+        adjacency[j].add(i)
+    
     groups = []
-    visited = np.zeros(n, dtype=bool)
-
-    for i in range(n):
-        if visited[i]:
+    visited = set()
+    
+    for start in range(n):
+        if start in visited:
             continue
-
+        
         group = []
-        stack = [i]
-
+        stack = [start]
+        
         while stack:
             current = stack.pop()
-            if visited[current]:
+            if current in visited:
                 continue
-
-            visited[current] = True
-            group.append(civilizations[current])
-
-            for neighbor in np.where(adjacency[current])[0]:
-                if not visited[neighbor]:
+            
+            visited.add(current)
+            group.append(current)
+            
+            for neighbor in adjacency[current]:
+                if neighbor not in visited:
                     stack.append(neighbor)
-
+        
         groups.append(group)
-
+    
     return groups
 
 
 def find_causal_groups_with_colonies(
-    civilizations: List,
-    dt_myr: float,
     positions: np.ndarray,
-    colony_map: Dict[int, Set[int]],
-    check_sharing: bool = True
-) -> List[List]:
+    civ_ids: List[int],
+    colonized_systems: List[Set[int]],
+    max_distance_kpc: float
+) -> List[List[int]]:
     """Partition civilizations with colony overlap checking.
 
-    Similar to find_causal_groups_simple but also considers
-    shared colonized systems as causal connections.
+    Uses scipy KD-tree for O(N log N) distance-based pair finding.
+    Also considers shared colonized systems as causal connections.
 
     Args:
-        civilizations: List of CivilizationState objects
-        dt_myr: Timestep in million years
-        positions: (N, 3) array of civilization positions
-        colony_map: civ_id -> set of colonized star indices
-        check_sharing: Check for shared colonized systems
+        positions: (N, 3) array of civilization positions in kpc
+        civ_ids: List of civilization IDs
+        colonized_systems: List of colonized star sets (one per civ)
+        max_distance_kpc: Maximum causal connection distance in kpc
 
     Returns:
-        List of causally independent groups
+        List of groups, where each group is a list of indices into positions
     """
-    if len(civilizations) == 0:
+    n = len(positions)
+    
+    if n == 0:
         return []
-
-    if len(civilizations) == 1 or not check_sharing:
-        return [[civilizations[0]]]
-
-    light_travel_distance = compute_light_travel_distance(dt_myr)
-    max_distance = light_travel_distance
-
-    n = len(civilizations)
-    adjacency = np.zeros((n, n), dtype=bool)
-
+    
+    if n == 1:
+        return [[0]]
+    
+    tree = cKDTree(positions)
+    distance_pairs = tree.query_pairs(max_distance_kpc)
+    
+    adjacency = {i: set() for i in range(n)}
+    
+    for i, j in distance_pairs:
+        adjacency[i].add(j)
+        adjacency[j].add(i)
+    
     for i in range(n):
         for j in range(i + 1, n):
-            civ_i = civilizations[i]
-            civ_j = civilizations[j]
-
-            connected = False
-
-            dist = np.linalg.norm(positions[i] - positions[j])
-            if dist <= max_distance:
-                connected = True
-
-            if check_sharing:
-                colonized_i = colony_map.get(civ_i.civ_id, set())
-                colonized_j = colony_map.get(civ_j.civ_id, set())
-
-                if len(colonized_i & colonized_j) > 0:
-                    connected = True
-
-            if connected:
-                adjacency[i, j] = True
-                adjacency[j, i] = True
-
+            if j in adjacency[i]:
+                continue
+            if len(colonized_systems[i] & colonized_systems[j]) > 0:
+                adjacency[i].add(j)
+                adjacency[j].add(i)
+    
     groups = []
-    visited = np.zeros(n, dtype=bool)
-
-    for i in range(n):
-        if visited[i]:
+    visited = set()
+    
+    for start in range(n):
+        if start in visited:
             continue
-
+        
         group = []
-        stack = [i]
-
+        stack = [start]
+        
         while stack:
             current = stack.pop()
-            if visited[current]:
+            if current in visited:
                 continue
-
-            visited[current] = True
-            group.append(civilizations[current])
-
-            for neighbor in np.where(adjacency[current])[0]:
-                if not visited[neighbor]:
+            
+            visited.add(current)
+            group.append(current)
+            
+            for neighbor in adjacency[current]:
+                if neighbor not in visited:
                     stack.append(neighbor)
-
+        
         groups.append(group)
-
+    
     return groups
 
 
