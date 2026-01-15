@@ -9,15 +9,20 @@ import json
 from .config import ThreeJSConfig
 
 
-def _extract_civ_list(snap):
-    """Extract civilization list from snapshot."""
+def _extract_civ_list(snap, galaxy_positions=None):
+    """Extract civilization list from snapshot.
+    
+    Args:
+        snap: Simulation snapshot
+        galaxy_positions: Optional fallback positions from galaxy model
+    """
     if hasattr(snap, 'civilization_states'):
-        # Get positions - use get_positions() for delta-compressed snapshots
+        # Get positions - prefer stellar_positions, fall back to galaxy_positions
         positions = None
-        if hasattr(snap, 'get_positions') and getattr(snap, 'use_delta_compression', False):
-            positions = snap.get_positions()
-        elif hasattr(snap, 'stellar_positions') and snap.stellar_positions is not None and len(snap.stellar_positions) > 0:
+        if hasattr(snap, 'stellar_positions') and snap.stellar_positions is not None and len(snap.stellar_positions) > 0:
             positions = snap.stellar_positions
+        elif galaxy_positions is not None and len(galaxy_positions) > 0:
+            positions = galaxy_positions
         
         civs = []
         for c in snap.civilization_states:
@@ -238,10 +243,13 @@ class SimulationDataExtractor:
                 self.simulation_data["stellar_velocities"] = self.source.galaxy.velocities.copy()
 
         if hasattr(self.source, "snapshots"):
+            # Get galaxy positions as fallback for delta-compressed snapshots
+            galaxy_pos = self.simulation_data.get("galaxy_positions", None)
+            
             self.snapshots = [
                 {
                     "time": snap.time_myr / 1000.0 if hasattr(snap, 'time_myr') else snap.time_gyr,
-                    "civilizations": _extract_civ_list(snap),
+                    "civilizations": _extract_civ_list(snap, galaxy_pos),
                     "probes": _extract_probe_list(snap),
                     "hazards": _extract_hazard_list(snap),
                     "trajectories": _extract_expansion_trajectories(snap),
