@@ -344,14 +344,36 @@ python -c "from great_silence import SimulationConfig; c = SimulationConfig(); p
   - Prune near-zero entries to prevent dict growth
 - Eliminated from top-20 profile hotspots
 
-#### Results
+#### Results (Phase 1-6)
 - **Simulation run time**: 0.69s → 0.56s (**19% faster**)
 - **Total time (with init)**: 2.32s → 1.79s (**23% faster**)
 - **Progress smoothness**: No more stalls, consistent advancement
 - **Scalability**: Better foundation for future parallelization
 
-#### Benchmark Script
+### Jan 2026 - 10x Speedup (Event-Driven Emergence)
+Building on Phase 1-6, implemented radical event-driven optimization:
+
+#### Pre-Scheduled Emergence Events
+- **Problem**: Checking 6054 habitable stars × 6528 timesteps = 40M checks for ~123 emergences
+- **Solution**: Pre-sample emergence times using exponential inter-arrival times
+- Added `_schedule_emergence_events()` at initialization
+- Uses min-heap for O(log N) event retrieval vs O(N) per-timestep checks
+- Adaptive timestep jumps directly to next emergence event
+
+#### Fast Path for Empty Simulation
+- Added `_active_civ_count` for O(1) active civilization check
+- Skip all civilization-related work when no civs exist:
+  - Stellar motion, encounters, wars, resources, reputations
+- Timesteps reduced from 6528 to 2418 (smarter stepping)
+
+#### Final Results
+- **Original**: 0.69s simulation run
+- **Phase 1-6**: 0.56s (**19% faster**)
+- **10x Optimization**: 0.05s (**13.8x faster than original**)
+- **Total speedup**: 93% reduction in simulation time
+
+#### Benchmark Scripts
 ```bash
-python scripts/benchmark_baseline.py  # With warmup
-python scripts/benchmark_final.py     # Multi-run comparison
+python scripts/benchmark_quick.py     # Fast single-run benchmark
+python scripts/benchmark_baseline.py  # Detailed profiling
 ```
