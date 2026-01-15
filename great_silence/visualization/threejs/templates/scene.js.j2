@@ -68,6 +68,10 @@ function initScene() {
     createHazardMarkers();
 }
 
+// Stellar motion state
+let stellarMotionEnabled = false;
+let stellarReferenceTime = 0.0;  // Myr
+
 function createStarField() {
     if (!window.galaxyData || !window.galaxyData.positions) return;
 
@@ -75,11 +79,26 @@ function createStarField() {
     const colors = window.galaxyData.colors || [];
     const sizes = window.galaxyData.sizes || [];
     const count = positions.length;
+    
+    // Check for stellar motion data (initial positions + velocities)
+    const initialPositions = window.galaxyData.initial_positions || null;
+    const velocities = window.galaxyData.velocities || null;
+    stellarMotionEnabled = initialPositions && velocities && initialPositions.length === count;
+    stellarReferenceTime = window.galaxyData.reference_time || 0.0;
 
     starGeometry = new THREE.BufferGeometry();
     const positionArray = new Float32Array(count * 3);
     const colorArray = new Float32Array(count * 3);
     const sizeArray = new Float32Array(count);
+    
+    // For stellar motion: store initial positions and velocities as attributes
+    let initialPosArray = null;
+    let velocityArray = null;
+    
+    if (stellarMotionEnabled) {
+        initialPosArray = new Float32Array(count * 3);
+        velocityArray = new Float32Array(count * 3);
+    }
 
     const baseSize = window.config.star_point_size || 0.05;
 
@@ -99,13 +118,61 @@ function createStarField() {
         }
 
         sizeArray[i] = sizes.length > 0 ? sizes[i] : baseSize;
+        
+        if (stellarMotionEnabled) {
+            initialPosArray[i * 3] = initialPositions[i][0];
+            initialPosArray[i * 3 + 1] = initialPositions[i][1];
+            initialPosArray[i * 3 + 2] = initialPositions[i][2];
+            
+            // Velocities in km/s - will be converted in shader
+            velocityArray[i * 3] = velocities[i][0];
+            velocityArray[i * 3 + 1] = velocities[i][1];
+            velocityArray[i * 3 + 2] = velocities[i][2];
+        }
     }
 
     starGeometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
     starGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
     starGeometry.setAttribute('size', new THREE.BufferAttribute(sizeArray, 1));
+    
+    if (stellarMotionEnabled) {
+        starGeometry.setAttribute('initialPosition', new THREE.BufferAttribute(initialPosArray, 3));
+        starGeometry.setAttribute('velocity', new THREE.BufferAttribute(velocityArray, 3));
+    }
 
-    const starVertexShader = `
+    // Vertex shader with optional stellar motion interpolation
+    const starVertexShader = stellarMotionEnabled ? `
+        attribute float size;
+        attribute vec3 color;
+        attribute vec3 initialPosition;
+        attribute vec3 velocity;
+        
+        uniform float currentTime;      // Current time in Myr
+        uniform float referenceTime;    // Reference time (when initial positions were captured)
+        
+        varying vec3 vColor;
+        varying float vDistance;
+        
+        void main() {
+            vColor = color;
+            
+            // Compute interpolated position from initial + velocity * dt
+            // velocity is in km/s, need to convert to kpc/Myr
+            // 1 km/s = 0.001022 kpc/Myr
+            float dt = currentTime - referenceTime;
+            vec3 interpolatedPos = initialPosition + velocity * dt * 0.001022;
+            
+            vec4 mvPosition = modelViewMatrix * vec4(interpolatedPos, 1.0);
+            vDistance = -mvPosition.z;
+            
+            // Size scales with distance, larger when closer
+            float scaledSize = size * (400.0 / max(vDistance, 0.1));
+            // Minimum size when far away to prevent disappearing
+            gl_PointSize = max(scaledSize, 1.5);
+            
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    ` : `
         attribute float size;
         attribute vec3 color;
         varying vec3 vColor;
@@ -170,11 +237,19 @@ function createStarField() {
         }
     `;
 
+    // Create uniforms object based on stellar motion state
+    const uniforms = {
+        opacity: { value: starOpacity },
+        farDistance: { value: 50.0 }
+    };
+    
+    if (stellarMotionEnabled) {
+        uniforms.currentTime = { value: 0.0 };
+        uniforms.referenceTime = { value: stellarReferenceTime };
+    }
+
     starMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-            opacity: { value: starOpacity },
-            farDistance: { value: 50.0 }
-        },
+        uniforms: uniforms,
         vertexShader: starVertexShader,
         fragmentShader: starFragmentShader,
         transparent: true,
@@ -184,6 +259,12 @@ function createStarField() {
 
     starPoints = new THREE.Points(starGeometry, starMaterial);
     scene.add(starPoints);
+}
+
+// Update stellar positions based on current simulation time
+function updateStellarTime(timeMyr) {
+    if (!stellarMotionEnabled || !starMaterial || !starMaterial.uniforms.currentTime) return;
+    starMaterial.uniforms.currentTime.value = timeMyr;
 }
 
 function createCivilizationSprites() {
@@ -306,9 +387,13 @@ function updateAnimation(delta) {
     const totalFrames = window.animationData.frames.length;
     const timeRange = window.animationData.time_range || [0, 1];
     
-    // Update time display
-    const time = timeRange[0] + (timeRange[1] - timeRange[0]) * currentFrame / (totalFrames - 1);
-    document.getElementById('time-display').textContent = time.toFixed(2) + ' Gyr';
+    // Update time display (time in Gyr)
+    const timeGyr = timeRange[0] + (timeRange[1] - timeRange[0]) * currentFrame / (totalFrames - 1);
+    document.getElementById('time-display').textContent = timeGyr.toFixed(2) + ' Gyr';
+    
+    // Update stellar positions if motion enabled (time in Myr for GPU shader)
+    const timeMyr = timeGyr * 1000.0;
+    updateStellarTime(timeMyr);
     
     const frame = window.animationData.frames[currentFrame];
     
@@ -382,6 +467,8 @@ window.updateStarsVisible = updateStarsVisible;
 window.updateCivizationsVisible = updateCivizationsVisible;
 window.updateProbesVisible = updateProbesVisible;
 window.updateHazardsVisible = updateHazardsVisible;
+window.updateStellarTime = updateStellarTime;
+window.isStellarMotionEnabled = function() { return stellarMotionEnabled; };
 
 // Export scene and camera for other modules
 window.getScene = function() { return scene; };

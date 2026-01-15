@@ -319,6 +319,11 @@ function updateTrajectories(trajectories, currentTimeGyr) {
             }
         }
     });
+    
+    // Update stellar motion time if enabled
+    if (window.updateStellarTime && typeof window.updateStellarTime === 'function') {
+        window.updateStellarTime(currentTimeMyr);
+    }
 }
 
 function setTrajectoryVisibility(visible) {
