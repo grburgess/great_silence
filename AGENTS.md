@@ -277,3 +277,29 @@ python -c "from great_silence import SimulationConfig; c = SimulationConfig(); p
 - Updated `data_extractor.py` to include full disaster data (energy, radii, jet angles)
 - UI controls in `index.html.j2` disaster panel
 - Color scheme: SN=#ff4400, GRB=#00ffff, NSM=#ff00ff
+
+### Jan 2026 - NiceGUI Web Application Interface
+- Created `great_silence/webapp/` module with NiceGUI-based web interface
+- Launch with: `mamba run -n galaticbot python -m great_silence.webapp --port 8081`
+- Features implemented (GitHub issues #47-51):
+  - **Preset selector**: Clickable cards for 5 Drake equation scenarios
+  - **Basic settings**: Stars, duration, seed, Monte Carlo toggle
+  - **Advanced settings**: All ~100 parameters in collapsible hierarchical panels
+  - **Live simulation feed**: Real-time progress, statistics, event feed
+  - **Results dashboard**: Statistics tab, 3D viz tab (Three.js embed), export tab
+  - **Config management**: Load/Save YAML, custom presets in ~/.great_silence/presets/
+- Module structure:
+  ```
+  webapp/
+  ├── app.py              # Main NiceGUI app, page routes
+  ├── state.py            # Reactive AppState with callbacks
+  ├── config_io.py        # YAML load/save dialogs
+  └── components/
+      ├── preset_selector.py   # Scenario cards
+      ├── basic_settings.py    # Sliders, toggles
+      ├── config_panels.py     # Hierarchical param panels
+      ├── simulation_runner.py # Run button, progress, events
+      └── results_dashboard.py # Stats, Three.js, exports
+  ```
+- Dark space theme with gradient background, glass-effect cards
+- Fullscreen Three.js visualization via dialog overlay
