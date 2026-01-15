@@ -129,6 +129,72 @@ class TestSimulation:
         assert stats['current_time_gyr'] >= 0.01
         assert stats['total_civilizations'] >= 0  # May or may not emerge
 
+    def test_colonization_cancels_emergence(self):
+        """Test that colonizing a star cancels its scheduled emergence.
+        
+        Physical correctness: If a probe colonizes a star before native
+        intelligent life emerges, the emergence should be cancelled.
+        """
+        config = SimulationConfig.with_preset("optimistic")
+        config.galaxy.total_stars = 1000
+        config.simulation.simulation_duration_gyr = 5.0
+        config.simulation.save_snapshots = False
+        
+        sim = GalaxySimulation(config, seed=42)
+        sim.initialize()
+        
+        # Get a star that has a scheduled emergence
+        if len(sim._emergence_heap) == 0:
+            pytest.skip("No emergence events scheduled")
+        
+        # Find first emergence event
+        first_emergence_time, first_emergence_star = sim._emergence_heap[0]
+        
+        # Manually mark this star as colonized (simulating probe arrival)
+        sim._colonized_mask[first_emergence_star] = True
+        
+        # Count emergences before
+        initial_heap_size = len(sim._emergence_heap)
+        
+        # Advance simulation past the emergence time
+        while sim.current_time_myr < first_emergence_time + 1.0:
+            sim._step(dt_myr=0.5)
+            sim.current_time_myr += 0.5
+        
+        # The emergence event should have been popped but NOT created a civ
+        # because the star was already colonized
+        
+        # Check that no civilization was created at the colonized star
+        civs_at_star = [c for c in sim.civilizations if c.parent_star_idx == first_emergence_star]
+        assert len(civs_at_star) == 0, "Civilization should not emerge at colonized star"
+
+    def test_emergence_heap_respects_colonization(self):
+        """Test that emergence events are skipped for colonized stars."""
+        config = SimulationConfig.with_preset("optimistic")
+        config.galaxy.total_stars = 500
+        config.simulation.simulation_duration_gyr = 1.0
+        config.simulation.save_snapshots = False
+        
+        sim = GalaxySimulation(config, seed=123)
+        sim.initialize()
+        
+        if len(sim._emergence_heap) == 0:
+            pytest.skip("No emergence events scheduled")
+        
+        # Mark ALL scheduled emergence stars as colonized
+        colonized_stars = set()
+        for _, star_idx in sim._emergence_heap:
+            sim._colonized_mask[star_idx] = True
+            colonized_stars.add(star_idx)
+        
+        # Run simulation
+        sim.run(verbose=False)
+        
+        # No civilizations should have emerged at pre-colonized stars
+        for civ in sim.civilizations:
+            assert civ.parent_star_idx not in colonized_stars, \
+                f"Civilization emerged at pre-colonized star {civ.parent_star_idx}"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
