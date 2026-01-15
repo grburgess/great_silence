@@ -1,0 +1,581 @@
+
+
+let isPlaying = false;
+let currentFrame = 0;
+let playbackSpeed = 1.0;
+let showStars = true;
+let showCivs = true;
+let showProbes = true;
+let showHazards = true;
+let showTrajectories = true;
+let usePostProcessing = false;
+let downsamplePercent = 0;
+
+function initUI() {
+    initPlaybackControls();
+    initLayerControls();
+    initDisasterControls();
+    initSpeedControl();
+    initDownsampleControl();
+    initExportButton();
+    initRaycaster();
+    initMiniMap();
+    initDisasterTimeline();
+}
+
+function initPlaybackControls() {
+    const btnPlayPause = document.getElementById('btn-playpause');
+    const btnStep = document.getElementById('btn-step');
+    const btnReset = document.getElementById('btn-reset');
+    const timelineSlider = document.getElementById('timeline-slider');
+
+    btnPlayPause.addEventListener('click', togglePlayPause);
+    btnStep.addEventListener('click', stepForward);
+    btnReset.addEventListener('click', resetPlayback);
+
+    timelineSlider.addEventListener('input', (e) => {
+        currentFrame = parseInt(e.target.value);
+        window.currentFrame = currentFrame;
+        if (window.animationData) {
+            updateFrame(currentFrame);
+        }
+    });
+}
+
+function initLayerControls() {
+    document.getElementById('btn-stars').addEventListener('click', (e) => {
+        showStars = !showStars;
+        e.target.classList.toggle('active', showStars);
+        updateStarsVisible(showStars);
+    });
+
+    document.getElementById('btn-civs').addEventListener('click', (e) => {
+        showCivs = !showCivs;
+        e.target.classList.toggle('active', showCivs);
+        if (window.setCivVisibility) {
+            window.setCivVisibility(showCivs);
+        }
+    });
+
+    document.getElementById('btn-probes').addEventListener('click', (e) => {
+        showProbes = !showProbes;
+        e.target.classList.toggle('active', showProbes);
+        if (window.setProbeVisibility) {
+            window.setProbeVisibility(showProbes);
+        }
+    });
+
+    document.getElementById('btn-hazards').addEventListener('click', (e) => {
+        showHazards = !showHazards;
+        e.target.classList.toggle('active', showHazards);
+        if (window.setHazardVisibility) {
+            window.setHazardVisibility(showHazards);
+        }
+    });
+
+    const trajBtn = document.getElementById('btn-trajectories');
+    if (trajBtn) {
+        trajBtn.addEventListener('click', (e) => {
+            showTrajectories = !showTrajectories;
+            e.target.classList.toggle('active', showTrajectories);
+            if (window.setTrajectoryVisibility) {
+                window.setTrajectoryVisibility(showTrajectories);
+            }
+        });
+    }
+
+    document.getElementById('btn-postprocess').addEventListener('click', (e) => {
+        usePostProcessing = !usePostProcessing;
+        e.target.classList.toggle('active', usePostProcessing);
+        window.usePostProcessing = usePostProcessing;
+    });
+}
+
+function initSpeedControl() {
+    const speedSlider = document.getElementById('speed-slider');
+    const speedDisplay = document.getElementById('speed-display');
+
+    speedSlider.addEventListener('input', (e) => {
+        playbackSpeed = parseFloat(e.target.value);
+        speedDisplay.textContent = playbackSpeed.toFixed(1) + 'x';
+    });
+}
+
+function initDownsampleControl() {
+    const downsampleSlider = document.getElementById('downsample-slider');
+    const downsampleDisplay = document.getElementById('downsample-display');
+    const downsampleContainer = document.getElementById('downsample-container');
+
+    if (window.animationData) {
+        const maxCivs = Math.max(...window.animationData.frames.map(f => f.civilizations.length));
+        
+        if (maxCivs > 20) {
+            downsampleContainer.style.display = 'flex';
+            
+            downsampleSlider.addEventListener('input', (e) => {
+                downsamplePercent = parseInt(e.target.value);
+                if (downsamplePercent === 0) {
+                    downsampleDisplay.textContent = 'All';
+                } else {
+                    downsampleDisplay.textContent = 'Youngest ' + (100 - downsamplePercent) + '%';
+                }
+                if (window.updateCivilizationDisplay) {
+                    window.updateCivilizationDisplay(downsamplePercent);
+                }
+            });
+        }
+    }
+}
+
+function initDisasterControls() {
+    const panel = document.getElementById('disaster-panel');
+    if (!panel) return;
+    
+    // History mode toggle
+    const historyToggle = document.getElementById('disaster-history-toggle');
+    if (historyToggle) {
+        historyToggle.addEventListener('change', (e) => {
+            if (window.setDisasterHistoryMode) {
+                window.setDisasterHistoryMode(e.target.checked);
+            }
+            updateDisasterModeDisplay();
+        });
+    }
+    
+    // Scale mode toggle
+    const scaleToggle = document.getElementById('disaster-scale-toggle');
+    if (scaleToggle) {
+        scaleToggle.addEventListener('change', (e) => {
+            if (window.setDisasterScaleMode) {
+                window.setDisasterScaleMode(e.target.checked);
+            }
+            updateDisasterModeDisplay();
+        });
+    }
+    
+    // Type filters
+    const snFilter = document.getElementById('filter-supernova');
+    if (snFilter) {
+        snFilter.addEventListener('change', (e) => {
+            if (window.setDisasterTypeFilter) {
+                window.setDisasterTypeFilter('supernova', e.target.checked);
+            }
+        });
+    }
+    
+    const grbFilter = document.getElementById('filter-grb');
+    if (grbFilter) {
+        grbFilter.addEventListener('change', (e) => {
+            if (window.setDisasterTypeFilter) {
+                window.setDisasterTypeFilter('grb', e.target.checked);
+            }
+        });
+    }
+    
+    const nsmFilter = document.getElementById('filter-nsm');
+    if (nsmFilter) {
+        nsmFilter.addEventListener('change', (e) => {
+            if (window.setDisasterTypeFilter) {
+                window.setDisasterTypeFilter('ns_merger', e.target.checked);
+            }
+        });
+    }
+    
+    // Visual element toggles
+    const zonesToggle = document.getElementById('show-zones');
+    if (zonesToggle) {
+        zonesToggle.addEventListener('change', (e) => {
+            if (window.setDisasterZonesVisible) {
+                window.setDisasterZonesVisible(e.target.checked);
+            }
+        });
+    }
+    
+    const beamsToggle = document.getElementById('show-beams');
+    if (beamsToggle) {
+        beamsToggle.addEventListener('change', (e) => {
+            if (window.setDisasterBeamsVisible) {
+                window.setDisasterBeamsVisible(e.target.checked);
+            }
+        });
+    }
+    
+    const deathToggle = document.getElementById('show-death-markers');
+    if (deathToggle) {
+        deathToggle.addEventListener('change', (e) => {
+            if (window.setDeathMarkersVisible) {
+                window.setDeathMarkersVisible(e.target.checked);
+            }
+        });
+    }
+    
+    updateDisasterModeDisplay();
+}
+
+function updateDisasterModeDisplay() {
+    const historyLabel = document.getElementById('history-mode-label');
+    const scaleLabel = document.getElementById('scale-mode-label');
+    
+    if (historyLabel && window.disasterState) {
+        historyLabel.textContent = window.disasterState.showHistory ? 'History Mode' : 'Current Only';
+    }
+    
+    if (scaleLabel && window.disasterState) {
+        scaleLabel.textContent = window.disasterState.exaggeratedScale ? 'Exaggerated' : 'Physical Scale';
+    }
+}
+
+function initDisasterTimeline() {
+    const container = document.getElementById('disaster-timeline');
+    if (!container || !window.animationData) return;
+    
+    // Collect all disasters from all frames - copy ALL properties
+    let allDisasters = [];
+    window.animationData.frames.forEach(frame => {
+        if (frame.hazards) {
+            frame.hazards.forEach(h => {
+                // Copy all hazard properties for visualization
+                allDisasters.push({
+                    time: h.time,
+                    type: h.type,
+                    position: h.position,
+                    lethal_radius: h.lethal_radius || 0.01,
+                    sterilization_radius: h.sterilization_radius || h.lethal_radius || 0.03,
+                    energy: h.energy || 1e51,
+                    jet_theta: h.jet_theta,
+                    jet_phi: h.jet_phi,
+                    affected_civs: h.affected_civs || []
+                });
+            });
+        }
+    });
+    
+    // Remove duplicates (same time and type)
+    const seen = new Set();
+    allDisasters = allDisasters.filter(d => {
+        const key = `${d.time.toFixed(3)}_${d.type}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    
+    // Sort by time
+    allDisasters.sort((a, b) => a.time - b.time);
+    
+    // Store for later use
+    window.allDisasters = allDisasters;
+    
+    // Update disaster count display
+    const countDisplay = document.getElementById('disaster-count');
+    if (countDisplay) {
+        const snCount = allDisasters.filter(d => d.type === 'supernova' || d.type === 'sn').length;
+        const grbCount = allDisasters.filter(d => d.type === 'grb' || d.type === 'gamma').length;
+        const nsmCount = allDisasters.filter(d => ['nsm', 'merger', 'ns_merger', 'kilonova'].includes(d.type.toLowerCase())).length;
+        
+        countDisplay.innerHTML = `
+            <span style="color: #ff4400;">SN: ${snCount}</span> | 
+            <span style="color: #00ffff;">GRB: ${grbCount}</span> | 
+            <span style="color: #ff00ff;">NSM: ${nsmCount}</span>
+        `;
+    }
+    
+    // Create mini timeline markers
+    renderDisasterTimelineMarkers(allDisasters);
+}
+
+function renderDisasterTimelineMarkers(disasters) {
+    const canvas = document.getElementById('disaster-timeline-canvas');
+    if (!canvas || !window.animationData) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Get time range from animation data
+    const frames = window.animationData.frames;
+    const minTime = frames[0].time;
+    const maxTime = frames[frames.length - 1].time;
+    const timeRange = maxTime - minTime;
+    
+    // Clear canvas
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, width, height);
+    
+    // Draw time axis
+    ctx.strokeStyle = '#333';
+    ctx.beginPath();
+    ctx.moveTo(0, height / 2);
+    ctx.lineTo(width, height / 2);
+    ctx.stroke();
+    
+    // Draw disaster markers
+    disasters.forEach(d => {
+        const x = ((d.time - minTime) / timeRange) * width;
+        
+        let color;
+        const type = d.type.toLowerCase();
+        if (type === 'supernova' || type === 'sn') {
+            color = '#ff4400';
+        } else if (type === 'grb' || type === 'gamma') {
+            color = '#00ffff';
+        } else {
+            color = '#ff00ff';
+        }
+        
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, height / 2, 3, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    
+    // Make canvas clickable to jump to disaster time
+    canvas.onclick = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const clickTime = minTime + (x / width) * timeRange;
+        
+        // Find closest frame
+        let closestFrame = 0;
+        let minDiff = Infinity;
+        frames.forEach((f, i) => {
+            const diff = Math.abs(f.time - clickTime);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestFrame = i;
+            }
+        });
+        
+        // Jump to frame
+        currentFrame = closestFrame;
+        window.currentFrame = closestFrame;
+        document.getElementById('timeline-slider').value = closestFrame;
+        updateFrame(closestFrame);
+    };
+}
+
+function initExportButton() {
+    document.getElementById('btn-export').addEventListener('click', exportFrame);
+}
+
+function initRaycaster() {
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    const tooltip = document.getElementById('tooltip');
+
+    renderer.domElement.addEventListener('mousemove', (event) => {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+
+        if (civSprites.length > 0) {
+            const intersects = raycaster.intersectObjects(civSprites);
+
+            if (intersects.length > 0) {
+                const sprite = intersects[0].object;
+                const civData = sprite.userData;
+
+                tooltip.style.display = 'block';
+                tooltip.style.left = event.clientX + 10 + 'px';
+                tooltip.style.top = event.clientY + 10 + 'px';
+
+                document.getElementById('tooltip-title').textContent = 'Civilization';
+                document.getElementById('tooltip-content').innerHTML = `
+                    <strong>ID:</strong> ${civData.civ_id}<br>
+                    <strong>Kardashev:</strong> ${civData.kardashev.toFixed(2)}<br>
+                    <strong>Age:</strong> ${civData.age.toFixed(2)} Gyr<br>
+                    <strong>Status:</strong> ${civData.is_active ? 'Active' : 'Extinct'}
+                `;
+
+                document.getElementById('info-civ-id').textContent = civData.civ_id;
+                document.getElementById('info-kardashev').textContent = civData.kardashev.toFixed(2);
+                document.getElementById('info-age').textContent = civData.age.toFixed(2) + ' Gyr';
+                document.getElementById('info-status').textContent = civData.is_active ? 'Active' : 'Extinct';
+                document.getElementById('info-position').textContent = 
+                    `[${civData.position[0].toFixed(2)}, ${civData.position[1].toFixed(2)}, ${civData.position[2].toFixed(2)}]`;
+                document.getElementById('info-panel').style.display = 'block';
+            } else {
+                tooltip.style.display = 'none';
+                document.getElementById('info-panel').style.display = 'none';
+            }
+        }
+    });
+
+    renderer.domElement.addEventListener('click', (event) => {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+
+        if (civSprites.length > 0) {
+            const intersects = raycaster.intersectObjects(civSprites);
+
+            if (intersects.length > 0) {
+                const civData = intersects[0].object.userData;
+                followCivilization(civData.civ_id);
+            }
+        }
+    });
+}
+
+function initMiniMap() {
+    const canvas = document.getElementById('mini-map-canvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = 150;
+    canvas.height = 150;
+
+    function updateMiniMap() {
+        if (!window.animationData) return;
+
+        const frame = window.animationData.frames[currentFrame];
+        if (!frame) return;
+
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#333333';
+        ctx.beginPath();
+        ctx.arc(canvas.width / 2, canvas.height / 2, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        frame.civilizations.forEach(civ => {
+            if (!civ.is_active) return;
+
+            const x = canvas.width / 2 + civ.position[0] * 5;
+            const y = canvas.height / 2 + civ.position[1] * 5;
+
+            ctx.fillStyle = civ.kardashev > 2.0 ? '#ff6600' : '#00ffff';
+            ctx.beginPath();
+            ctx.arc(x, y, 2, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        requestAnimationFrame(updateMiniMap);
+    }
+
+    if (window.animationData) {
+        updateMiniMap();
+    }
+}
+
+function togglePlayPause() {
+    isPlaying = !isPlaying;
+    window.isPlaying = isPlaying;
+    
+    const btn = document.getElementById('btn-playpause');
+    if (isPlaying) {
+        btn.textContent = '⏸ Pause';
+    } else {
+        btn.textContent = '▶ Play';
+    }
+}
+
+function stepForward() {
+    isPlaying = false;
+    window.isPlaying = false;
+    document.getElementById('btn-playpause').textContent = '▶ Play';
+
+    if (window.animationData) {
+        currentFrame = Math.min(currentFrame + 1, window.animationData.frames.length - 1);
+        window.currentFrame = currentFrame;
+        updateFrame(currentFrame);
+    }
+}
+
+function resetPlayback() {
+    isPlaying = false;
+    window.isPlaying = false;
+    currentFrame = 0;
+    window.currentFrame = 0;
+    document.getElementById('btn-playpause').textContent = '▶ Play';
+    document.getElementById('timeline-slider').value = 0;
+
+    if (window.animationData) {
+        updateFrame(0);
+    }
+}
+
+function exportFrame() {
+    renderer.render(scene, camera);
+    const link = document.createElement('a');
+    link.download = 'galaxy_frame_' + currentFrame + '.png';
+    link.href = renderer.domElement.toDataURL('image/png');
+    link.click();
+}
+
+function initAnimation() {
+    if (!window.animationData) return;
+
+    const frames = window.animationData.frames;
+    const timelineSlider = document.getElementById('timeline-slider');
+
+    timelineSlider.max = frames.length - 1;
+    timelineSlider.value = 0;
+
+    window.currentFrame = 0;
+    updateFrame(0);
+}
+
+function updateAnimation(delta) {
+    if (!window.animationData) return;
+
+    const frames = window.animationData.frames;
+    const frameDuration = (window.config.frame_duration_ms || 50) / 1000;
+    const speedMultiplier = playbackSpeed;
+
+    if (currentFrame < frames.length - 1) {
+        currentFrame += (speedMultiplier * delta) / frameDuration;
+        currentFrame = Math.min(currentFrame, frames.length - 1);
+        
+        const frameIndex = Math.floor(currentFrame);
+        window.currentFrame = frameIndex;
+        document.getElementById('timeline-slider').value = frameIndex;
+        
+        updateFrame(frameIndex);
+    }
+}
+
+function updateFrame(frameIndex) {
+    if (!window.animationData) return;
+
+    const frame = window.animationData.frames[frameIndex];
+    if (!frame) return;
+
+    // Keep window.currentFrame in sync for external access
+    window.currentFrame = frameIndex;
+
+    const timeDisplay = document.getElementById('time-display');
+    const timeStats = document.getElementById('time-stats');
+    const civStats = document.getElementById('civ-stats');
+
+    timeDisplay.textContent = frame.time.toFixed(2) + ' Gyr';
+    timeStats.textContent = 'Time: ' + frame.time.toFixed(2) + ' Gyr';
+    civStats.textContent = 'Active: ' + frame.civilizations.filter(c => c.is_active).length + ' | Total: ' + frame.civilizations.length;
+
+    if (window.updateCivilizations) {
+        window.updateCivilizations(frame.civilizations);
+    }
+
+    if (window.updateProbes) {
+        window.updateProbes(frame.probes);
+    }
+
+    if (window.updateHazards) {
+        window.updateHazards(frame.hazards);
+    }
+
+    if (window.updateTrajectories) {
+        window.updateTrajectories(frame.trajectories || [], frame.time);
+    }
+    
+    // Update enhanced disaster visualization
+    if (window.updateDisasterVisualization && window.allDisasters) {
+        window.updateDisasterVisualization(frameIndex, window.allDisasters, window.config);
+    }
+}
+
+window.initUI = initUI;
+window.togglePlayPause = togglePlayPause;
+window.stepForward = stepForward;
+window.resetPlayback = resetPlayback;

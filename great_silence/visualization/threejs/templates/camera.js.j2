@@ -1,0 +1,728 @@
+{# camera.js.j2 - Enhanced Camera control system #}
+
+let cameraPresets = [];
+let currentPresetIndex = -1;
+let isAutoRotating = false;
+
+let cameraMode = 'orbit';
+let followTarget = null;
+let followCivId = null;
+let followOffset = new THREE.Vector3(5, 5, 5);
+let followLerpFactor = 0.05;
+let autoFollowEnabled = true;
+let lastKnownCivCount = 0;
+
+let isTourPlaying = false;
+let currentTour = null;
+let tourProgress = 0;
+let tourKeyframeIndex = 0;
+let tourCurve = null;
+let tourTargetCurve = null;
+
+let flyControls = null;
+let flyMoveSpeed = 0.5;
+let flyBoostMultiplier = 3.0;
+let flyKeys = { forward: false, backward: false, left: false, right: false, up: false, down: false, boost: false };
+let flyEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+let flyHintTimeout = null;
+
+const cameraTours = {
+    'galaxy_overview': {
+        name: 'Galaxy Overview',
+        duration: 20.0,
+        keyframes: [
+            { position: [0, 0, 50], target: [0, 0, 0], time: 0 },
+            { position: [40, 20, 30], target: [0, 0, 0], time: 0.25 },
+            { position: [0, 40, 10], target: [0, 0, 0], time: 0.5 },
+            { position: [-40, 20, 30], target: [0, 0, 0], time: 0.75 },
+            { position: [0, 0, 50], target: [0, 0, 0], time: 1.0 }
+        ]
+    },
+    'close_encounters': {
+        name: 'Close Encounters',
+        duration: 15.0,
+        keyframes: [
+            { position: [0, 0, 20], target: [0, 0, 0], time: 0 },
+            { position: [10, 5, 5], target: [5, 0, 0], time: 0.33 },
+            { position: [-5, 10, 8], target: [-3, 2, 0], time: 0.66 },
+            { position: [0, 0, 20], target: [0, 0, 0], time: 1.0 }
+        ]
+    },
+    'edge_exploration': {
+        name: 'Edge Exploration',
+        duration: 25.0,
+        keyframes: [
+            { position: [30, 0, 5], target: [0, 0, 0], time: 0 },
+            { position: [20, 0, -15], target: [0, 0, 0], time: 0.25 },
+            { position: [-30, 0, 5], target: [0, 0, 0], time: 0.5 },
+            { position: [-20, 0, 15], target: [0, 0, 0], time: 0.75 },
+            { position: [30, 0, 5], target: [0, 0, 0], time: 1.0 }
+        ]
+    }
+};
+
+function initCamera() {
+    if (window.cameraPresets) {
+        cameraPresets = window.cameraPresets;
+    } else {
+        cameraPresets = [
+            { name: "Galaxy Top", position: [0, 0, 40], target: [0, 0, 0], duration: 2.0 },
+            { name: "Galaxy Edge", position: [30, 0, 0], target: [0, 0, 0], duration: 2.0 },
+            { name: "Galaxy Angled", position: [25, 25, 15], target: [0, 0, 0], duration: 2.5 }
+        ];
+    }
+
+    applyCameraLimits();
+
+    document.getElementById('btn-cam-top').addEventListener('click', () => transitionToPreset(0));
+    document.getElementById('btn-cam-edge').addEventListener('click', () => transitionToPreset(1));
+    document.getElementById('btn-cam-angle').addEventListener('click', () => transitionToPreset(2));
+    document.getElementById('btn-cam-autorotate').addEventListener('click', toggleAutoRotate);
+
+    const cameraModeSelect = document.getElementById('camera-mode-select');
+    if (cameraModeSelect) {
+        cameraModeSelect.addEventListener('change', (e) => setCameraMode(e.target.value));
+    }
+
+    const tourSelect = document.getElementById('tour-select');
+    if (tourSelect) {
+        Object.keys(cameraTours).forEach(key => {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = cameraTours[key].name;
+            tourSelect.appendChild(option);
+        });
+        tourSelect.addEventListener('change', (e) => {
+            if (e.target.value) {
+                startTour(e.target.value);
+            }
+        });
+    }
+
+    const tourPlayBtn = document.getElementById('btn-tour-play');
+    if (tourPlayBtn) {
+        tourPlayBtn.addEventListener('click', toggleTourPlayPause);
+    }
+
+    const tourStopBtn = document.getElementById('btn-tour-stop');
+    if (tourStopBtn) {
+        tourStopBtn.addEventListener('click', stopTour);
+    }
+
+    window.addEventListener('keydown', handleKeyboard);
+    window.addEventListener('keyup', handleKeyUp);
+}
+
+function applyCameraLimits() {
+    if (!controls) return;
+
+    const config = window.config || {};
+
+    controls.minDistance = config.camera_min_distance || 5;
+    controls.maxDistance = config.camera_max_distance || 100;
+
+    controls.minPolarAngle = (config.camera_min_polar_angle || 10) * Math.PI / 180;
+    controls.maxPolarAngle = (config.camera_max_polar_angle || 170) * Math.PI / 180;
+
+    const maxPan = config.camera_max_pan || 30;
+    controls.addEventListener('change', () => {
+        const target = controls.target;
+        target.x = Math.max(-maxPan, Math.min(maxPan, target.x));
+        target.y = Math.max(-maxPan, Math.min(maxPan, target.y));
+        target.z = Math.max(-maxPan, Math.min(maxPan, target.z));
+    });
+}
+
+function setCameraMode(mode) {
+    if (cameraMode === mode) return;
+
+    if (cameraMode === 'fly') {
+        disableFlyControls();
+    }
+    if (cameraMode === 'follow') {
+        disableFollowMode();
+    }
+    if (cameraMode === 'tour') {
+        stopTour();
+    }
+
+    cameraMode = mode;
+
+    const modeSelect = document.getElementById('camera-mode-select');
+    if (modeSelect) modeSelect.value = mode;
+
+    const tourControls = document.getElementById('tour-controls');
+    const followControls = document.getElementById('follow-controls');
+
+    if (tourControls) tourControls.style.display = mode === 'tour' ? 'flex' : 'none';
+    if (followControls) followControls.style.display = mode === 'follow' ? 'flex' : 'none';
+
+    if (mode === 'fly') {
+        enableFlyControls();
+    } else if (mode === 'follow') {
+        updateFollowTargetList();
+    } else if (mode === 'orbit') {
+        controls.enabled = true;
+    }
+
+    updateCameraModeButtons();
+}
+
+function updateCameraModeButtons() {
+    document.querySelectorAll('.camera-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === cameraMode);
+    });
+}
+
+function transitionToPreset(index) {
+    if (index < 0 || index >= cameraPresets.length) return;
+
+    setCameraMode('orbit');
+
+    const preset = cameraPresets[index];
+    currentPresetIndex = index;
+    isAutoRotating = false;
+    controls.autoRotate = false;
+    document.getElementById('btn-cam-autorotate').classList.remove('active');
+
+    new TWEEN.Tween(camera.position)
+        .to({
+            x: preset.position[0],
+            y: preset.position[1],
+            z: preset.position[2]
+        }, preset.duration * 1000)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .start();
+
+    new TWEEN.Tween(controls.target)
+        .to({
+            x: preset.target[0],
+            y: preset.target[1],
+            z: preset.target[2]
+        }, preset.duration * 1000)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .start();
+}
+
+function transitionToPosition(position, target, duration = 2.0) {
+    new TWEEN.Tween(camera.position)
+        .to({
+            x: position[0],
+            y: position[1],
+            z: position[2]
+        }, duration * 1000)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .start();
+
+    new TWEEN.Tween(controls.target)
+        .to({
+            x: target[0],
+            y: target[1],
+            z: target[2]
+        }, duration * 1000)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .start();
+}
+
+function toggleAutoRotate() {
+    isAutoRotating = !isAutoRotating;
+    controls.autoRotate = isAutoRotating;
+
+    const btn = document.getElementById('btn-cam-autorotate');
+    if (isAutoRotating) {
+        btn.classList.add('active');
+    } else {
+        btn.classList.remove('active');
+    }
+}
+
+function enableFollowMode(civId) {
+    followCivId = civId;
+    setCameraMode('follow');
+
+    const frame = window.animationData?.frames[window.currentFrame];
+    if (!frame) return;
+
+    const civ = frame.civilizations.find(c => c.civ_id === civId);
+    if (!civ) return;
+
+    followTarget = new THREE.Vector3(civ.position[0], civ.position[1], civ.position[2]);
+
+    const camPos = followTarget.clone().add(followOffset);
+    transitionToPosition(
+        [camPos.x, camPos.y, camPos.z],
+        [followTarget.x, followTarget.y, followTarget.z],
+        1.0
+    );
+
+    updateFollowTargetList();
+}
+
+function disableFollowMode() {
+    followCivId = null;
+    followTarget = null;
+}
+
+function updateFollowMode() {
+    if (cameraMode !== 'follow') return;
+
+    const frame = window.animationData?.frames[window.currentFrame];
+    if (!frame) return;
+
+    const activeCivs = frame.civilizations.filter(c => c.is_active);
+
+    if (followCivId) {
+        const civ = frame.civilizations.find(c => c.civ_id === followCivId);
+
+        if (!civ || !civ.is_active) {
+            if (autoFollowEnabled && activeCivs.length > 0) {
+                const nextCiv = activeCivs.sort((a, b) => b.kardashev - a.kardashev)[0];
+                followCivId = nextCiv.civ_id;
+                updateFollowTargetList();
+                showFollowNotification(`Following Civ ${nextCiv.civ_id} (K${nextCiv.kardashev.toFixed(2)})`);
+            } else if (activeCivs.length === 0) {
+                followCivId = null;
+                followTarget = null;
+                showFollowNotification('Waiting for next civilization...');
+            } else {
+                setCameraMode('orbit');
+            }
+            return;
+        }
+
+        const targetPos = new THREE.Vector3(civ.position[0], civ.position[1], civ.position[2]);
+
+        if (!followTarget) {
+            followTarget = targetPos.clone();
+        } else {
+            followTarget.lerp(targetPos, followLerpFactor);
+        }
+
+        controls.target.lerp(followTarget, followLerpFactor);
+
+        const desiredCamPos = followTarget.clone().add(followOffset);
+        camera.position.lerp(desiredCamPos, followLerpFactor * 0.5);
+    } else if (autoFollowEnabled && activeCivs.length > 0) {
+        const newCiv = activeCivs.sort((a, b) => b.kardashev - a.kardashev)[0];
+        enableFollowMode(newCiv.civ_id);
+        showFollowNotification(`Now following Civ ${newCiv.civ_id} (K${newCiv.kardashev.toFixed(2)})`);
+    }
+
+    lastKnownCivCount = activeCivs.length;
+}
+
+function showFollowNotification(message) {
+    let notification = document.getElementById('follow-notification');
+    if (!notification) {
+        notification = document.createElement('div');
+        notification.id = 'follow-notification';
+        notification.style.cssText = `
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid #00ffff;
+            border-radius: 5px;
+            padding: 10px 20px;
+            color: #00ffff;
+            font-size: 13px;
+            z-index: 200;
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 0.5s ease-out;
+        `;
+        document.getElementById('ui-overlay').appendChild(notification);
+    }
+
+    notification.textContent = message;
+    notification.style.opacity = '1';
+    notification.style.display = 'block';
+
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => {
+            notification.style.display = 'none';
+        }, 500);
+    }, 3000);
+}
+
+function updateFollowTargetList() {
+    const select = document.getElementById('follow-target-select');
+    if (!select) return;
+
+    const frame = window.animationData?.frames[window.currentFrame];
+    const activeCivs = frame ? frame.civilizations.filter(c => c.is_active) : [];
+
+    select.innerHTML = '';
+
+    if (activeCivs.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = autoFollowEnabled ? '⏳ Auto-follow: waiting...' : 'No civilizations yet';
+        option.disabled = true;
+        option.selected = true;
+        select.appendChild(option);
+    } else {
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Select civilization...';
+        select.appendChild(defaultOption);
+
+        activeCivs
+            .sort((a, b) => b.kardashev - a.kardashev)
+            .forEach(civ => {
+                const option = document.createElement('option');
+                option.value = civ.civ_id;
+                option.textContent = `Civ ${civ.civ_id} (K${civ.kardashev.toFixed(2)})`;
+                if (civ.civ_id === followCivId) option.selected = true;
+                select.appendChild(option);
+            });
+    }
+}
+
+function followCivilization(civId) {
+    if (!window.animationData) return;
+
+    enableFollowMode(civId);
+}
+
+function followHazard(hazardIndex) {
+    if (!window.animationData) return;
+
+    const frame = window.animationData.frames[window.currentFrame];
+    if (!frame) return;
+
+    const hazard = frame.hazards[hazardIndex];
+    if (!hazard) return;
+
+    const position = hazard.position;
+    const target = [position[0], position[1], position[2]];
+    const camPos = [
+        position[0] + 10,
+        position[1] + 10,
+        position[2] + 10
+    ];
+
+    transitionToPosition(camPos, target, 1.5);
+}
+
+function startTour(tourKey) {
+    const tour = cameraTours[tourKey];
+    if (!tour) return;
+
+    setCameraMode('tour');
+    currentTour = tour;
+    tourProgress = 0;
+    tourKeyframeIndex = 0;
+    isTourPlaying = true;
+
+    const positions = tour.keyframes.map(kf => new THREE.Vector3(kf.position[0], kf.position[1], kf.position[2]));
+    const targets = tour.keyframes.map(kf => new THREE.Vector3(kf.target[0], kf.target[1], kf.target[2]));
+
+    tourCurve = new THREE.CatmullRomCurve3(positions, false, 'centripetal', 0.5);
+    tourTargetCurve = new THREE.CatmullRomCurve3(targets, false, 'centripetal', 0.5);
+
+    updateTourUI();
+}
+
+function stopTour() {
+    isTourPlaying = false;
+    currentTour = null;
+    tourCurve = null;
+    tourTargetCurve = null;
+    tourProgress = 0;
+
+    const tourSelect = document.getElementById('tour-select');
+    if (tourSelect) tourSelect.value = '';
+
+    updateTourUI();
+}
+
+function toggleTourPlayPause() {
+    if (!currentTour) return;
+    isTourPlaying = !isTourPlaying;
+    updateTourUI();
+}
+
+function updateTour(deltaTime) {
+    if (cameraMode !== 'tour' || !isTourPlaying || !currentTour || !tourCurve) return;
+
+    const progressIncrement = deltaTime / currentTour.duration;
+    tourProgress += progressIncrement;
+
+    if (tourProgress >= 1.0) {
+        tourProgress = 0;
+    }
+
+    const position = tourCurve.getPointAt(tourProgress);
+    const target = tourTargetCurve.getPointAt(tourProgress);
+
+    camera.position.copy(position);
+    controls.target.copy(target);
+
+    updateTourUI();
+}
+
+function updateTourUI() {
+    const playBtn = document.getElementById('btn-tour-play');
+    if (playBtn) {
+        playBtn.textContent = isTourPlaying ? '⏸' : '▶';
+    }
+
+    const progressBar = document.getElementById('tour-progress');
+    if (progressBar) {
+        progressBar.style.width = (tourProgress * 100) + '%';
+    }
+
+    const tourName = document.getElementById('tour-name');
+    if (tourName && currentTour) {
+        tourName.textContent = currentTour.name;
+    }
+}
+
+function enableFlyControls() {
+    controls.enabled = false;
+
+    flyEuler.setFromQuaternion(camera.quaternion);
+
+    document.addEventListener('mousemove', handleFlyMouseMove);
+    document.body.style.cursor = 'crosshair';
+
+    showFlyHint();
+}
+
+function showFlyHint() {
+    const flyHint = document.getElementById('fly-mode-hint');
+    if (!flyHint) return;
+
+    if (flyHintTimeout) {
+        clearTimeout(flyHintTimeout);
+    }
+
+    flyHint.classList.remove('fading');
+    flyHint.style.display = 'block';
+
+    flyHintTimeout = setTimeout(() => {
+        flyHint.classList.add('fading');
+        setTimeout(() => {
+            if (flyHint.classList.contains('fading')) {
+                flyHint.style.display = 'none';
+            }
+        }, 500);
+    }, 3000);
+}
+
+function disableFlyControls() {
+    controls.enabled = true;
+
+    document.removeEventListener('mousemove', handleFlyMouseMove);
+    document.body.style.cursor = 'default';
+
+    flyKeys = { forward: false, backward: false, left: false, right: false, up: false, down: false, boost: false };
+
+    if (flyHintTimeout) {
+        clearTimeout(flyHintTimeout);
+        flyHintTimeout = null;
+    }
+
+    const flyHint = document.getElementById('fly-mode-hint');
+    if (flyHint) {
+        flyHint.classList.remove('fading');
+        flyHint.style.display = 'none';
+    }
+}
+
+function handleFlyMouseMove(event) {
+    if (cameraMode !== 'fly') return;
+
+    const movementX = event.movementX || 0;
+    const movementY = event.movementY || 0;
+
+    flyEuler.y -= movementX * 0.002;
+    flyEuler.x -= movementY * 0.002;
+
+    flyEuler.x = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, flyEuler.x));
+
+    camera.quaternion.setFromEuler(flyEuler);
+}
+
+function updateFlyControls(deltaTime) {
+    if (cameraMode !== 'fly') return;
+
+    const speed = flyMoveSpeed * (flyKeys.boost ? flyBoostMultiplier : 1.0) * deltaTime * 60;
+
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+
+    const right = new THREE.Vector3();
+    right.crossVectors(direction, camera.up).normalize();
+
+    if (flyKeys.forward) camera.position.addScaledVector(direction, speed);
+    if (flyKeys.backward) camera.position.addScaledVector(direction, -speed);
+    if (flyKeys.left) camera.position.addScaledVector(right, -speed);
+    if (flyKeys.right) camera.position.addScaledVector(right, speed);
+    if (flyKeys.up) camera.position.y += speed;
+    if (flyKeys.down) camera.position.y -= speed;
+
+    controls.target.copy(camera.position).addScaledVector(direction, 10);
+}
+
+function handleKeyUp(event) {
+    if (cameraMode === 'fly') {
+        switch (event.key.toLowerCase()) {
+            case 'w': flyKeys.forward = false; break;
+            case 's': flyKeys.backward = false; break;
+            case 'a': flyKeys.left = false; break;
+            case 'd': flyKeys.right = false; break;
+            case 'q': flyKeys.down = false; break;
+            case 'e': flyKeys.up = false; break;
+            case 'shift': flyKeys.boost = false; break;
+        }
+    }
+}
+
+function handleKeyboard(event) {
+    const panSpeed = 0.5;
+    const rotateSpeed = 0.1;
+    const zoomSpeed = 1.0;
+
+    if (cameraMode === 'fly') {
+        switch (event.key.toLowerCase()) {
+            case 'w': flyKeys.forward = true; break;
+            case 's': flyKeys.backward = true; break;
+            case 'a': flyKeys.left = true; break;
+            case 'd': flyKeys.right = true; break;
+            case 'q': flyKeys.down = true; break;
+            case 'e': flyKeys.up = true; break;
+            case 'shift': flyKeys.boost = true; break;
+            case 'h': showFlyHint(); break;
+            case 'escape':
+            case 'f':
+                setCameraMode('orbit');
+                break;
+        }
+        if (['w', 's', 'a', 'd', 'q', 'e'].includes(event.key.toLowerCase())) {
+            event.preventDefault();
+        }
+        return;
+    }
+
+    switch (event.key) {
+        case 'f':
+        case 'F':
+            setCameraMode('fly');
+            break;
+        case 'w':
+        case 'W':
+            controls.target.y += panSpeed;
+            break;
+        case 's':
+        case 'S':
+            controls.target.y -= panSpeed;
+            break;
+        case 'a':
+        case 'A':
+            controls.target.x -= panSpeed;
+            break;
+        case 'd':
+        case 'D':
+            controls.target.x += panSpeed;
+            break;
+        case 'ArrowLeft':
+            controls.object.position.applyAxisAngle(
+                new THREE.Vector3(0, 1, 0),
+                rotateSpeed
+            );
+            break;
+        case 'ArrowRight':
+            controls.object.position.applyAxisAngle(
+                new THREE.Vector3(0, 1, 0),
+                -rotateSpeed
+            );
+            break;
+        case 'ArrowUp':
+            controls.object.position.applyAxisAngle(
+                new THREE.Vector3(1, 0, 0),
+                rotateSpeed
+            );
+            break;
+        case 'ArrowDown':
+            controls.object.position.applyAxisAngle(
+                new THREE.Vector3(1, 0, 0),
+                -rotateSpeed
+            );
+            break;
+        case '+':
+        case '=':
+            camera.position.multiplyScalar(1 - zoomSpeed * 0.1);
+            break;
+        case '-':
+        case '_':
+            camera.position.multiplyScalar(1 + zoomSpeed * 0.1);
+            break;
+        case ' ':
+            event.preventDefault();
+            togglePlayPause();
+            break;
+        case '?':
+            toggleKeyboardHelp();
+            break;
+        case 'Escape':
+            if (cameraMode === 'tour') stopTour();
+            if (cameraMode === 'follow') setCameraMode('orbit');
+            break;
+    }
+}
+
+function toggleKeyboardHelp() {
+    const helpOverlay = document.getElementById('keyboard-help-overlay');
+    if (helpOverlay) {
+        helpOverlay.style.display = helpOverlay.style.display === 'none' ? 'flex' : 'none';
+    }
+}
+
+function updateCameraSystem(deltaTime) {
+    if (cameraMode === 'follow') {
+        updateFollowMode();
+    } else if (cameraMode === 'tour') {
+        updateTour(deltaTime);
+    } else if (cameraMode === 'fly') {
+        updateFlyControls(deltaTime);
+    }
+}
+
+function zoomIn() {
+    camera.position.multiplyScalar(0.9);
+}
+
+function zoomOut() {
+    camera.position.multiplyScalar(1.1);
+}
+
+function resetCamera() {
+    transitionToPreset(0);
+}
+
+window.initCamera = initCamera;
+window.transitionToPreset = transitionToPreset;
+window.transitionToPosition = transitionToPosition;
+window.toggleAutoRotate = toggleAutoRotate;
+window.followCivilization = followCivilization;
+window.followHazard = followHazard;
+window.zoomIn = zoomIn;
+window.zoomOut = zoomOut;
+window.resetCamera = resetCamera;
+
+window.setCameraMode = setCameraMode;
+window.enableFollowMode = enableFollowMode;
+window.disableFollowMode = disableFollowMode;
+window.updateFollowTargetList = updateFollowTargetList;
+window.startTour = startTour;
+window.stopTour = stopTour;
+window.toggleTourPlayPause = toggleTourPlayPause;
+window.updateCameraSystem = updateCameraSystem;
+window.getCameraMode = function() { return cameraMode; };
+window.cameraTours = cameraTours;
+window.setAutoFollow = function(enabled) { autoFollowEnabled = enabled; };
+window.getAutoFollow = function() { return autoFollowEnabled; };

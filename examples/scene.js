@@ -1,0 +1,388 @@
+
+
+let scene, camera, renderer, composer, controls;
+let starGeometry, starMaterial, starPoints;
+let civGeometry, civMaterial;
+let civSprites = [];
+let probeGeometry, probeMaterial;
+let probeLines = [];
+let hazardGeometry, hazardMaterial;
+let hazardMeshes = [];
+
+let clock;
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    
+    if (composer) {
+        composer.setSize(window.innerWidth, window.innerHeight);
+    }
+}
+
+function initScene() {
+    clock = new THREE.Clock();
+    
+    const container = document.getElementById('canvas-container');
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(window.config.background_color || '#000000');
+
+    camera = new THREE.PerspectiveCamera(
+        window.config.camera_fov || 75,
+        window.innerWidth / window.innerHeight,
+        window.config.camera_near || 0.1,
+        window.config.camera_far || 1000
+    );
+
+    camera.position.set(
+        window.config.camera_position[0],
+        window.config.camera_position[1],
+        window.config.camera_position[2]
+    );
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = window.config.enable_damping !== false;
+    controls.dampingFactor = window.config.damping_factor || 0.05;
+    controls.enableZoom = window.config.enable_zoom !== false;
+    controls.autoRotate = window.config.auto_rotate || false;
+    controls.autoRotateSpeed = window.config.auto_rotate_speed || 2.0;
+
+    window.addEventListener('resize', onWindowResize);
+
+    if (window.initLOD) {
+        window.initLOD();
+    }
+
+    createStarField();
+    createCivilizationSprites();
+    createProbeTrails();
+    createHazardMarkers();
+}
+
+function createStarField() {
+    if (!window.galaxyData || !window.galaxyData.positions) return;
+
+    const positions = window.galaxyData.positions;
+    const colors = window.galaxyData.colors || [];
+    const sizes = window.galaxyData.sizes || [];
+    const count = positions.length;
+
+    starGeometry = new THREE.BufferGeometry();
+    const positionArray = new Float32Array(count * 3);
+    const colorArray = new Float32Array(count * 3);
+    const sizeArray = new Float32Array(count);
+
+    const baseSize = window.config.star_point_size || 0.05;
+
+    for (let i = 0; i < count; i++) {
+        positionArray[i * 3] = positions[i][0];
+        positionArray[i * 3 + 1] = positions[i][1];
+        positionArray[i * 3 + 2] = positions[i][2];
+
+        if (colors.length > 0) {
+            colorArray[i * 3] = colors[i][0];
+            colorArray[i * 3 + 1] = colors[i][1];
+            colorArray[i * 3 + 2] = colors[i][2];
+        } else {
+            colorArray[i * 3] = 1.0;
+            colorArray[i * 3 + 1] = 0.95;
+            colorArray[i * 3 + 2] = 0.9;
+        }
+
+        sizeArray[i] = sizes.length > 0 ? sizes[i] : baseSize;
+    }
+
+    starGeometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
+    starGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+    starGeometry.setAttribute('size', new THREE.BufferAttribute(sizeArray, 1));
+
+    const starVertexShader = `
+        attribute float size;
+        attribute vec3 color;
+        varying vec3 vColor;
+        varying float vDistance;
+        void main() {
+            vColor = color;
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            vDistance = -mvPosition.z;
+            
+            // Size scales with distance, larger when closer
+            float scaledSize = size * (400.0 / max(vDistance, 0.1));
+            // Minimum size when far away to prevent disappearing
+            gl_PointSize = max(scaledSize, 1.5);
+            
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `;
+    
+    const starOpacity = window.config.star_opacity || 0.85;
+    
+    const starFragmentShader = `
+        uniform float opacity;
+        uniform float farDistance;
+        varying vec3 vColor;
+        varying float vDistance;
+        
+        void main() {
+            vec2 coord = gl_PointCoord - vec2(0.5);
+            float dist = length(coord);
+            
+            // Distance-based blur: stars get softer/blurrier when zoomed out
+            float blurFactor = clamp(vDistance / farDistance, 0.0, 1.0);
+            
+            // Core radius shrinks, glow expands with distance
+            float coreRadius = mix(0.15, 0.05, blurFactor);
+            float glowRadius = mix(0.35, 0.5, blurFactor);
+            
+            // Sharp core
+            float core = 1.0 - smoothstep(0.0, coreRadius, dist);
+            
+            // Soft glow halo
+            float glow = 1.0 - smoothstep(coreRadius, glowRadius, dist);
+            glow = glow * glow; // Quadratic falloff for softer look
+            
+            // Outer blur (very soft)
+            float outerGlow = 1.0 - smoothstep(glowRadius, 0.5, dist);
+            outerGlow = outerGlow * 0.3 * blurFactor;
+            
+            // Combine: bright core + glow + outer blur
+            float intensity = core + glow * 0.6 + outerGlow;
+            intensity = clamp(intensity, 0.0, 1.0);
+            
+            if (intensity < 0.01) discard;
+            
+            // Color with slight boost for bright stars
+            vec3 finalColor = vColor * (0.8 + intensity * 0.4);
+            
+            // Alpha based on intensity and overall opacity
+            float alpha = intensity * opacity;
+            
+            gl_FragColor = vec4(finalColor, alpha);
+        }
+    `;
+
+    starMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            opacity: { value: starOpacity },
+            farDistance: { value: 50.0 }
+        },
+        vertexShader: starVertexShader,
+        fragmentShader: starFragmentShader,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+
+    starPoints = new THREE.Points(starGeometry, starMaterial);
+    scene.add(starPoints);
+}
+
+function createCivilizationSprites() {
+    if (window.animationData && window.animationData.frames && window.animationData.frames.length > 0) {
+        updateCivilizations(window.animationData.frames[0].civilizations);
+    } else if (window.civData) {
+        updateCivilizations(window.civData);
+    }
+}
+
+function createProbeTrails() {
+    if (window.animationData && window.animationData.frames && window.animationData.frames.length > 0) {
+        updateProbes(window.animationData.frames[0].probes);
+    } else if (window.probeData) {
+        updateProbes(window.probeData);
+    }
+}
+
+function createHazardMarkers() {
+    if (window.animationData && window.animationData.frames && window.animationData.frames.length > 0) {
+        updateHazards(window.animationData.frames[0].hazards);
+    } else if (window.hazardData) {
+        updateHazards(window.hazardData);
+    }
+}
+
+function renderStatic() {
+    renderer.render(scene, camera);
+}
+
+function initAnimation() {
+    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
+        return;
+    }
+    
+    // Initialize the timeline slider
+    const maxFrame = window.animationData.frames.length - 1;
+    const timelineSlider = document.getElementById('timeline-slider');
+    timelineSlider.max = maxFrame;
+    timelineSlider.value = 0;
+    
+    // Initialize buttons
+    const playBtn = document.getElementById('btn-playpause');
+    playBtn.textContent = '▶ Play';
+    
+    const stepBtn = document.getElementById('btn-step');
+    
+    // Set up play/pause button
+    playBtn.addEventListener('click', function() {
+        isPlaying = !isPlaying;
+        playBtn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+        
+        if (isPlaying) {
+            playAnimation();
+        }
+    });
+    
+    // Set up step button
+    stepBtn.addEventListener('click', function() {
+        if (!isPlaying) {
+            stepAnimation();
+        }
+    });
+    
+    // Timeline slider
+    timelineSlider.addEventListener('input', function() {
+        currentFrame = parseInt(this.value);
+        updateAnimation(0);  // Update immediately
+    });
+    
+    // Set up reset button
+    document.getElementById('btn-reset').addEventListener('click', function() {
+        currentFrame = 0;
+        timelineSlider.value = 0;
+        updateAnimation(0);
+        isPlaying = false;
+        document.getElementById('btn-playpause').textContent = '▶ Play';
+    });
+}
+
+function playAnimation() {
+    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
+        return;
+    }
+    
+    const speed = parseFloat(document.getElementById('speed-slider').value);
+    
+    function animateStep() {
+        if (isPlaying) {
+            stepAnimation();
+            setTimeout(animateStep, 100 / speed);  // Adjust for speed setting
+        }
+    }
+    
+    animateStep();
+}
+
+function stepAnimation() {
+    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
+        return;
+    }
+    
+    const totalFrames = window.animationData.frames.length;
+    const timelineSlider = document.getElementById('timeline-slider');
+    
+    currentFrame++;
+    if (currentFrame >= totalFrames) {
+        currentFrame = 0;
+    }
+    
+    timelineSlider.value = currentFrame;
+    updateAnimation(0);
+}
+
+function updateAnimation(delta) {
+    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
+        return;
+    }
+    
+    const totalFrames = window.animationData.frames.length;
+    const timeRange = window.animationData.time_range || [0, 1];
+    
+    // Update time display
+    const time = timeRange[0] + (timeRange[1] - timeRange[0]) * currentFrame / (totalFrames - 1);
+    document.getElementById('time-display').textContent = time.toFixed(2) + ' Gyr';
+    
+    const frame = window.animationData.frames[currentFrame];
+    
+    if (frame) {
+        updateCivilizations(frame.civilizations);
+        updateProbes(frame.probes);
+        updateHazards(frame.hazards);
+    }
+    
+    // Update stats
+    const civilStats = document.getElementById('civ-stats');
+    const activeCivs = frame.civilizations ? frame.civilizations.filter(c => c.is_active).length : 0;
+    const totalCivs = frame.civilizations ? frame.civilizations.length : 0;
+    civilStats.textContent = `Active: ${activeCivs} | Total: ${totalCivs}`;
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const delta = clock.getDelta();
+
+    TWEEN.update();
+    controls.update();
+
+    if (window.updateLOD) {
+        window.updateLOD();
+    }
+
+    if (window.isPlaying) {
+        updateAnimation(delta);
+    }
+
+    if (composer && window.usePostProcessing) {
+        composer.render();
+    } else {
+        renderer.render(scene, camera);
+    }
+}
+
+window.isPlaying = false;
+
+function updateStarsVisible(visible) {
+    if (starPoints) {
+        starPoints.visible = visible;
+    }
+}
+
+function updateCivizationsVisible(visible) {
+    civSprites.forEach(sprite => {
+        sprite.visible = visible;
+    });
+}
+
+function updateProbesVisible(visible) {
+    probeLines.forEach(line => {
+        line.visible = visible;
+    });
+}
+
+function updateHazardsVisible(visible) {
+    hazardMeshes.forEach(mesh => {
+        mesh.visible = visible;
+    });
+}
+
+window.initScene = initScene;
+window.onWindowResize = onWindowResize;
+window.renderStatic = renderStatic;
+window.animate = animate;
+window.updateStarsVisible = updateStarsVisible;
+window.updateCivizationsVisible = updateCivizationsVisible;
+window.updateProbesVisible = updateProbesVisible;
+window.updateHazardsVisible = updateHazardsVisible;
+
+// Export scene and camera for other modules
+window.getScene = function() { return scene; };
+window.getCamera = function() { return camera; };

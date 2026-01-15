@@ -2,16 +2,19 @@
 
 from .galaxy_viz import GalaxyVisualizer
 from .timeline import TimelineAnimator
-from .interactive_viz import (
-    create_3d_galaxy_view,
-    create_development_timeline,
-    create_statistics_dashboard
-)
+from .plotly_3d_viz import Plotly3DGalaxyViz, VisualizationConfig, ColorMapper
+from .trajectory_builder import TrajectoryBuilder
+from .sphere_builder import SphereBuilder
+from .interactive_3d import Interactive3DVisualizer, TimelineData
 
 __all__ = [
     "GalaxyVisualizer",
     "TimelineAnimator",
-    "create_3d_galaxy_view",
-    "create_development_timeline",
-    "create_statistics_dashboard"
+    "Plotly3DGalaxyViz",
+    "VisualizationConfig",
+    "ColorMapper",
+    "TrajectoryBuilder",
+    "SphereBuilder",
+    "Interactive3DVisualizer",
+    "TimelineData"
 ]

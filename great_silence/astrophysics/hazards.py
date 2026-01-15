@@ -4,24 +4,48 @@ import numpy as np
 from typing import List, Tuple
 from .supernovae import SupernovaModel
 from .grb import GammaRayBurstModel
+from .neutron_star_merger import NeutronStarMergerModel
 from ..config.parameters import AstrophysicsParameters
+
+try:
+    from ..utils.numba_kernels import (
+        evaluate_ns_merger_hazard_kernel,
+        compute_ns_merger_probability_kernel,
+        batch_evaluate_hazards_kernel,
+    )
+    HAS_NUMBA_KERNELS = True
+except ImportError:
+    HAS_NUMBA_KERNELS = False
 
 
 class HazardEvaluator:
     """
     Evaluate combined astrophysical hazards affecting civilizations.
+    
+    Handles:
+    - Supernovae (Type II core-collapse, Type Ia thermonuclear)
+    - Gamma-ray bursts (long-duration from collapsars)
+    - Neutron star mergers (kilonovae, short gamma-ray bursts)
+    
+    Optimizations:
+    - Spatial indexing for O(log N) neighbor queries
+    - Numba-accelerated kernels for hot loops
+    - Batch evaluation for multiple civilizations
     """
 
-    def __init__(self, params: AstrophysicsParameters):
+    def __init__(self, params: AstrophysicsParameters, use_numba: bool = True):
         """
         Initialize hazard evaluator.
 
         Args:
             params: Astrophysics configuration parameters
+            use_numba: Whether to use Numba-accelerated kernels
         """
         self.params = params
         self.sn_model = SupernovaModel(params)
         self.grb_model = GammaRayBurstModel(params)
+        self.ns_merger_model = NeutronStarMergerModel(params)
+        self.use_numba = use_numba and HAS_NUMBA_KERNELS
 
     def evaluate_supernova_hazard(
         self,
@@ -220,3 +244,202 @@ class HazardEvaluator:
                 return True, info
 
         return False, info
+
+    def evaluate_ns_merger_hazard(
+        self,
+        civilization_position: np.ndarray,
+        stellar_positions: np.ndarray,
+        stellar_masses: np.ndarray,
+        stellar_ages: np.ndarray,
+        dt_myr: float,
+        rng: np.random.Generator,
+        spatial_index=None
+    ) -> Tuple[bool, dict]:
+        """
+        Check if civilization is destroyed by neutron star merger.
+        
+        NS mergers produce:
+        1. Short GRB (highly beamed, lethal at ~kpc scale)
+        2. Kilonova (less beamed, lethal at ~30 pc)
+        
+        Args:
+            civilization_position: 3D position of civilization (kpc)
+            stellar_positions: Positions of all stars (kpc)
+            stellar_masses: Masses of all stars (solar masses)
+            stellar_ages: Ages of all stars (Gyr)
+            dt_myr: Time step in Myr
+            rng: Random number generator
+            spatial_index: Optional SpatialIndex for fast queries
+            
+        Returns:
+            Tuple of (destroyed: bool, info: dict)
+        """
+        info = {
+            'n_merger_events': 0,
+            'local_merger_rate': 0.0,
+            'local_evolved_mass': 0.0
+        }
+        
+        p_merger, merger_info = self.ns_merger_model.merger_probability_per_timestep(
+            stellar_positions,
+            stellar_masses,
+            stellar_ages,
+            civilization_position,
+            dt_myr,
+            spatial_index
+        )
+        
+        info['local_merger_rate'] = merger_info['local_merger_rate']
+        info['local_evolved_mass'] = merger_info['local_stellar_mass']
+        
+        if rng.uniform(0, 1) >= p_merger:
+            return False, info
+        
+        info['n_merger_events'] = 1
+        
+        merger_position = self.ns_merger_model.sample_merger_position(
+            stellar_positions,
+            stellar_masses,
+            stellar_ages,
+            civilization_position,
+            self.ns_merger_model.sgrb_lethal_range_kpc,
+            rng,
+            spatial_index
+        )
+        
+        if merger_position is None:
+            idx = rng.integers(0, len(stellar_positions))
+            merger_position = stellar_positions[idx]
+        
+        if self.use_numba:
+            jet_theta = np.arccos(2 * rng.uniform(0, 1) - 1)
+            jet_phi = rng.uniform(0, 2 * np.pi)
+            random_val = rng.uniform(0, 1)
+            
+            result = evaluate_ns_merger_hazard_kernel(
+                civilization_position.astype(np.float64),
+                merger_position.astype(np.float64),
+                jet_theta,
+                jet_phi,
+                self.ns_merger_model.sgrb_beaming_angle_deg,
+                self.ns_merger_model.sgrb_lethal_range_kpc,
+                self.ns_merger_model.kilonova_lethal_range_pc,
+                self.ns_merger_model.kilonova_sterilization_range_pc,
+                random_val
+            )
+            
+            if result == 1:
+                distance_kpc = np.linalg.norm(civilization_position - merger_position)
+                info['destroyed_by_ns_merger'] = True
+                info['merger_type'] = 'sgrb'
+                info['merger_distance_kpc'] = distance_kpc
+                info['merger_position'] = merger_position.copy()
+                return True, info
+            elif result == 2:
+                distance_kpc = np.linalg.norm(civilization_position - merger_position)
+                info['destroyed_by_ns_merger'] = True
+                info['merger_type'] = 'kilonova'
+                info['merger_distance_pc'] = distance_kpc * 1000.0
+                info['merger_position'] = merger_position.copy()
+                return True, info
+            else:
+                return False, info
+        else:
+            destroyed, effect_info = self.ns_merger_model.evaluate_merger_effects(
+                civilization_position,
+                merger_position,
+                rng
+            )
+            
+            if destroyed:
+                info['destroyed_by_ns_merger'] = True
+                info['merger_type'] = effect_info['destruction_cause']
+                info['merger_distance_pc'] = effect_info['distance_pc']
+                info['merger_position'] = merger_position.copy()
+                return True, info
+            
+            return False, info
+
+    def evaluate_all_hazards(
+        self,
+        civilization_position: np.ndarray,
+        stellar_positions: np.ndarray,
+        stellar_masses: np.ndarray,
+        stellar_ages: np.ndarray,
+        metallicities: np.ndarray,
+        component_types: np.ndarray,
+        dt_myr: float,
+        rng: np.random.Generator,
+        spatial_index=None
+    ) -> Tuple[bool, str, dict]:
+        """
+        Evaluate all astrophysical hazards for a civilization.
+        
+        Checks supernovae, GRBs, and neutron star mergers in sequence.
+        Returns on first destruction event.
+        
+        Args:
+            civilization_position: 3D position in kpc
+            stellar_positions: All stellar positions
+            stellar_masses: All stellar masses
+            stellar_ages: All stellar ages (Gyr)
+            metallicities: All stellar metallicities
+            component_types: Galaxy component (0=bulge, 1=disk)
+            dt_myr: Time step in Myr
+            rng: Random number generator
+            spatial_index: Optional SpatialIndex
+            
+        Returns:
+            Tuple of (destroyed, hazard_type, combined_info)
+        """
+        combined_info = {
+            'sn_info': {},
+            'grb_info': {},
+            'ns_merger_info': {}
+        }
+        
+        destroyed_by_sn, sn_info = self.evaluate_supernova_hazard(
+            civilization_position,
+            stellar_positions,
+            stellar_masses,
+            stellar_ages,
+            component_types,
+            dt_myr,
+            rng,
+            spatial_index
+        )
+        combined_info['sn_info'] = sn_info
+        
+        if destroyed_by_sn:
+            return True, 'supernova', combined_info
+        
+        destroyed_by_grb, grb_info = self.evaluate_grb_hazard(
+            civilization_position,
+            stellar_positions,
+            stellar_masses,
+            stellar_ages,
+            metallicities,
+            dt_myr,
+            rng,
+            spatial_index
+        )
+        combined_info['grb_info'] = grb_info
+        
+        if destroyed_by_grb:
+            return True, 'grb', combined_info
+        
+        destroyed_by_merger, merger_info = self.evaluate_ns_merger_hazard(
+            civilization_position,
+            stellar_positions,
+            stellar_masses,
+            stellar_ages,
+            dt_myr,
+            rng,
+            spatial_index
+        )
+        combined_info['ns_merger_info'] = merger_info
+        
+        if destroyed_by_merger:
+            return True, 'ns_merger', combined_info
+        
+        return False, '', combined_info

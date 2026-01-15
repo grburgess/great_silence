@@ -1,0 +1,106 @@
+
+
+let bloomPass, filmPass, vignettePass;
+
+function initPostProcessing() {
+    composer = new THREE.EffectComposer(renderer);
+
+    const renderPass = new THREE.RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    bloomPass = new THREE.UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        window.config.bloom_strength || 0.3,
+        window.config.bloom_radius || 0.5,
+        window.config.bloom_threshold || 0.8
+    );
+    composer.addPass(bloomPass);
+
+    filmPass = new THREE.FilmPass(
+        0.35,
+        0.025,
+        648,
+        false
+    );
+    composer.addPass(filmPass);
+
+    const vignetteShader = {
+        uniforms: {
+            'tDiffuse': { value: null },
+            'vignetteOffset': { value: 1.0 },
+            'vignetteDarkness': { value: 1.5 }
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform sampler2D tDiffuse;
+            uniform float vignetteOffset;
+            uniform float vignetteDarkness;
+            varying vec2 vUv;
+
+            void main() {
+                vec4 color = texture2D(tDiffuse, vUv);
+                
+                vec2 uv = (vUv - vec2(0.5)) * vec2(1.0, 1.0);
+                float dist = length(uv);
+                float vignette = smoothstep(vignetteOffset, vignetteOffset - vignetteDarkness, dist);
+                
+                gl_FragColor = color * vignette;
+            }
+        `
+    };
+
+    vignettePass = new THREE.ShaderPass(vignetteShader);
+    composer.addPass(vignettePass);
+
+    window.usePostProcessing = false;
+}
+
+function toggleBloom(enabled) {
+    if (bloomPass) {
+        bloomPass.enabled = enabled;
+    }
+}
+
+function toggleFilm(enabled) {
+    if (filmPass) {
+        filmPass.enabled = enabled;
+    }
+}
+
+function toggleVignette(enabled) {
+    if (vignettePass) {
+        vignettePass.enabled = enabled;
+    }
+}
+
+function setBloomThreshold(threshold) {
+    if (bloomPass) {
+        bloomPass.threshold = threshold;
+    }
+}
+
+function setBloomStrength(strength) {
+    if (bloomPass) {
+        bloomPass.strength = strength;
+    }
+}
+
+function setBloomRadius(radius) {
+    if (bloomPass) {
+        bloomPass.radius = radius;
+    }
+}
+
+window.initPostProcessing = initPostProcessing;
+window.toggleBloom = toggleBloom;
+window.toggleFilm = toggleFilm;
+window.toggleVignette = toggleVignette;
+window.setBloomThreshold = setBloomThreshold;
+window.setBloomStrength = setBloomStrength;
+window.setBloomRadius = setBloomRadius;

@@ -139,8 +139,8 @@ class CivilizationEmergence:
         Returns:
             Probability of emergence during this time step
         """
-        # Check basic habitability
-        if not self.is_star_habitable(stellar_mass, stellar_age_gyr, metallicity_feh):
+        # Stars must be old enough for complex life
+        if stellar_age_gyr < self.params.min_stellar_age_for_life_gyr:
             return 0.0
 
         # Drake equation base terms
