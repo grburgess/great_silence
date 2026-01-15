@@ -153,7 +153,7 @@ def create_dropdown(
                     _on_change_callback()
             return handler
 
-        select.on_change(make_handler(param_name, config_obj, select))
+        select.on("update:model-value", make_handler(param_name, config_obj, select))
 
 
 class ConfigPanels:
