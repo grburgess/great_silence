@@ -158,7 +158,8 @@ class SimulationRunner:
         try:
             elapsed = time.time() - self._start_time
             total_gyr = app_state.config.simulation.simulation_duration_gyr
-            current_gyr = self._sim.current_time_gyr
+            current_myr = self._sim.current_time_myr if hasattr(self._sim, 'current_time_myr') else 0
+            current_gyr = current_myr / 1000.0
 
             progress = min(current_gyr / total_gyr, 1.0) if total_gyr > 0 else 0
 
@@ -205,8 +206,9 @@ class SimulationRunner:
                 self._progress_label.text = "100%"
                 active = len([c for c in self._sim.civilizations if c.is_active])
                 total = len(self._sim.civilizations)
+                final_gyr = self._sim.current_time_myr / 1000.0 if hasattr(self._sim, 'current_time_myr') else 0
                 self._add_event(
-                    self._sim.current_time_gyr,
+                    final_gyr,
                     "complete",
                     f"✅ Complete! {total} civilizations emerged, {active} survived",
                 )
@@ -241,8 +243,9 @@ class SimulationRunner:
             self._update_timer = None
         
         if self._sim:
+            current_gyr = self._sim.current_time_myr / 1000.0 if hasattr(self._sim, 'current_time_myr') else 0.0
             self._add_event(
-                self._sim.current_time_gyr if hasattr(self._sim, 'current_time_gyr') else 0.0,
+                current_gyr,
                 "cancel",
                 "⏹️ Simulation cancelled (background thread may still be running)"
             )
