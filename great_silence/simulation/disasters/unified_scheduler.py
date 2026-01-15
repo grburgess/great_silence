@@ -38,7 +38,7 @@ class ScheduledDisaster:
     time_myr: float
     disaster_type: DisasterType
     star_idx: int
-    position: np.ndarray
+    position: np.ndarray  # Fallback position (used when star_idx < 0 or motion disabled)
     energy_ergs: float
     lethal_radius_pc: float
     sterilization_radius_pc: float
@@ -48,6 +48,28 @@ class ScheduledDisaster:
     grb_beaming_angle_deg: float = 10.0
     
     merger_partner_idx: int = -1
+    
+    def get_position(
+        self, 
+        galaxy_positions: Optional[np.ndarray] = None,
+        track_parent_star: bool = True
+    ) -> np.ndarray:
+        """
+        Get disaster position, optionally tracking parent star's current location.
+        
+        Args:
+            galaxy_positions: Current stellar positions array (N, 3) in kpc
+            track_parent_star: If True and star_idx >= 0, use star's current position
+            
+        Returns:
+            Position as (3,) array in kpc
+        """
+        if (track_parent_star and 
+            self.star_idx >= 0 and 
+            galaxy_positions is not None and 
+            self.star_idx < len(galaxy_positions)):
+            return galaxy_positions[self.star_idx].copy()
+        return self.position.copy()
 
 
 if HAS_NUMBA:

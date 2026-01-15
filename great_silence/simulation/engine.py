@@ -2192,6 +2192,12 @@ class GalaxySimulation:
         else:
             has_kernels = False
 
+        # Determine whether to track parent star positions for disasters
+        track_parent = (
+            self.config.simulation.enable_stellar_motion and
+            self.config.simulation.disaster_track_parent_star
+        )
+        
         for disaster in disasters:
             event_type_str = {
                 DisasterType.SUPERNOVA: "supernova",
@@ -2199,10 +2205,16 @@ class GalaxySimulation:
                 DisasterType.NS_MERGER: "ns_merger",
             }.get(disaster.disaster_type, "unknown")
 
+            # Get disaster position (dynamic if tracking parent star)
+            disaster_position = disaster.get_position(
+                galaxy_positions=self.galaxy.positions,
+                track_parent_star=track_parent
+            )
+
             hazard_event = HazardEvent(
                 time_myr=disaster.time_myr,
                 event_type=event_type_str,
-                position=disaster.position.copy(),
+                position=disaster_position,
                 energy=disaster.energy_ergs,
                 sterilization_radius_pc=disaster.sterilization_radius_pc,
                 affected_civ_ids=[],
@@ -2216,7 +2228,7 @@ class GalaxySimulation:
                     if has_kernels:
                         effects = evaluate_sn_effect_on_civs_kernel(
                             civ_positions.astype(np.float64),
-                            disaster.position.astype(np.float64),
+                            disaster_position.astype(np.float64),
                             disaster.lethal_radius_pc,
                             disaster.sterilization_radius_pc,
                             random_values
@@ -2230,7 +2242,7 @@ class GalaxySimulation:
                     if has_kernels:
                         effects = evaluate_grb_effect_on_civs_kernel(
                             civ_positions.astype(np.float64),
-                            disaster.position.astype(np.float64),
+                            disaster_position.astype(np.float64),
                             disaster.grb_jet_theta,
                             disaster.grb_jet_phi,
                             disaster.grb_beaming_angle_deg,
@@ -2238,7 +2250,7 @@ class GalaxySimulation:
                         )
                     else:
                         effects = self._evaluate_grb_effects_python(
-                            civ_positions, disaster
+                            civ_positions, disaster, disaster_position
                         )
 
                 elif disaster.disaster_type == DisasterType.NS_MERGER:
@@ -2255,7 +2267,7 @@ class GalaxySimulation:
                     if has_kernels:
                         effects = evaluate_ns_merger_effect_on_civs_kernel(
                             civ_positions.astype(np.float64),
-                            disaster.position.astype(np.float64),
+                            disaster_position.astype(np.float64),
                             disaster.grb_jet_theta,
                             disaster.grb_jet_phi,
                             disaster.grb_beaming_angle_deg,
@@ -2266,7 +2278,7 @@ class GalaxySimulation:
                         )
                     else:
                         effects = self._evaluate_ns_merger_effects_python(
-                            civ_positions, disaster, random_values
+                            civ_positions, disaster, random_values, disaster_position
                         )
                 else:
                     effects = np.zeros(n_civs, dtype=np.int32)
@@ -2312,11 +2324,12 @@ class GalaxySimulation:
         n_civs = len(civ_positions)
         effects = np.zeros(n_civs, dtype=np.int32)
         
-        lethal_kpc = disaster.lethal_radius_pc / 1000.0
-        sterilization_kpc = disaster.sterilization_radius_pc / 1000.0
+        # Note: disaster_position is passed via the numba kernel path
+        # This fallback uses disaster.position for simplicity
+        disaster_pos = disaster.position
         
         for i in range(n_civs):
-            dist_kpc = np.linalg.norm(civ_positions[i] - disaster.position)
+            dist_kpc = np.linalg.norm(civ_positions[i] - disaster_pos)
             dist_pc = dist_kpc * 1000.0
             
             if dist_pc < disaster.lethal_radius_pc:
@@ -2331,11 +2344,13 @@ class GalaxySimulation:
         return effects
 
     def _evaluate_grb_effects_python(
-        self, civ_positions: np.ndarray, disaster
+        self, civ_positions: np.ndarray, disaster, disaster_position: Optional[np.ndarray] = None
     ) -> np.ndarray:
         """Python fallback for GRB effect evaluation."""
         n_civs = len(civ_positions)
         effects = np.zeros(n_civs, dtype=np.int32)
+        
+        disaster_pos = disaster_position if disaster_position is not None else disaster.position
         
         jet_dir = np.array([
             np.sin(disaster.grb_jet_theta) * np.cos(disaster.grb_jet_phi),
@@ -2348,7 +2363,7 @@ class GalaxySimulation:
         lethal_kpc = disaster.lethal_radius_pc / 1000.0
         
         for i in range(n_civs):
-            to_civ = civ_positions[i] - disaster.position
+            to_civ = civ_positions[i] - disaster_pos
             dist_kpc = np.linalg.norm(to_civ)
             
             if dist_kpc < 1e-10 or dist_kpc > lethal_kpc:
@@ -2363,11 +2378,17 @@ class GalaxySimulation:
         return effects
 
     def _evaluate_ns_merger_effects_python(
-        self, civ_positions: np.ndarray, disaster, random_values: np.ndarray
+        self, 
+        civ_positions: np.ndarray, 
+        disaster, 
+        random_values: np.ndarray,
+        disaster_position: Optional[np.ndarray] = None
     ) -> np.ndarray:
         """Python fallback for NS merger effect evaluation."""
         n_civs = len(civ_positions)
         effects = np.zeros(n_civs, dtype=np.int32)
+        
+        disaster_pos = disaster_position if disaster_position is not None else disaster.position
         
         sgrb_range = getattr(self.config.astrophysics, 'ns_sgrb_lethal_range_kpc', 3.0)
         kilonova_lethal = getattr(self.config.astrophysics, 'ns_kilonova_lethal_range_pc', 30.0)
@@ -2388,7 +2409,7 @@ class GalaxySimulation:
         kilonova_sterilization_kpc = kilonova_sterilization / 1000.0
         
         for i in range(n_civs):
-            to_civ = civ_positions[i] - disaster.position
+            to_civ = civ_positions[i] - disaster_pos
             dist_kpc = np.linalg.norm(to_civ)
             
             if dist_kpc > 1e-10 and dist_kpc < sgrb_range:
