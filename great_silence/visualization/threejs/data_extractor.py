@@ -302,11 +302,24 @@ class SimulationDataExtractor:
             "sizes": sizes.tolist() if len(sizes) > 0 else [],
         }
         
-        # NOTE: Do NOT include velocity data for GPU interpolation by default
-        # The GPU shader stellar motion feature is experimental and causes stars 
-        # to fly apart during animation playback. Only enable if explicitly 
-        # requested via include_stellar_motion parameter in the future.
-        # For now, stars remain static in the visualization.
+        # Include velocity data for GPU interpolation if stellar motion is enabled
+        stellar_motion_enabled = False
+        if hasattr(self.source, 'config') and hasattr(self.source.config, 'simulation'):
+            stellar_motion_enabled = getattr(self.source.config.simulation, 'enable_stellar_motion', False)
+        
+        if stellar_motion_enabled:
+            initial_positions = self.simulation_data.get("initial_positions", None)
+            velocities = self.simulation_data.get("stellar_velocities", None)
+            
+            if initial_positions is not None and velocities is not None:
+                # Apply same subsampling if needed
+                if indices is not None:
+                    initial_positions = initial_positions[indices]
+                    velocities = velocities[indices]
+                
+                result["initial_positions"] = initial_positions.tolist()
+                result["velocities"] = velocities.tolist()
+                result["reference_time"] = 0.0  # Initial positions are at t=0
         
         return result
 
