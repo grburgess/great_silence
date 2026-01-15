@@ -237,6 +237,36 @@ class TestSimulation:
                     f"Star {star_idx} (age {star_age:.2f} Gyr) has emergence at {event_time:.0f} Myr " \
                     f"but becomes eligible at {eligible_time_myr:.0f} Myr"
 
+    def test_sterilized_stars_no_emergence(self):
+        """Test that sterilized stars cannot spawn civilizations.
+        
+        Physical correctness: If a supernova or GRB sterilizes a star's region,
+        any pre-scheduled emergence at that star should be cancelled.
+        """
+        config = SimulationConfig.with_preset("optimistic")
+        config.galaxy.total_stars = 1000
+        config.simulation.simulation_duration_gyr = 5.0
+        config.simulation.save_snapshots = False
+        
+        sim = GalaxySimulation(config, seed=42)
+        sim.initialize()
+        
+        if len(sim._emergence_heap) == 0:
+            pytest.skip("No emergence events scheduled")
+        
+        first_emergence_time, first_emergence_star = sim._emergence_heap[0]
+        
+        from great_silence.simulation.disasters.recovery import SterilizationStatus
+        sim.recovery_queue.status[first_emergence_star] = SterilizationStatus.PERMANENTLY_STERILIZED
+        
+        while sim.current_time_myr < first_emergence_time + 1.0:
+            sim._step(dt_myr=0.5)
+            sim.current_time_myr += 0.5
+        
+        civs_at_star = [c for c in sim.civilizations if c.parent_star_idx == first_emergence_star]
+        assert len(civs_at_star) == 0, \
+            f"Civilization should not emerge at sterilized star {first_emergence_star}"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

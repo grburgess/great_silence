@@ -934,9 +934,9 @@ class GalaxySimulation:
         Uses O(log N) heap operations instead of O(N_habitable) per-step checks.
         Events are pre-scheduled at initialization based on Drake equation rates.
         
-        Physical correctness: If a probe colonizes a star before its scheduled
-        emergence time, the emergence is cancelled (colonized_mask check).
-        This represents the colonizing civilization disrupting native evolution.
+        Physical correctness: Emergence is cancelled if:
+        1. A probe colonizes the star (colonized_mask check) - evolution disrupted
+        2. The star was sterilized by a disaster (recovery_queue check) - no life possible
         """
         emerged_stars = []
         
@@ -945,6 +945,10 @@ class GalaxySimulation:
             
             # If probe arrived before native emergence, skip (evolution disrupted)
             if self._colonized_mask[star_idx]:
+                continue
+            
+            # If star was sterilized by disaster, skip (no life possible)
+            if self.recovery_queue is not None and self.recovery_queue.status[star_idx] != 0:
                 continue
             
             emerged_stars.append(star_idx)
