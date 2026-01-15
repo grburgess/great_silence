@@ -377,3 +377,12 @@ Building on Phase 1-6, implemented radical event-driven optimization:
 python scripts/benchmark_quick.py     # Fast single-run benchmark
 python scripts/benchmark_baseline.py  # Detailed profiling
 ```
+
+### Jan 2026 - Physical Correctness Fixes
+- **Young stars scheduling bug**: Pre-scheduled emergence was only considering stars already old enough at simulation start
+  - Stars that would cross `min_stellar_age_for_life_gyr` threshold during simulation were excluded
+  - Fix: Calculate `time_until_eligible_myr` for each star, schedule emergence events starting from that time
+  - Test added: `test_young_stars_scheduled_for_future_emergence`
+- **Colonization-cancels-emergence**: If a probe colonizes a star before native life emerges, emergence is cancelled
+  - This is physically correct: if aliens arrive first, the pre-scheduled native emergence is skipped
+  - Tests added: `test_colonization_cancels_emergence`, `test_emergence_heap_respects_colonization`
