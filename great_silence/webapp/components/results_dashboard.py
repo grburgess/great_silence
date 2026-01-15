@@ -178,9 +178,13 @@ class ResultsDashboard:
 
     def _generate_viz(self, sim) -> None:
         """Generate the Three.js visualization."""
+        import traceback
+        import time
         try:
             from great_silence.visualization.threejs import export_html
 
+            # Use unique path to avoid browser caching
+            viz_id = int(time.time() * 1000)
             temp_dir = tempfile.mkdtemp()
             self._viz_html_path = os.path.join(temp_dir, "visualization.html")
 
@@ -192,20 +196,26 @@ class ResultsDashboard:
                 show_spheres=True,
                 show_hazards=True,
             )
+            
+            if not os.path.exists(self._viz_html_path):
+                ui.notify("Error: Visualization file not created", type="negative")
+                return
 
-            app.add_static_files("/viz", temp_dir)
+            # Use unique path to bust cache
+            viz_path = f"/viz_{viz_id}"
+            app.add_static_files(viz_path, temp_dir)
 
             self._viz_frame_container.clear()
             with self._viz_frame_container:
                 ui.html(
-                    f'<iframe src="/viz/visualization.html" '
+                    f'<iframe src="{viz_path}/visualization.html" '
                     f'style="width: 100%; height: 600px; border: 1px solid #333; border-radius: 8px;">'
                     f"</iframe>",
                     sanitize=False,
                 )
 
             self._fullscreen_frame.content = (
-                f'<iframe src="/viz/visualization.html" '
+                f'<iframe src="{viz_path}/visualization.html" '
                 f'style="width: 100%; height: calc(100vh - 80px); border: none;"></iframe>'
             )
             self._fullscreen_btn.visible = True
@@ -213,6 +223,7 @@ class ResultsDashboard:
             ui.notify("Visualization generated!", type="positive")
 
         except Exception as e:
+            traceback.print_exc()
             ui.notify(f"Error generating visualization: {e}", type="negative")
 
     def _open_fullscreen(self) -> None:
