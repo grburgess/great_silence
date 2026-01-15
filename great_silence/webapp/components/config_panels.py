@@ -7,6 +7,9 @@ from dataclasses import fields
 from ..state import app_state
 
 
+_global_on_change: Optional[Callable[[], None]] = None
+
+
 def create_slider(
     label: str,
     param_name: str,
@@ -45,6 +48,8 @@ def create_slider(
                 vlbl.text = fmt(val)
             else:
                 vlbl.text = f"{val:.3g} {u}".strip()
+            if _global_on_change:
+                _global_on_change()
 
         slider.on("update:model-value", on_change)
 
@@ -80,6 +85,8 @@ def create_number_input(
             val = e.args if isinstance(e.args, (int, float)) else ni.value
             if val is not None:
                 setattr(cfg, pname, type(getattr(cfg, pname))(val))
+                if _global_on_change:
+                    _global_on_change()
 
         num_input.on("update:model-value", on_change)
 
@@ -103,6 +110,8 @@ def create_toggle(
         def on_change(e, pname=param_name, cfg=config_obj, tg=toggle):
             val = e.args if isinstance(e.args, bool) else tg.value
             setattr(cfg, pname, val)
+            if _global_on_change:
+                _global_on_change()
 
         toggle.on("update:model-value", on_change)
 
@@ -127,6 +136,8 @@ def create_dropdown(
         def on_change(e, pname=param_name, cfg=config_obj, sel=select):
             val = e.args if e.args is not None else sel.value
             setattr(cfg, pname, val)
+            if _global_on_change:
+                _global_on_change()
 
         select.on("update:model-value", on_change)
 
@@ -134,7 +145,9 @@ def create_dropdown(
 class ConfigPanels:
     """Hierarchical configuration panels for all simulation parameters."""
 
-    def __init__(self):
+    def __init__(self, on_change: Optional[Callable[[], None]] = None):
+        global _global_on_change
+        _global_on_change = on_change
         self._build()
 
     def _build(self) -> None:

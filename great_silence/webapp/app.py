@@ -4,7 +4,7 @@ from nicegui import ui, app
 from pathlib import Path
 
 from .state import app_state
-from .components import PresetSelector, BasicSettings, SimulationRunner, ConfigPanels, ResultsDashboard
+from .components import PresetSelector, BasicSettings, SimulationRunner, ConfigPanels, ResultsDashboard, ParameterPlots
 from .config_io import create_load_config_dialog, create_save_config_dialog, create_save_preset_dialog
 
 
@@ -71,12 +71,21 @@ def apply_dark_theme():
 
 
 basic_settings_component = None
+parameter_plots_component = None
 
 
 def on_preset_select(preset_name: str) -> None:
     """Handle preset selection."""
     app_state.apply_preset(preset_name)
     ui.notify(f"Applied '{preset_name}' preset", type="positive", position="top")
+    refresh_plots()
+
+
+def refresh_plots() -> None:
+    """Refresh parameter visualization plots."""
+    global parameter_plots_component
+    if parameter_plots_component:
+        parameter_plots_component.refresh()
 
 
 def refresh_ui_from_state():
@@ -122,37 +131,43 @@ def main_page():
                     "Save as Preset"
                 ).classes("text-gray-400 hover:text-purple-400")
 
-    with ui.column().classes("w-full max-w-4xl mx-auto p-6 gap-6"):
-        with ui.card().classes("w-full bg-gradient-to-r from-cyan-900/20 to-purple-900/20"):
-            ui.label(
-                "Explore the Fermi Paradox through Monte Carlo simulation of "
-                "galactic civilizations, hazards, and the Great Filter."
-            ).classes("text-gray-300 text-center")
-            with ui.row().classes("w-full justify-center gap-4 mt-2"):
-                ui.badge("Drake Equation", color="cyan").props("outline")
-                ui.badge("Kardashev Scale", color="purple").props("outline")
-                ui.badge("Great Filter", color="red").props("outline")
+    global basic_settings_component, parameter_plots_component
 
-        PresetSelector(on_select=on_preset_select)
+    with ui.row().classes("w-full max-w-7xl mx-auto p-4 gap-4"):
+        with ui.column().classes("w-3/5 gap-4"):
+            with ui.card().classes("w-full bg-gradient-to-r from-cyan-900/20 to-purple-900/20"):
+                ui.label(
+                    "Explore the Fermi Paradox through Monte Carlo simulation of "
+                    "galactic civilizations, hazards, and the Great Filter."
+                ).classes("text-gray-300 text-center")
+                with ui.row().classes("w-full justify-center gap-4 mt-2"):
+                    ui.badge("Drake Equation", color="cyan").props("outline")
+                    ui.badge("Kardashev Scale", color="purple").props("outline")
+                    ui.badge("Great Filter", color="red").props("outline")
 
-        basic_settings_component = BasicSettings()
+            PresetSelector(on_select=on_preset_select)
 
-        with ui.expansion("Advanced Settings", icon="tune", value=False).classes(
-            "w-full bg-gray-800"
-        ):
-            ui.label(
-                "Fine-tune all simulation parameters. Changes apply immediately."
-            ).classes("text-gray-500 text-sm mb-4")
-            ConfigPanels()
+            basic_settings_component = BasicSettings(on_change=refresh_plots)
 
-        results_dashboard = ResultsDashboard()
+            with ui.expansion("Advanced Settings", icon="tune", value=False).classes(
+                "w-full bg-gray-800"
+            ):
+                ui.label(
+                    "Fine-tune all simulation parameters. Changes apply immediately."
+                ).classes("text-gray-500 text-sm mb-4")
+                ConfigPanels(on_change=refresh_plots)
 
-        def on_simulation_complete():
-            if app_state.results and app_state.results.get("simulation"):
-                results_dashboard.show_results(app_state.results["simulation"])
+            results_dashboard = ResultsDashboard()
 
-        sim_runner = SimulationRunner()
-        sim_runner.on_complete = on_simulation_complete
+            def on_simulation_complete():
+                if app_state.results and app_state.results.get("simulation"):
+                    results_dashboard.show_results(app_state.results["simulation"])
+
+            sim_runner = SimulationRunner()
+            sim_runner.on_complete = on_simulation_complete
+
+        with ui.column().classes("w-2/5"):
+            parameter_plots_component = ParameterPlots()
 
     with ui.footer().classes("bg-gray-900/50 border-t border-gray-700/50"):
         with ui.row().classes("w-full max-w-6xl mx-auto items-center px-4 py-2"):
