@@ -303,3 +303,55 @@ python -c "from great_silence import SimulationConfig; c = SimulationConfig(); p
   ```
 - Dark space theme with gradient background, glass-effect cards
 - Fullscreen Three.js visualization via dialog overlay
+
+### Jan 2026 - Simulation Performance Optimization (5x Plan)
+- **Problem**: Progress bar stalling during quiet periods, latency issues
+- **Target**: 5x improvement in simulation latency
+- **Benchmark**: 30k stars, 5 Gyr, optimistic preset
+
+#### Phase 1: Baseline Profiling
+- Identified main bottleneck: `_check_civilization_emergence` at 55-60% of runtime
+- Initial run time: ~0.69s for 30k stars, 5 Gyr
+
+#### Phase 2: Adaptive Timestep Fix
+- Added `_estimate_emergence_timestep()` for emergence probability-based dt
+- Added star birth event consideration in `_compute_next_timestep()`
+- Prevents 10 Myr jumps during quiet periods
+- Progress bar now advances smoothly
+
+#### Phase 3: O(1) Lookup Dictionaries
+- Added `_civ_by_id: Dict[int, CivilizationState]` for instant civ lookup
+- Added `_probe_by_id: Dict[int, Tuple[int, ProbeState]]` for instant probe lookup
+- Replaced O(N) linear searches in `_process_probe_events()`
+- Replaced O(N) linear searches in `_merge_probe_buffers()`
+
+#### Phase 4: Numba Emergence Kernel
+- Added `compute_emergence_probabilities_kernel()` in `utils/numba_kernels.py`
+- Uses `cache=True` for fast repeated calls (no re-compilation)
+- Non-parallel version faster than NumPy for small arrays (~6k)
+- **37% speedup** in `_check_civilization_emergence`
+
+#### Phase 5: KD-tree Causality Partitioning
+- Fixed broken function signatures in `utils/parallel.py`
+- Replaced O(N²) pairwise distance loops with `scipy.cKDTree.query_pairs()`
+- `find_causal_groups_simple()` and `find_causal_groups_with_colonies()` now O(N log N)
+- Functions now return indices (matching call site expectations)
+
+#### Phase 6: Batch Operations
+- Optimized `_decay_reputations()`:
+  - Skip inactive civilizations early
+  - Skip empty reputation dicts
+  - Prune near-zero entries to prevent dict growth
+- Eliminated from top-20 profile hotspots
+
+#### Results
+- **Simulation run time**: 0.69s → 0.56s (**19% faster**)
+- **Total time (with init)**: 2.32s → 1.79s (**23% faster**)
+- **Progress smoothness**: No more stalls, consistent advancement
+- **Scalability**: Better foundation for future parallelization
+
+#### Benchmark Script
+```bash
+python scripts/benchmark_baseline.py  # With warmup
+python scripts/benchmark_final.py     # Multi-run comparison
+```
