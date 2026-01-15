@@ -219,6 +219,13 @@ class SimulationDataExtractor:
             
             if hasattr(self.source.galaxy, "habitable_indices") and self.source.galaxy.habitable_indices is not None:
                 self.simulation_data["habitable_indices"] = self.source.galaxy.habitable_indices.copy()
+            
+            # Delta compression data for stellar motion
+            if hasattr(self.source.galaxy, "initial_positions") and self.source.galaxy.initial_positions is not None:
+                self.simulation_data["initial_positions"] = self.source.galaxy.initial_positions.copy()
+            
+            if hasattr(self.source.galaxy, "velocities") and self.source.galaxy.velocities is not None:
+                self.simulation_data["stellar_velocities"] = self.source.galaxy.velocities.copy()
 
         if hasattr(self.source, "snapshots"):
             self.snapshots = [
@@ -229,6 +236,7 @@ class SimulationDataExtractor:
                     "hazards": _extract_hazard_list(snap),
                     "trajectories": _extract_expansion_trajectories(snap),
                     "stellar_ages": snap.stellar_ages.tolist() if hasattr(snap, 'stellar_ages') and snap.stellar_ages is not None else None,
+                    "use_delta_compression": getattr(snap, 'use_delta_compression', False),
                 }
                 for snap in self.source.snapshots
             ]
@@ -270,11 +278,30 @@ class SimulationDataExtractor:
                 colors = np.ones((len(positions), 3)) * 0.9
             sizes = np.ones(len(positions)) * 0.03
 
-        return {
+        # Include velocity data for GPU interpolation
+        initial_positions = self.simulation_data.get("initial_positions", None)
+        velocities = self.simulation_data.get("stellar_velocities", None)
+        
+        if indices is not None:
+            if initial_positions is not None:
+                initial_positions = initial_positions[indices]
+            if velocities is not None:
+                velocities = velocities[indices]
+        
+        result = {
             "positions": positions.tolist() if len(positions) > 0 else [],
             "colors": colors.tolist() if len(colors) > 0 else [],
             "sizes": sizes.tolist() if len(sizes) > 0 else [],
         }
+        
+        # Add delta compression data for GPU interpolation
+        if initial_positions is not None:
+            result["initial_positions"] = initial_positions.tolist()
+        if velocities is not None:
+            result["velocities"] = velocities.tolist()
+            result["reference_time"] = 0.0  # Initial time in Myr
+        
+        return result
 
     def extract_civilization_data(
         self, time_gyr: Optional[float] = None

@@ -214,7 +214,7 @@ class SimulationSnapshot:
     total_civilizations_ever: int
     colonized_systems: int
     civilization_states: List[CivilizationState]
-    stellar_positions: np.ndarray  # For visualization
+    stellar_positions: np.ndarray  # For visualization (may be empty if delta compression)
     stellar_ages: Optional[np.ndarray] = None  # Stellar ages in Gyr for HR diagram evolution
     active_probes_in_flight: List[ProbeSnapshot] = field(default_factory=list)
     total_active_probes: int = 0
@@ -230,6 +230,42 @@ class SimulationSnapshot:
         default_factory=list
     )  # (civ_id, position)
     civ_birth_ages: List[Tuple[int, float]] = field(default_factory=list)  # (civ_id, age_gyr)
+    
+    # Delta compression fields
+    use_delta_compression: bool = False
+    reference_time_myr: float = 0.0  # Time when initial_positions were captured
+    stellar_velocities: Optional[np.ndarray] = None  # (N, 3) in km/s - only on first snapshot
+    initial_positions: Optional[np.ndarray] = None  # (N, 3) in kpc - only on first snapshot
+    
+    def get_positions(self, fallback_galaxy: Optional[Any] = None) -> np.ndarray:
+        """
+        Reconstruct stellar positions at this snapshot's time.
+        
+        For delta compression, computes: initial_positions + velocities * dt
+        
+        Args:
+            fallback_galaxy: GalaxyModel to use for initial_positions/velocities if not stored
+            
+        Returns:
+            (N, 3) array of stellar positions in kpc
+        """
+        if not self.use_delta_compression:
+            return self.stellar_positions
+        
+        init_pos = self.initial_positions
+        vels = self.stellar_velocities
+        
+        if init_pos is None and fallback_galaxy is not None:
+            init_pos = getattr(fallback_galaxy, 'initial_positions', None)
+        if vels is None and fallback_galaxy is not None:
+            vels = getattr(fallback_galaxy, 'velocities', None)
+        
+        if init_pos is None or vels is None:
+            return self.stellar_positions
+        
+        dt_myr = self.time_myr - self.reference_time_myr
+        v_kpc_myr = vels * 0.001022  # 1 km/s = 0.001022 kpc/Myr
+        return init_pos + v_kpc_myr * dt_myr
 
 
 class GalaxySimulation:
@@ -2469,6 +2505,37 @@ class GalaxySimulation:
                     )
                     colony_positions.append((civ.civ_id, pos.copy()))
 
+        # Determine if we should use delta compression (stellar motion enabled)
+        use_delta = self.config.simulation.enable_stellar_motion
+        is_first_snapshot = len(self.snapshots) == 0
+        
+        if use_delta:
+            if is_first_snapshot:
+                # First snapshot: store initial positions and velocities
+                stellar_positions = np.array([])  # Empty - use get_positions()
+                initial_positions = (
+                    self.galaxy.initial_positions.copy()
+                    if hasattr(self.galaxy, 'initial_positions') and self.galaxy.initial_positions is not None
+                    else self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([])
+                )
+                stellar_velocities = (
+                    self.galaxy.velocities.copy()
+                    if self.galaxy.velocities is not None
+                    else None
+                )
+            else:
+                # Subsequent snapshots: no positions, reference first snapshot
+                stellar_positions = np.array([])
+                initial_positions = None  # Reference first snapshot
+                stellar_velocities = None  # Reference first snapshot
+        else:
+            # No delta compression: store full positions
+            stellar_positions = (
+                self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([])
+            )
+            initial_positions = None
+            stellar_velocities = None
+
         snapshot = SimulationSnapshot(
             time_myr=self.current_time_myr,
             active_civilizations=active_civs,
@@ -2477,9 +2544,7 @@ class GalaxySimulation:
                 len(c.colonized_stars) for c in self.civilizations if c.is_active
             ),
             civilization_states=[c for c in self.civilizations],
-            stellar_positions=(
-                self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([])
-            ),
+            stellar_positions=stellar_positions,
             stellar_ages=(
                 self.galaxy.ages.copy() if self.galaxy.ages is not None else None
             ),
@@ -2491,6 +2556,10 @@ class GalaxySimulation:
             battle_events=battle_events_since_snapshot,
             colony_positions=colony_positions,
             civ_birth_ages=civ_birth_ages,
+            use_delta_compression=use_delta,
+            reference_time_myr=0.0,
+            stellar_velocities=stellar_velocities,
+            initial_positions=initial_positions,
         )
 
         self._last_snapshot_time_myr = self.current_time_myr
