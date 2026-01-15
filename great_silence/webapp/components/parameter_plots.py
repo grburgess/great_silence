@@ -64,14 +64,14 @@ class ParameterPlots:
                 self._select1 = ui.select(
                     options={k: v for k, v in PLOT_OPTIONS},
                     value=self._plot1_type,
-                    on_change=lambda e: self._on_plot_select(1, e.args[0]),
+                    on_change=lambda e: self._on_plot_select(1, e.value),
                 ).classes('w-40').props('dense dark outlined')
 
                 ui.label('Plot 2:').classes('text-gray-400 text-sm self-center ml-4')
                 self._select2 = ui.select(
                     options={k: v for k, v in PLOT_OPTIONS},
                     value=self._plot2_type,
-                    on_change=lambda e: self._on_plot_select(2, e.args[0]),
+                    on_change=lambda e: self._on_plot_select(2, e.value),
                 ).classes('w-40').props('dense dark outlined')
 
             with ui.column().classes('w-full gap-4'):
