@@ -6,66 +6,20 @@ from pathlib import Path
 from .state import app_state
 from .components import PresetSelector, BasicSettings, SimulationRunner, ConfigPanels, ResultsDashboard, ParameterPlots
 from .config_io import create_load_config_dialog, create_save_config_dialog, create_save_preset_dialog
+from .themes import SPACE_THEMES, get_theme_css, get_base_css, get_theme_options
 
 
-def apply_dark_theme():
+def apply_dark_theme(theme_name: str = "deep_space"):
     """Apply dark space theme to the application."""
-    ui.add_head_html("""
+    base_css = get_base_css()
+    theme_css = get_theme_css(theme_name)
+
+    ui.add_head_html(f"""
     <style>
-        :root {
-            --q-dark: #1a1a2e;
-            --q-dark-page: #16213e;
-        }
-        body {
-            background: linear-gradient(135deg, #0f0c29 0%, #1a1a2e 50%, #24243e 100%);
-            min-height: 100vh;
-        }
-        .q-card {
-            background: rgba(30, 30, 50, 0.8) !important;
-            border: 1px solid rgba(100, 100, 150, 0.2);
-            backdrop-filter: blur(10px);
-        }
-        .q-expansion-item {
-            background: rgba(30, 30, 50, 0.6) !important;
-        }
-        .q-slider__track {
-            background: rgba(100, 100, 150, 0.3) !important;
-        }
-        .q-slider__selection {
-            background: #06b6d4 !important;
-        }
-        .q-linear-progress__track {
-            background: rgba(100, 100, 150, 0.3) !important;
-        }
-        .q-linear-progress__model {
-            background: linear-gradient(90deg, #06b6d4, #22d3ee) !important;
-        }
-        .nicegui-content {
-            padding: 0 !important;
-        }
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: rgba(30, 30, 50, 0.5);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(100, 100, 150, 0.5);
-            border-radius: 4px;
-        }
-        .star-field {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: -1;
-        }
-        @keyframes twinkle {
-            0%, 100% { opacity: 0.3; }
-            50% { opacity: 1; }
-        }
+        {base_css}
+    </style>
+    <style id="theme-styles">
+        {theme_css}
     </style>
     """)
 
@@ -79,12 +33,28 @@ def refresh_ui_from_state():
 @ui.page("/")
 def main_page():
     """Main application page."""
-    apply_dark_theme()
+    apply_dark_theme(app_state.current_theme)
     ui.dark_mode().enable()
+
+    ui.html('<div class="theme-bg-effect"></div>')
 
     load_dialog = create_load_config_dialog(on_load_callback=refresh_ui_from_state)
     save_dialog = create_save_config_dialog()
     preset_dialog = create_save_preset_dialog()
+
+    def on_theme_change(theme_name: str):
+        """Handle theme change from dropdown."""
+        app_state.set_theme(theme_name)
+        theme_css = get_theme_css(theme_name)
+        escaped_css = theme_css.replace('`', '\\`').replace('${', '\\${')
+        ui.run_javascript(f"""
+            const styleEl = document.getElementById('theme-styles');
+            if (styleEl) {{
+                styleEl.textContent = `{escaped_css}`;
+            }}
+        """)
+        theme = SPACE_THEMES.get(theme_name, SPACE_THEMES["deep_space"])
+        ui.notify(f"{theme['icon']} {theme['name']} theme applied", type="positive", position="top")
 
     with ui.header().classes(
         "bg-gray-900/80 backdrop-blur-sm border-b border-gray-700/50 items-center"
@@ -99,6 +69,12 @@ def main_page():
                 ui.label("Galactic Civilization Simulator").classes("text-gray-500 text-xs")
 
             ui.space()
+
+            ui.select(
+                options={t["value"]: t["label"] for t in get_theme_options()},
+                value=app_state.current_theme,
+                on_change=lambda e: on_theme_change(e.value),
+            ).props("dense dark outlined").classes("w-44").tooltip("Select Theme")
 
             with ui.button_group().props("flat"):
                 ui.button(icon="folder_open", on_click=load_dialog.open).props("flat").tooltip(

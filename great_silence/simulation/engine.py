@@ -2580,31 +2580,27 @@ class GalaxySimulation:
                     )
                     colony_positions.append((civ.civ_id, pos.copy()))
 
-        # Determine if we should use delta compression (stellar motion enabled)
-        use_delta = self.config.simulation.enable_stellar_motion
+        # When stellar motion is enabled, store actual evolved positions in each snapshot
+        # (not delta compression, which uses broken linear interpolation)
+        # When stellar motion is disabled, positions don't change so we can use delta compression
+        use_delta = not self.config.simulation.enable_stellar_motion
         is_first_snapshot = len(self.snapshots) == 0
         
         if use_delta:
             if is_first_snapshot:
-                # First snapshot: store initial positions and velocities
-                stellar_positions = np.array([])  # Empty - use get_positions()
-                initial_positions = (
-                    self.galaxy.initial_positions.copy()
-                    if hasattr(self.galaxy, 'initial_positions') and self.galaxy.initial_positions is not None
-                    else self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([])
+                # First snapshot: store initial positions (they won't change)
+                stellar_positions = (
+                    self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([])
                 )
-                stellar_velocities = (
-                    self.galaxy.velocities.copy()
-                    if self.galaxy.velocities is not None
-                    else None
-                )
+                initial_positions = stellar_positions.copy() if len(stellar_positions) > 0 else None
+                stellar_velocities = None  # Not needed for visualization when motion disabled
             else:
-                # Subsequent snapshots: no positions, reference first snapshot
+                # Subsequent snapshots: reference first (positions unchanged)
                 stellar_positions = np.array([])
-                initial_positions = None  # Reference first snapshot
-                stellar_velocities = None  # Reference first snapshot
+                initial_positions = None
+                stellar_velocities = None
         else:
-            # No delta compression: store full positions
+            # Stellar motion enabled: store actual evolved positions each snapshot
             stellar_positions = (
                 self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([])
             )

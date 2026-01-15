@@ -43,7 +43,9 @@ class AppState:
         self.progress = SimulationProgress()
         self.simulation = None
         self.results = None
+        self.current_theme: str = "deep_space"
         self._update_callbacks: List[callable] = []
+        self._theme_callbacks: List[callable] = []
         self._lock = asyncio.Lock()
 
     def apply_preset(self, preset_name: str) -> None:
@@ -87,6 +89,19 @@ class AppState:
     def on_update(self, callback: callable) -> None:
         """Register a callback for state updates."""
         self._update_callbacks.append(callback)
+
+    def on_theme_change(self, callback: callable) -> None:
+        """Register a callback for theme changes."""
+        self._theme_callbacks.append(callback)
+
+    def set_theme(self, theme_name: str) -> None:
+        """Set the current theme."""
+        self.current_theme = theme_name
+        for callback in self._theme_callbacks:
+            try:
+                callback(theme_name)
+            except Exception:
+                pass
 
     def _notify_update(self) -> None:
         """Notify all registered callbacks of state change."""
