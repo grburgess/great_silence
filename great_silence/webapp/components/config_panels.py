@@ -225,6 +225,8 @@ class ConfigPanels:
                              "Amplitude of spiral perturbation")
                 create_toggle("Enable Bar", "enable_bar", cfg,
                              "Include central bar structure")
+                create_dropdown("Velocity Init Mode", "velocity_init_mode", cfg, ["simple", "jeans"],
+                               "Velocity initialization: simple (circular) or jeans (equilibrium)")
 
             with ui.expansion("Habitable Zone", value=False).classes("w-full bg-gray-800/50"):
                 create_slider("Min Habitable Mass", "habitable_mass_min_msun", cfg, 0.3, 0.8, 0.05, "M☉",
@@ -485,7 +487,13 @@ class ConfigPanels:
 
             with ui.expansion("Physics Options", value=False).classes("w-full bg-gray-800/50"):
                 create_toggle("Stellar Motion", "enable_stellar_motion", cfg,
-                             "Enable gravitational evolution (EXPERIMENTAL)")
+                             "Enable gravitational evolution of stellar positions")
+                create_toggle("Motion Use Numba", "stellar_motion_use_numba", cfg,
+                             "Use Numba kernels for position evolution (10-20x faster)")
+                create_toggle("Probe Intercepts", "probe_intercept_enabled", cfg,
+                             "Probes predict intercept position for moving targets")
+                create_toggle("Disaster Tracking", "disaster_track_parent_star", cfg,
+                             "Disasters occur at parent star's current position")
                 create_toggle("Star Formation", "enable_star_formation", cfg,
                              "Enable continuous star formation")
 
