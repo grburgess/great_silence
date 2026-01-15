@@ -133,8 +133,11 @@ def main_page():
 
     global basic_settings_component, parameter_plots_component
 
-    with ui.element('div').classes("w-full flex flex-row gap-4 p-4").style("max-width: 1600px; margin: 0 auto;"):
-        with ui.column().classes("gap-4").style("flex: 3; min-width: 0;"):
+    with ui.element('div').classes("w-full flex flex-row gap-4 p-4").style("max-width: 1800px; margin: 0 auto;"):
+        with ui.column().classes("gap-4").style("flex: 1; min-width: 0;"):
+            parameter_plots_component = ParameterPlots()
+
+        with ui.column().classes("gap-4").style("flex: 1; min-width: 0;"):
             with ui.card().classes("w-full bg-gradient-to-r from-cyan-900/20 to-purple-900/20"):
                 ui.label(
                     "Explore the Fermi Paradox through Monte Carlo simulation of "
@@ -165,9 +168,6 @@ def main_page():
 
             sim_runner = SimulationRunner()
             sim_runner.on_complete = on_simulation_complete
-
-        with ui.column().classes("gap-4").style("flex: 2; min-width: 400px;"):
-            parameter_plots_component = ParameterPlots()
 
     with ui.footer().classes("bg-gray-900/50 border-t border-gray-700/50"):
         with ui.row().classes("w-full max-w-6xl mx-auto items-center px-4 py-2"):
