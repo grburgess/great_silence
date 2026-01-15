@@ -7,7 +7,13 @@ from dataclasses import fields
 from ..state import app_state
 
 
-_global_on_change: Optional[Callable[[], None]] = None
+_on_change_callback: Optional[Callable[[], None]] = None
+
+
+def set_change_callback(callback: Optional[Callable[[], None]]) -> None:
+    """Set the global change callback."""
+    global _on_change_callback
+    _on_change_callback = callback
 
 
 def create_slider(
@@ -41,17 +47,19 @@ def create_slider(
             display_text = f"{current_val:.3g} {unit}".strip()
         value_label = ui.label(display_text).classes("w-28 text-right text-cyan-400 font-mono text-sm")
 
-        def on_change(e, pname=param_name, cfg=config_obj, vlbl=value_label, fmt=format_fn, u=unit, sl=slider):
-            val = e.args if isinstance(e.args, (int, float)) else sl.value
-            setattr(cfg, pname, val)
-            if fmt:
-                vlbl.text = fmt(val)
-            else:
-                vlbl.text = f"{val:.3g} {u}".strip()
-            if _global_on_change:
-                _global_on_change()
+        def make_handler(pname, cfg, vlbl, fmt, u, sl):
+            def handler(e):
+                val = e.args if isinstance(e.args, (int, float)) else sl.value
+                setattr(cfg, pname, val)
+                if fmt:
+                    vlbl.text = fmt(val)
+                else:
+                    vlbl.text = f"{val:.3g} {u}".strip()
+                if _on_change_callback:
+                    _on_change_callback()
+            return handler
 
-        slider.on("update:model-value", on_change)
+        slider.on("update:model-value", make_handler(param_name, config_obj, value_label, format_fn, unit, slider))
 
 
 def create_number_input(
@@ -81,14 +89,16 @@ def create_number_input(
         if unit:
             ui.label(unit).classes("text-gray-500 text-sm")
 
-        def on_change(e, pname=param_name, cfg=config_obj, ni=num_input):
-            val = e.args if isinstance(e.args, (int, float)) else ni.value
-            if val is not None:
-                setattr(cfg, pname, type(getattr(cfg, pname))(val))
-                if _global_on_change:
-                    _global_on_change()
+        def make_handler(pname, cfg, ni):
+            def handler(e):
+                val = e.args if isinstance(e.args, (int, float)) else ni.value
+                if val is not None:
+                    setattr(cfg, pname, type(getattr(cfg, pname))(val))
+                    if _on_change_callback:
+                        _on_change_callback()
+            return handler
 
-        num_input.on("update:model-value", on_change)
+        num_input.on("update:model-value", make_handler(param_name, config_obj, num_input))
 
 
 def create_toggle(
@@ -107,13 +117,15 @@ def create_toggle(
 
         toggle = ui.switch(value=current_val).classes("text-cyan-400")
 
-        def on_change(e, pname=param_name, cfg=config_obj, tg=toggle):
-            val = e.args if isinstance(e.args, bool) else tg.value
-            setattr(cfg, pname, val)
-            if _global_on_change:
-                _global_on_change()
+        def make_handler(pname, cfg, tg):
+            def handler(e):
+                val = e.args if isinstance(e.args, bool) else tg.value
+                setattr(cfg, pname, val)
+                if _on_change_callback:
+                    _on_change_callback()
+            return handler
 
-        toggle.on("update:model-value", on_change)
+        toggle.on("update:model-value", make_handler(param_name, config_obj, toggle))
 
 
 def create_dropdown(
@@ -133,21 +145,22 @@ def create_dropdown(
 
         select = ui.select(options, value=current_val).classes("w-40").props("dense outlined dark")
 
-        def on_change(e, pname=param_name, cfg=config_obj, sel=select):
-            val = e.args if e.args is not None else sel.value
-            setattr(cfg, pname, val)
-            if _global_on_change:
-                _global_on_change()
+        def make_handler(pname, cfg, sel):
+            def handler(e):
+                val = e.value if hasattr(e, 'value') else sel.value
+                setattr(cfg, pname, val)
+                if _on_change_callback:
+                    _on_change_callback()
+            return handler
 
-        select.on("update:model-value", on_change)
+        select.on_change(make_handler(param_name, config_obj, select))
 
 
 class ConfigPanels:
     """Hierarchical configuration panels for all simulation parameters."""
 
     def __init__(self, on_change: Optional[Callable[[], None]] = None):
-        global _global_on_change
-        _global_on_change = on_change
+        set_change_callback(on_change)
         self._build()
 
     def _build(self) -> None:
