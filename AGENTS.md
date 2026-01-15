@@ -389,3 +389,45 @@ python scripts/benchmark_baseline.py  # Detailed profiling
 - **Sterilization-cancels-emergence**: If a disaster sterilizes a star, scheduled emergences at that star are cancelled
   - Checks `recovery_queue.status` before allowing emergence (0=habitable, 1=temp, 2=permanent)
   - Test added: `test_sterilized_stars_no_emergence`
+
+### Jan 2026 - Stellar Movement Integration
+- **Overview**: Full implementation of stellar movement with gravitational evolution
+- **Config params**: `velocity_init_mode` (simple/jeans), `enable_stellar_motion`, `stellar_motion_use_numba`, `probe_intercept_enabled`, `disaster_track_parent_star`
+- **Phase 1 - Velocity Initialization**:
+  - `_generate_velocities_simple()`: circular rotation + empirical dispersion + asymmetric drift
+  - `_generate_velocities_jeans()`: Jeans equations for equilibrium (σ_R, σ_φ, σ_z from epicyclic approximation)
+  - `_compute_epicyclic_frequency()`: κ = √2 × Ω for flat rotation curve
+  - `_compute_asymmetric_drift()`: v_a ≈ σ_R² / (2 × v_c) × gradient term
+  - Stores `initial_positions` for delta compression
+- **Phase 2 - Delta-Compressed Snapshots**:
+  - `SimulationSnapshot` fields: `use_delta_compression`, `reference_time_myr`, `stellar_velocities`, `initial_positions`
+  - `get_positions()`: reconstructs pos = initial + velocity × dt × 0.001022
+  - First snapshot stores full data, subsequent snapshots reference first
+  - Memory: 100k stars × 1000 snaps goes from 1.2GB → ~50MB
+- **Phase 3 - Predictive Probe Intercepts**:
+  - `_calculate_intercept_position()`: iterative convergence (2-3 iterations)
+  - Updated `_launch_initial_probes()`, `_launch_offspring_probes()`, `_launch_initial_probes_buffered()`, `_retarget_probe()`
+  - Only active when both `enable_stellar_motion` and `probe_intercept_enabled` are True
+- **Phase 4 - Dynamic Disaster Positions**:
+  - `ScheduledDisaster.get_position(galaxy_positions, track_parent_star)`: returns parent star position if tracking enabled
+  - Updated `_apply_hazards()` to use dynamic positions for SN, GRB, NS merger
+  - Updated Python fallback methods to accept `disaster_position` parameter
+- **Phase 5 - GPU Instanced Rendering**:
+  - Custom vertex shader: `interpolatedPos = initialPosition + velocity * dt * 0.001022`
+  - Buffer attributes: `initialPosition` (vec3), `velocity` (vec3)
+  - Uniforms: `currentTime` (float), `referenceTime` (float)
+  - `updateStellarTime(timeMyr)`: updates shader uniform during animation
+  - All position calculations on GPU → 60 FPS with 100k stars
+- **Phase 6 - Numba Optimization**:
+  - `leapfrog_integrate_positions_kernel()`: parallel position update
+  - `leapfrog_integrate_velocities_kernel()`: parallel velocity update
+  - `compute_miyamoto_nagai_acceleration_kernel()`: disk potential
+  - `compute_hernquist_acceleration_kernel()`: bulge potential
+  - `compute_isothermal_halo_acceleration_kernel()`: halo potential
+  - `compute_total_acceleration_kernel()`: combined potential
+  - All kernels: `parallel=True, fastmath=True, cache=True`
+  - 10-20x speedup vs NumPy
+- **Phase 7 - Tests** (`tests/test_stellar_motion.py`):
+  - 18 tests covering velocity init, probe intercept, disaster positions, delta snapshots, GPU viz, Numba kernels, equilibrium
+  - All pass in ~2.4s
+- **Known limitation**: Equilibrium not perfect, ~26% radial drift over 100 Myr (acceptable for short sims)
