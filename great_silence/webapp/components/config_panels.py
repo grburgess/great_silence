@@ -7,13 +7,7 @@ from dataclasses import fields
 from ..state import app_state
 
 
-_on_change_callback: Optional[Callable[[], None]] = None
-
-
-def set_change_callback(callback: Optional[Callable[[], None]]) -> None:
-    """Set the global change callback."""
-    global _on_change_callback
-    _on_change_callback = callback
+_current_callback: Optional[Callable[[], None]] = None
 
 
 def create_slider(
@@ -26,11 +20,14 @@ def create_slider(
     unit: str = "",
     tooltip: str = "",
     format_fn: Callable[[float], str] = None,
+    on_change: Optional[Callable[[], None]] = None,
 ) -> None:
     """Create a labeled slider for a config parameter."""
     current_val = getattr(config_obj, param_name)
     if step is None:
         step = (max_val - min_val) / 100
+
+    callback = on_change or _current_callback
 
     with ui.row().classes("w-full items-center gap-2"):
         lbl = ui.label(label).classes("w-48 text-gray-300 text-sm")
@@ -47,7 +44,7 @@ def create_slider(
             display_text = f"{current_val:.3g} {unit}".strip()
         value_label = ui.label(display_text).classes("w-28 text-right text-cyan-400 font-mono text-sm")
 
-        def make_handler(pname, cfg, vlbl, fmt, u, sl):
+        def make_handler(pname, cfg, vlbl, fmt, u, sl, cb):
             def handler(e):
                 val = e.args if isinstance(e.args, (int, float)) else sl.value
                 setattr(cfg, pname, val)
@@ -55,11 +52,11 @@ def create_slider(
                     vlbl.text = fmt(val)
                 else:
                     vlbl.text = f"{val:.3g} {u}".strip()
-                if _on_change_callback:
-                    _on_change_callback()
+                if cb:
+                    cb()
             return handler
 
-        slider.on("update:model-value", make_handler(param_name, config_obj, value_label, format_fn, unit, slider))
+        slider.on("update:model-value", make_handler(param_name, config_obj, value_label, format_fn, unit, slider, callback))
 
 
 def create_number_input(
@@ -71,9 +68,11 @@ def create_number_input(
     step: float = 1,
     unit: str = "",
     tooltip: str = "",
+    on_change: Optional[Callable[[], None]] = None,
 ) -> None:
     """Create a labeled number input for a config parameter."""
     current_val = getattr(config_obj, param_name)
+    callback = on_change or _current_callback
 
     with ui.row().classes("w-full items-center gap-2"):
         lbl = ui.label(label).classes("w-48 text-gray-300 text-sm")
@@ -89,16 +88,16 @@ def create_number_input(
         if unit:
             ui.label(unit).classes("text-gray-500 text-sm")
 
-        def make_handler(pname, cfg, ni):
+        def make_handler(pname, cfg, ni, cb):
             def handler(e):
                 val = e.args if isinstance(e.args, (int, float)) else ni.value
                 if val is not None:
                     setattr(cfg, pname, type(getattr(cfg, pname))(val))
-                    if _on_change_callback:
-                        _on_change_callback()
+                    if cb:
+                        cb()
             return handler
 
-        num_input.on("update:model-value", make_handler(param_name, config_obj, num_input))
+        num_input.on("update:model-value", make_handler(param_name, config_obj, num_input, callback))
 
 
 def create_toggle(
@@ -106,9 +105,11 @@ def create_toggle(
     param_name: str,
     config_obj: Any,
     tooltip: str = "",
+    on_change: Optional[Callable[[], None]] = None,
 ) -> None:
     """Create a labeled toggle for a boolean config parameter."""
     current_val = getattr(config_obj, param_name)
+    callback = on_change or _current_callback
 
     with ui.row().classes("w-full items-center gap-2"):
         lbl = ui.label(label).classes("w-48 text-gray-300 text-sm")
@@ -117,15 +118,15 @@ def create_toggle(
 
         toggle = ui.switch(value=current_val).classes("text-cyan-400")
 
-        def make_handler(pname, cfg, tg):
+        def make_handler(pname, cfg, tg, cb):
             def handler(e):
                 val = e.args if isinstance(e.args, bool) else tg.value
                 setattr(cfg, pname, val)
-                if _on_change_callback:
-                    _on_change_callback()
+                if cb:
+                    cb()
             return handler
 
-        toggle.on("update:model-value", make_handler(param_name, config_obj, toggle))
+        toggle.on("update:model-value", make_handler(param_name, config_obj, toggle, callback))
 
 
 def create_dropdown(
@@ -134,9 +135,11 @@ def create_dropdown(
     config_obj: Any,
     options: list,
     tooltip: str = "",
+    on_change: Optional[Callable[[], None]] = None,
 ) -> None:
     """Create a labeled dropdown for a config parameter."""
     current_val = getattr(config_obj, param_name)
+    callback = on_change or _current_callback
 
     with ui.row().classes("w-full items-center gap-2"):
         lbl = ui.label(label).classes("w-48 text-gray-300 text-sm")
@@ -145,22 +148,24 @@ def create_dropdown(
 
         select = ui.select(options, value=current_val).classes("w-40").props("dense outlined dark")
 
-        def make_handler(pname, cfg, sel):
+        def make_handler(pname, cfg, sel, cb):
             def handler(e):
                 val = e.value if hasattr(e, 'value') else sel.value
                 setattr(cfg, pname, val)
-                if _on_change_callback:
-                    _on_change_callback()
+                if cb:
+                    cb()
             return handler
 
-        select.on("update:model-value", make_handler(param_name, config_obj, select))
+        select.on("update:model-value", make_handler(param_name, config_obj, select, callback))
 
 
 class ConfigPanels:
     """Hierarchical configuration panels for all simulation parameters."""
 
     def __init__(self, on_change: Optional[Callable[[], None]] = None):
-        set_change_callback(on_change)
+        global _current_callback
+        _current_callback = on_change
+        self._on_change = on_change
         self._build()
 
     def _build(self) -> None:
