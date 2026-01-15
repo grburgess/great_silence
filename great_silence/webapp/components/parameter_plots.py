@@ -46,58 +46,31 @@ class ParameterPlots:
     """Component for displaying interactive parameter visualization plots."""
 
     def __init__(self, on_ready: Optional[Callable] = None):
-        self._plot1_type = 'kardashev'
-        self._plot2_type = 'drake'
-        self._plot1_container = None
-        self._plot2_container = None
+        self._plot_types = ['kardashev', 'drake', 'hazards', 'habitable']
+        self._plot_containers = []
         self._on_ready = on_ready
         self._build()
 
     def _build(self) -> None:
-        with ui.card().classes('w-full h-full'):
+        with ui.card().classes('w-full'):
             ui.label('📊 Parameter Visualization').classes(
                 'text-lg font-semibold text-gray-300 mb-2'
             )
 
-            with ui.row().classes('w-full gap-2 mb-2'):
-                ui.label('Plot 1:').classes('text-gray-400 text-sm self-center')
-                self._select1 = ui.select(
-                    options={k: v for k, v in PLOT_OPTIONS},
-                    value=self._plot1_type,
-                    on_change=lambda e: self._on_plot_select(1, e.value),
-                ).classes('w-40').props('dense dark outlined')
-
-                ui.label('Plot 2:').classes('text-gray-400 text-sm self-center ml-4')
-                self._select2 = ui.select(
-                    options={k: v for k, v in PLOT_OPTIONS},
-                    value=self._plot2_type,
-                    on_change=lambda e: self._on_plot_select(2, e.value),
-                ).classes('w-40').props('dense dark outlined')
-
-            with ui.column().classes('w-full gap-4'):
-                self._plot1_container = ui.column().classes('w-full')
-                self._plot2_container = ui.column().classes('w-full')
+            with ui.element('div').classes('w-full grid grid-cols-2 gap-2'):
+                for i in range(4):
+                    container = ui.column().classes('w-full')
+                    self._plot_containers.append(container)
 
             self.refresh()
 
-    def _on_plot_select(self, plot_num: int, value: str) -> None:
-        if plot_num == 1:
-            self._plot1_type = value
-        else:
-            self._plot2_type = value
-        self.refresh()
-
     def refresh(self) -> None:
-        """Refresh both plots with current config values."""
-        self._plot1_container.clear()
-        with self._plot1_container:
-            fig1 = self._create_plot(self._plot1_type)
-            ui.plotly(fig1).classes('w-full h-72')
-
-        self._plot2_container.clear()
-        with self._plot2_container:
-            fig2 = self._create_plot(self._plot2_type)
-            ui.plotly(fig2).classes('w-full h-72')
+        """Refresh all 4 plots with current config values."""
+        for i, container in enumerate(self._plot_containers):
+            container.clear()
+            with container:
+                fig = self._create_plot(self._plot_types[i])
+                ui.plotly(fig).classes('w-full').style('height: 220px;')
 
     def _create_plot(self, plot_type: str) -> go.Figure:
         if plot_type == 'kardashev':
@@ -184,7 +157,7 @@ class ParameterPlots:
                 x=1,
                 font=dict(size=9),
             ),
-            height=280,
+            height=200,
             **DARK_THEME,
         )
 
@@ -235,7 +208,7 @@ class ParameterPlots:
 
         fig.update_layout(
             title='Drake Equation Emergence Probability',
-            height=280,
+            height=200,
             **DARK_THEME,
         )
 
@@ -301,7 +274,7 @@ class ParameterPlots:
             yaxis_type='log',
             xaxis=dict(range=[-1, 2], **DARK_THEME['xaxis']),
             yaxis=dict(range=[-4, 0.1], **DARK_THEME['yaxis']),
-            height=280,
+            height=200,
             showlegend=False,
             **{k: v for k, v in DARK_THEME.items() if k not in ['xaxis', 'yaxis']},
         )
@@ -352,7 +325,7 @@ class ParameterPlots:
             yaxis_title='Range (parsecs)',
             yaxis_type='log',
             barmode='group',
-            height=280,
+            height=200,
             legend=dict(
                 orientation='h',
                 yanchor='bottom',
@@ -456,7 +429,7 @@ class ParameterPlots:
             yaxis_type='log',
             xaxis=dict(range=[-1, 2], **DARK_THEME['xaxis']),
             yaxis=dict(range=[-4, 0.1], **DARK_THEME['yaxis']),
-            height=280,
+            height=200,
             showlegend=False,
             **{k: v for k, v in DARK_THEME.items() if k not in ['xaxis', 'yaxis']},
         )
