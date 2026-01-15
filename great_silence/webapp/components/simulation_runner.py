@@ -19,7 +19,7 @@ class SimulationRunner:
         self._progress_bar = None
         self._progress_label = None
         self._stats_container = None
-        self._events_container = None
+        self._events_log = None
         self._is_cancelled = False
         self._simulation_thread = None
         self._simulation_done = False
@@ -105,7 +105,7 @@ class SimulationRunner:
                 self._events_card.visible = False
 
                 ui.label("📡 Event Feed").classes("text-sm font-semibold text-gray-400 mb-2")
-                self._events_container = ui.column().classes("w-full gap-1 max-h-40 overflow-auto")
+                self._events_log = ui.log(max_lines=30).classes("w-full h-40 bg-gray-950 text-sm")
 
     def _start_simulation(self) -> None:
         self._is_cancelled = False
@@ -123,7 +123,7 @@ class SimulationRunner:
         with self._events_lock:
             self._events_list = []
             self._displayed_event_count = 0
-        self._events_container.clear()
+        self._events_log.clear()
         self._start_time = time.time()
         self._last_civs = 0
         self._last_extinctions = 0
@@ -293,7 +293,4 @@ class SimulationRunner:
             self._displayed_event_count = len(self._events_list)
 
         for time_gyr, event_type, description, color in new_events:
-            with self._events_container:
-                with ui.row().classes("w-full gap-2 items-center"):
-                    ui.label(f"[{time_gyr:.2f} Gyr]").classes("text-xs text-gray-500 font-mono w-20")
-                    ui.label(description).classes(f"text-sm {color}")
+            self._events_log.push(f"[{time_gyr:6.2f} Gyr] {description}")
