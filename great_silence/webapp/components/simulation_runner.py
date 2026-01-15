@@ -4,7 +4,8 @@ from nicegui import ui, run
 import asyncio
 import time
 import threading
-from typing import Optional
+from threading import Lock
+from typing import Optional, List, Tuple
 
 from ..state import app_state, SimulationEvent
 
@@ -25,7 +26,9 @@ class SimulationRunner:
         self._simulation_error = None
         self._update_timer = None
         self.on_complete = None
-        self._events_list = []
+        self._events_list: List[Tuple[float, str, str, str]] = []
+        self._events_lock = Lock()
+        self._displayed_event_count = 0
         self._build()
 
     def _build(self) -> None:
@@ -117,7 +120,9 @@ class SimulationRunner:
         app_state.reset_progress()
         app_state.progress.is_running = True
 
-        self._events_list = []
+        with self._events_lock:
+            self._events_list = []
+            self._displayed_event_count = 0
         self._events_container.clear()
         self._start_time = time.time()
         self._last_civs = 0
@@ -132,6 +137,7 @@ class SimulationRunner:
         app_state.simulation = self._sim
 
         self._add_event(0.0, "init", f"🌌 Initializing galaxy with {config.galaxy.total_stars:,} stars...")
+        self._render_new_events()
 
         def run_simulation_thread():
             try:
@@ -154,6 +160,7 @@ class SimulationRunner:
             if self._update_timer:
                 self._update_timer.deactivate()
             self._add_event(0.0, "error", f"❌ Error: {self._simulation_error}")
+            self._render_new_events()
             self._finish_simulation()
             return
 
@@ -196,6 +203,8 @@ class SimulationRunner:
                 self._add_event(current_gyr, "extinction", f"💀 {new_deaths} civilization(s) went extinct")
                 self._last_extinctions = extinctions
 
+            self._render_new_events()
+
         except Exception:
             pass
 
@@ -214,6 +223,7 @@ class SimulationRunner:
                     "complete",
                     f"✅ Complete! {total} civilizations emerged, {active} survived",
                 )
+                self._render_new_events()
 
             self._finish_simulation()
 
@@ -251,6 +261,7 @@ class SimulationRunner:
                 "cancel",
                 "⏹️ Simulation cancelled (background thread may still be running)"
             )
+            self._render_new_events()
         
         app_state.progress.is_running = False
         self._run_button.visible = True
@@ -270,16 +281,18 @@ class SimulationRunner:
         }
         color = colors.get(event_type, "text-gray-400")
 
-        self._events_list.append((time_gyr, event_type, description, color))
-        self._refresh_events_display()
+        with self._events_lock:
+            self._events_list.append((time_gyr, event_type, description, color))
 
         app_state.add_event(SimulationEvent(time_gyr, event_type, description))
 
-    def _refresh_events_display(self) -> None:
-        """Refresh the events display from the events list."""
-        self._events_container.clear()
-        
-        for time_gyr, event_type, description, color in self._events_list[-20:]:
+    def _render_new_events(self) -> None:
+        """Render only new events that haven't been displayed yet."""
+        with self._events_lock:
+            new_events = self._events_list[self._displayed_event_count:]
+            self._displayed_event_count = len(self._events_list)
+
+        for time_gyr, event_type, description, color in new_events:
             with self._events_container:
                 with ui.row().classes("w-full gap-2 items-center"):
                     ui.label(f"[{time_gyr:.2f} Gyr]").classes("text-xs text-gray-500 font-mono w-20")
