@@ -54,6 +54,7 @@ class ThreeJSRenderer:
                 for snapshot in self.extractor.snapshots:
                     frame_data = {
                         "time": snapshot["time"],
+                        "time_myr": snapshot.get("time_myr", snapshot["time"] * 1000),
                         "civilizations": snapshot.get(
                             "civilizations", []
                         ),
@@ -61,6 +62,9 @@ class ThreeJSRenderer:
                         "hazards": snapshot.get("hazards", []),
                         "trajectories": snapshot.get("trajectories", []),
                     }
+                    # Include stellar positions if available (for stellar motion)
+                    if "stellar_positions" in snapshot and snapshot["stellar_positions"]:
+                        frame_data["stellar_positions"] = snapshot["stellar_positions"]
                     frames.append(frame_data)
 
             self.data = {

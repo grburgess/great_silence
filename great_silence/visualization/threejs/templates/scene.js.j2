@@ -398,6 +398,11 @@ function updateAnimation(delta) {
     const frame = window.animationData.frames[currentFrame];
     
     if (frame) {
+        // Update stellar positions from snapshot (for physically-correct stellar motion)
+        if (frame.stellar_positions && starGeometry) {
+            updateStellarPositions(frame.stellar_positions);
+        }
+        
         updateCivilizations(frame.civilizations);
         updateProbes(frame.probes);
         updateHazards(frame.hazards);
@@ -408,6 +413,22 @@ function updateAnimation(delta) {
     const activeCivs = frame.civilizations ? frame.civilizations.filter(c => c.is_active).length : 0;
     const totalCivs = frame.civilizations ? frame.civilizations.length : 0;
     civilStats.textContent = `Active: ${activeCivs} | Total: ${totalCivs}`;
+}
+
+// Update star positions from snapshot data (for stellar motion visualization)
+function updateStellarPositions(positions) {
+    if (!starGeometry || !positions || positions.length === 0) return;
+    
+    const positionAttribute = starGeometry.getAttribute('position');
+    if (!positionAttribute) return;
+    
+    const count = Math.min(positions.length, positionAttribute.count);
+    
+    for (let i = 0; i < count; i++) {
+        positionAttribute.setXYZ(i, positions[i][0], positions[i][1], positions[i][2]);
+    }
+    
+    positionAttribute.needsUpdate = true;
 }
 
 function animate() {

@@ -36,7 +36,7 @@ def main_page():
     apply_dark_theme(app_state.current_theme)
     ui.dark_mode().enable()
 
-    ui.html('<div class="theme-bg-effect"></div>')
+    ui.html('<div class="theme-bg-effect"></div>', sanitize=False)
 
     load_dialog = create_load_config_dialog(on_load_callback=refresh_ui_from_state)
     save_dialog = create_save_config_dialog()

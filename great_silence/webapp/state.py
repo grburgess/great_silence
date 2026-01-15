@@ -43,7 +43,7 @@ class AppState:
         self.progress = SimulationProgress()
         self.simulation = None
         self.results = None
-        self.current_theme: str = "deep_space"
+        self.current_theme: str = "event_horizon"
         self._update_callbacks: List[callable] = []
         self._theme_callbacks: List[callable] = []
         self._lock = asyncio.Lock()

@@ -246,9 +246,16 @@ class SimulationDataExtractor:
             # Get galaxy positions as fallback for delta-compressed snapshots
             galaxy_pos = self.simulation_data.get("galaxy_positions", None)
             
-            self.snapshots = [
-                {
+            # Check if stellar motion is enabled (positions change per snapshot)
+            stellar_motion_enabled = False
+            if hasattr(self.source, 'config') and hasattr(self.source.config, 'simulation'):
+                stellar_motion_enabled = getattr(self.source.config.simulation, 'enable_stellar_motion', False)
+            
+            self.snapshots = []
+            for snap in self.source.snapshots:
+                snap_data = {
                     "time": snap.time_myr / 1000.0 if hasattr(snap, 'time_myr') else snap.time_gyr,
+                    "time_myr": snap.time_myr if hasattr(snap, 'time_myr') else snap.time_gyr * 1000,
                     "civilizations": _extract_civ_list(snap, galaxy_pos),
                     "probes": _extract_probe_list(snap),
                     "hazards": _extract_hazard_list(snap),
@@ -256,8 +263,12 @@ class SimulationDataExtractor:
                     "stellar_ages": snap.stellar_ages.tolist() if hasattr(snap, 'stellar_ages') and snap.stellar_ages is not None else None,
                     "use_delta_compression": getattr(snap, 'use_delta_compression', False),
                 }
-                for snap in self.source.snapshots
-            ]
+                
+                # Include stellar positions if motion enabled (positions differ each snapshot)
+                if stellar_motion_enabled and hasattr(snap, 'stellar_positions') and snap.stellar_positions is not None and len(snap.stellar_positions) > 0:
+                    snap_data["stellar_positions"] = snap.stellar_positions.tolist()
+                
+                self.snapshots.append(snap_data)
 
         return self.simulation_data
 
