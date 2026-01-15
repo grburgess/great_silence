@@ -719,18 +719,18 @@ class GalaxySimulation:
         # Check for new civilization emergence (O(log N) with pre-scheduled events)
         self._check_civilization_emergence()
 
+        # Evolve stellar positions (independent of civilizations)
+        if self.config.simulation.enable_stellar_motion:
+            self.galaxy.evolve_positions(
+                dt_myr,
+                use_numba=self.config.simulation.use_numba,
+                enable_motion=True,
+            )
+
         # Fast path: skip civilization-related work when no civs exist
         has_active_civs = self._active_civ_count > 0
         
         if has_active_civs:
-            # Evolve galaxy (stellar motion) - only needed for civ interactions
-            if self.config.simulation.enable_stellar_motion:
-                self.galaxy.evolve_positions(
-                    dt_myr,
-                    use_numba=self.config.simulation.use_numba,
-                    enable_motion=True,
-                )
-
             # Evolve existing civilizations
             self._evolve_civilizations()
 
