@@ -9,6 +9,8 @@ let followTarget = null;
 let followCivId = null;
 let followOffset = new THREE.Vector3(5, 5, 5);
 let followLerpFactor = 0.05;
+let autoFollowEnabled = true;
+let lastKnownCivCount = 0;
 
 let isTourPlaying = false;
 let currentTour = null;
@@ -157,6 +159,8 @@ function setCameraMode(mode) {
 
     if (mode === 'fly') {
         enableFlyControls();
+    } else if (mode === 'follow') {
+        updateFollowTargetList();
     } else if (mode === 'orbit') {
         controls.enabled = true;
     }
@@ -260,51 +264,121 @@ function disableFollowMode() {
 }
 
 function updateFollowMode() {
-    if (cameraMode !== 'follow' || !followCivId) return;
+    if (cameraMode !== 'follow') return;
 
     const frame = window.animationData?.frames[window.currentFrame];
     if (!frame) return;
 
-    const civ = frame.civilizations.find(c => c.civ_id === followCivId);
+    const activeCivs = frame.civilizations.filter(c => c.is_active);
 
-    if (!civ || !civ.is_active) {
-        setCameraMode('orbit');
-        return;
+    if (followCivId) {
+        const civ = frame.civilizations.find(c => c.civ_id === followCivId);
+
+        if (!civ || !civ.is_active) {
+            if (autoFollowEnabled && activeCivs.length > 0) {
+                const nextCiv = activeCivs.sort((a, b) => b.kardashev - a.kardashev)[0];
+                followCivId = nextCiv.civ_id;
+                updateFollowTargetList();
+                showFollowNotification(`Following Civ ${nextCiv.civ_id} (K${nextCiv.kardashev.toFixed(2)})`);
+            } else if (activeCivs.length === 0) {
+                followCivId = null;
+                followTarget = null;
+                showFollowNotification('Waiting for next civilization...');
+            } else {
+                setCameraMode('orbit');
+            }
+            return;
+        }
+
+        const targetPos = new THREE.Vector3(civ.position[0], civ.position[1], civ.position[2]);
+
+        if (!followTarget) {
+            followTarget = targetPos.clone();
+        } else {
+            followTarget.lerp(targetPos, followLerpFactor);
+        }
+
+        controls.target.lerp(followTarget, followLerpFactor);
+
+        const desiredCamPos = followTarget.clone().add(followOffset);
+        camera.position.lerp(desiredCamPos, followLerpFactor * 0.5);
+    } else if (autoFollowEnabled && activeCivs.length > 0) {
+        const newCiv = activeCivs.sort((a, b) => b.kardashev - a.kardashev)[0];
+        enableFollowMode(newCiv.civ_id);
+        showFollowNotification(`Now following Civ ${newCiv.civ_id} (K${newCiv.kardashev.toFixed(2)})`);
     }
 
-    const targetPos = new THREE.Vector3(civ.position[0], civ.position[1], civ.position[2]);
+    lastKnownCivCount = activeCivs.length;
+}
 
-    if (!followTarget) {
-        followTarget = targetPos.clone();
-    } else {
-        followTarget.lerp(targetPos, followLerpFactor);
+function showFollowNotification(message) {
+    let notification = document.getElementById('follow-notification');
+    if (!notification) {
+        notification = document.createElement('div');
+        notification.id = 'follow-notification';
+        notification.style.cssText = `
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid #00ffff;
+            border-radius: 5px;
+            padding: 10px 20px;
+            color: #00ffff;
+            font-size: 13px;
+            z-index: 200;
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 0.5s ease-out;
+        `;
+        document.getElementById('ui-overlay').appendChild(notification);
     }
 
-    controls.target.lerp(followTarget, followLerpFactor);
+    notification.textContent = message;
+    notification.style.opacity = '1';
+    notification.style.display = 'block';
 
-    const desiredCamPos = followTarget.clone().add(followOffset);
-    camera.position.lerp(desiredCamPos, followLerpFactor * 0.5);
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => {
+            notification.style.display = 'none';
+        }, 500);
+    }, 3000);
 }
 
 function updateFollowTargetList() {
     const select = document.getElementById('follow-target-select');
     if (!select) return;
 
-    select.innerHTML = '<option value="">Select civilization...</option>';
-
     const frame = window.animationData?.frames[window.currentFrame];
-    if (!frame) return;
+    const activeCivs = frame ? frame.civilizations.filter(c => c.is_active) : [];
 
-    frame.civilizations
-        .filter(c => c.is_active)
-        .sort((a, b) => b.kardashev - a.kardashev)
-        .forEach(civ => {
-            const option = document.createElement('option');
-            option.value = civ.civ_id;
-            option.textContent = `Civ ${civ.civ_id} (K${civ.kardashev.toFixed(2)})`;
-            if (civ.civ_id === followCivId) option.selected = true;
-            select.appendChild(option);
-        });
+    select.innerHTML = '';
+
+    if (activeCivs.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = autoFollowEnabled ? '⏳ Auto-follow: waiting...' : 'No civilizations yet';
+        option.disabled = true;
+        option.selected = true;
+        select.appendChild(option);
+    } else {
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Select civilization...';
+        select.appendChild(defaultOption);
+
+        activeCivs
+            .sort((a, b) => b.kardashev - a.kardashev)
+            .forEach(civ => {
+                const option = document.createElement('option');
+                option.value = civ.civ_id;
+                option.textContent = `Civ ${civ.civ_id} (K${civ.kardashev.toFixed(2)})`;
+                if (civ.civ_id === followCivId) option.selected = true;
+                select.appendChild(option);
+            });
+    }
 }
 
 function followCivilization(civId) {
@@ -650,3 +724,5 @@ window.toggleTourPlayPause = toggleTourPlayPause;
 window.updateCameraSystem = updateCameraSystem;
 window.getCameraMode = function() { return cameraMode; };
 window.cameraTours = cameraTours;
+window.setAutoFollow = function(enabled) { autoFollowEnabled = enabled; };
+window.getAutoFollow = function() { return autoFollowEnabled; };
