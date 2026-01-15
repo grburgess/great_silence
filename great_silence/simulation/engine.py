@@ -721,11 +721,31 @@ class GalaxySimulation:
 
         # Evolve stellar positions (independent of civilizations)
         if self.config.simulation.enable_stellar_motion:
-            self.galaxy.evolve_positions(
-                dt_myr,
-                use_numba=self.config.simulation.use_numba,
-                enable_motion=True,
-            )
+            if self.config.simulation.stellar_motion_adaptive:
+                # Adaptive individual timesteps - much faster for realistic galaxies
+                # Initialize timesteps on first call
+                if self.galaxy.stellar_timesteps is None:
+                    self.galaxy.initialize_adaptive_timesteps(
+                        eta=self.config.simulation.stellar_motion_eta,
+                        min_dt=self.config.simulation.stellar_motion_min_dt_myr,
+                        max_dt=self.config.simulation.stellar_motion_max_dt_myr,
+                    )
+                self.galaxy.evolve_positions_adaptive(
+                    dt_myr,
+                    use_numba=self.config.simulation.stellar_motion_use_numba,
+                )
+            else:
+                # Legacy sub-cycling mode (slower but simpler)
+                max_dt_stellar = self.config.simulation.stellar_motion_min_dt_myr
+                remaining = dt_myr
+                while remaining > 0:
+                    sub_dt = min(remaining, max_dt_stellar)
+                    self.galaxy.evolve_positions(
+                        sub_dt,
+                        use_numba=self.config.simulation.stellar_motion_use_numba,
+                        enable_motion=True,
+                    )
+                    remaining -= sub_dt
 
         # Fast path: skip civilization-related work when no civs exist
         has_active_civs = self._active_civ_count > 0

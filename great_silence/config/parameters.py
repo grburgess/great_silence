@@ -260,9 +260,11 @@ class SimulationParameters:
     chunk_size: int = 10000
 
     # Physics options
-    enable_stellar_motion: bool = (
-        False  # Enable gravitational evolution of stellar positions (EXPERIMENTAL)
-    )
+    enable_stellar_motion: bool = True  # Enable gravitational evolution of stellar positions
+    stellar_motion_adaptive: bool = True  # Use adaptive individual timesteps (faster, recommended)
+    stellar_motion_eta: float = 0.02  # Accuracy parameter for adaptive timesteps (smaller = more accurate)
+    stellar_motion_min_dt_myr: float = 0.05  # Minimum timestep for adaptive mode (Myr)
+    stellar_motion_max_dt_myr: float = 2.0  # Maximum timestep for adaptive mode (Myr)
     stellar_motion_use_numba: bool = True  # Use Numba kernels for position evolution
     probe_intercept_enabled: bool = True  # Probes calculate intercept position for moving targets
     disaster_track_parent_star: bool = True  # Disasters occur at parent star's current position

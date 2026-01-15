@@ -19,6 +19,17 @@ class ThreeJSConfig:
     auto_rotate: bool = False
     auto_rotate_speed: float = 2.0
 
+    camera_min_distance: float = 5.0
+    camera_max_distance: float = 100.0
+    camera_min_polar_angle: float = 10.0
+    camera_max_polar_angle: float = 170.0
+    camera_max_pan: float = 30.0
+
+    default_loop_mode: str = "repeat"
+    fly_move_speed: float = 0.5
+    fly_boost_multiplier: float = 3.0
+    follow_lerp_factor: float = 0.05
+
     background_color: str = "#000000"
     star_point_size: float = 0.05
     star_opacity: float = 0.8
@@ -85,6 +96,15 @@ class ThreeJSConfig:
             "enable_zoom": self.enable_zoom,
             "auto_rotate": self.auto_rotate,
             "auto_rotate_speed": self.auto_rotate_speed,
+            "camera_min_distance": self.camera_min_distance,
+            "camera_max_distance": self.camera_max_distance,
+            "camera_min_polar_angle": self.camera_min_polar_angle,
+            "camera_max_polar_angle": self.camera_max_polar_angle,
+            "camera_max_pan": self.camera_max_pan,
+            "default_loop_mode": self.default_loop_mode,
+            "fly_move_speed": self.fly_move_speed,
+            "fly_boost_multiplier": self.fly_boost_multiplier,
+            "follow_lerp_factor": self.follow_lerp_factor,
             "background_color": self.background_color,
             "star_point_size": self.star_point_size,
             "star_opacity": self.star_opacity,

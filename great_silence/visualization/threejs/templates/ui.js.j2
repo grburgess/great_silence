@@ -11,8 +11,12 @@ let showTrajectories = true;
 let usePostProcessing = false;
 let downsamplePercent = 0;
 
+let loopMode = 'repeat';
+let playbackDirection = 1;
+
 function initUI() {
     initPlaybackControls();
+    initLoopModeControls();
     initLayerControls();
     initChartToggleControls();
     initDisasterControls();
@@ -22,17 +26,30 @@ function initUI() {
     initRaycaster();
     initMiniMap();
     initDisasterTimeline();
+    initCameraModeControls();
+
+    const savedLoopMode = localStorage.getItem('loopMode');
+    if (savedLoopMode) {
+        setLoopMode(savedLoopMode);
+    }
 }
 
 function initPlaybackControls() {
     const btnPlayPause = document.getElementById('btn-playpause');
     const btnStep = document.getElementById('btn-step');
     const btnReset = document.getElementById('btn-reset');
+    const btnStepBack = document.getElementById('btn-step-back');
+    const btnJumpStart = document.getElementById('btn-jump-start');
+    const btnJumpEnd = document.getElementById('btn-jump-end');
     const timelineSlider = document.getElementById('timeline-slider');
 
     btnPlayPause.addEventListener('click', togglePlayPause);
     btnStep.addEventListener('click', stepForward);
     btnReset.addEventListener('click', resetPlayback);
+
+    if (btnStepBack) btnStepBack.addEventListener('click', stepBackward);
+    if (btnJumpStart) btnJumpStart.addEventListener('click', jumpToStart);
+    if (btnJumpEnd) btnJumpEnd.addEventListener('click', jumpToEnd);
 
     timelineSlider.addEventListener('input', (e) => {
         currentFrame = parseInt(e.target.value);
@@ -41,6 +58,102 @@ function initPlaybackControls() {
             updateFrame(currentFrame);
         }
     });
+}
+
+function initLoopModeControls() {
+    const loopModeSelect = document.getElementById('loop-mode-select');
+    if (loopModeSelect) {
+        loopModeSelect.addEventListener('change', (e) => {
+            setLoopMode(e.target.value);
+        });
+    }
+
+    document.querySelectorAll('.loop-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            setLoopMode(btn.dataset.mode);
+        });
+    });
+}
+
+function setLoopMode(mode) {
+    loopMode = mode;
+    playbackDirection = 1;
+
+    localStorage.setItem('loopMode', mode);
+
+    const loopModeSelect = document.getElementById('loop-mode-select');
+    if (loopModeSelect) loopModeSelect.value = mode;
+
+    document.querySelectorAll('.loop-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+
+    const loopModeDisplay = document.getElementById('loop-mode-display');
+    if (loopModeDisplay) {
+        const modeNames = { once: '⏹ Once', repeat: '🔁 Repeat', pingpong: '🔄 Ping-Pong' };
+        loopModeDisplay.textContent = modeNames[mode] || mode;
+    }
+}
+
+function initCameraModeControls() {
+    const cameraModeSelect = document.getElementById('camera-mode-select');
+    if (cameraModeSelect) {
+        cameraModeSelect.addEventListener('change', (e) => {
+            if (window.setCameraMode) {
+                window.setCameraMode(e.target.value);
+            }
+        });
+    }
+
+    document.querySelectorAll('.camera-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (window.setCameraMode) {
+                window.setCameraMode(btn.dataset.mode);
+            }
+        });
+    });
+
+    const followSelect = document.getElementById('follow-target-select');
+    if (followSelect) {
+        followSelect.addEventListener('change', (e) => {
+            if (e.target.value && window.enableFollowMode) {
+                window.enableFollowMode(parseInt(e.target.value));
+            }
+        });
+    }
+}
+
+function stepBackward() {
+    isPlaying = false;
+    window.isPlaying = false;
+    document.getElementById('btn-playpause').textContent = '▶ Play';
+
+    if (window.animationData) {
+        currentFrame = Math.max(currentFrame - 1, 0);
+        window.currentFrame = currentFrame;
+        document.getElementById('timeline-slider').value = currentFrame;
+        updateFrame(currentFrame);
+    }
+}
+
+function jumpToStart() {
+    currentFrame = 0;
+    window.currentFrame = 0;
+    playbackDirection = 1;
+    document.getElementById('timeline-slider').value = 0;
+    if (window.animationData) {
+        updateFrame(0);
+    }
+}
+
+function jumpToEnd() {
+    if (window.animationData) {
+        currentFrame = window.animationData.frames.length - 1;
+        window.currentFrame = currentFrame;
+        playbackDirection = -1;
+        document.getElementById('timeline-slider').value = currentFrame;
+        updateFrame(currentFrame);
+    }
 }
 
 function initLayerControls() {
@@ -562,16 +675,52 @@ function updateAnimation(delta) {
     const frameDuration = (window.config.frame_duration_ms || 50) / 1000;
     const speedMultiplier = playbackSpeed;
 
-    if (currentFrame < frames.length - 1) {
-        currentFrame += (speedMultiplier * delta) / frameDuration;
-        currentFrame = Math.min(currentFrame, frames.length - 1);
-        
-        const frameIndex = Math.floor(currentFrame);
-        window.currentFrame = frameIndex;
-        document.getElementById('timeline-slider').value = frameIndex;
-        
-        updateFrame(frameIndex);
+    const frameIncrement = (speedMultiplier * delta) / frameDuration * playbackDirection;
+    currentFrame += frameIncrement;
+
+    const maxFrame = frames.length - 1;
+
+    if (currentFrame >= maxFrame) {
+        switch (loopMode) {
+            case 'once':
+                currentFrame = maxFrame;
+                isPlaying = false;
+                window.isPlaying = false;
+                document.getElementById('btn-playpause').textContent = '▶ Play';
+                break;
+            case 'repeat':
+                currentFrame = 0;
+                break;
+            case 'pingpong':
+                currentFrame = maxFrame;
+                playbackDirection = -1;
+                break;
+        }
+    } else if (currentFrame <= 0) {
+        switch (loopMode) {
+            case 'once':
+                currentFrame = 0;
+                isPlaying = false;
+                window.isPlaying = false;
+                document.getElementById('btn-playpause').textContent = '▶ Play';
+                break;
+            case 'repeat':
+                currentFrame = maxFrame;
+                break;
+            case 'pingpong':
+                currentFrame = 0;
+                playbackDirection = 1;
+                break;
+        }
     }
+
+    currentFrame = Math.max(0, Math.min(currentFrame, maxFrame));
+
+    const frameIndex = Math.floor(currentFrame);
+    window.currentFrame = frameIndex;
+    document.getElementById('timeline-slider').value = frameIndex;
+
+    updateFrame(frameIndex);
 }
 
 function updateFrame(frameIndex) {
@@ -590,6 +739,11 @@ function updateFrame(frameIndex) {
     timeDisplay.textContent = frame.time.toFixed(2) + ' Gyr';
     timeStats.textContent = 'Time: ' + frame.time.toFixed(2) + ' Gyr';
     civStats.textContent = 'Active: ' + frame.civilizations.filter(c => c.is_active).length + ' | Total: ' + frame.civilizations.length;
+
+    // Update stellar positions (for stellar motion visualization)
+    if (window.updateStellarPositions && frame.stellar_positions) {
+        window.updateStellarPositions(frame.stellar_positions);
+    }
 
     if (window.updateCivilizations) {
         window.updateCivilizations(frame.civilizations);
@@ -621,4 +775,10 @@ function updateFrame(frameIndex) {
 window.initUI = initUI;
 window.togglePlayPause = togglePlayPause;
 window.stepForward = stepForward;
+window.stepBackward = stepBackward;
 window.resetPlayback = resetPlayback;
+window.jumpToStart = jumpToStart;
+window.jumpToEnd = jumpToEnd;
+window.setLoopMode = setLoopMode;
+window.getLoopMode = function() { return loopMode; };
+window.getPlaybackDirection = function() { return playbackDirection; };

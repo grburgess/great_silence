@@ -35,6 +35,11 @@ class GalaxyModel:
         self.metallicities: Optional[np.ndarray] = None  # [Fe/H] in dex
         self.stellar_types: Optional[np.ndarray] = None
         self.component_type: Optional[np.ndarray] = None  # 0=bulge, 1=thin disk, 2=thick disk
+        
+        # Adaptive timestep arrays (for efficient stellar motion)
+        self.stellar_timesteps: Optional[np.ndarray] = None  # Individual dt for each star (Myr)
+        self.time_until_update: Optional[np.ndarray] = None  # Time remaining until next update (Myr)
+        self.stellar_accelerations: Optional[np.ndarray] = None  # Cached accelerations (kpc/Myr²)
 
     def generate_stellar_population(self) -> None:
         """
@@ -911,6 +916,134 @@ class GalaxyModel:
         a_new = self._compute_gravitational_acceleration(self.positions)
         v_kpc_myr += 0.5 * (a_current + a_new) * dt_myr
         self.velocities = v_kpc_myr / 0.001022
+
+    def initialize_adaptive_timesteps(
+        self, 
+        eta: float = 0.02,
+        min_dt: float = 0.05,
+        max_dt: float = 2.0
+    ) -> None:
+        """
+        Initialize individual timesteps for each star based on orbital dynamics.
+        
+        Uses the standard criterion: dt_i = η × sqrt(r_i / |a_i|)
+        where η is a dimensionless accuracy parameter (typically 0.01-0.1).
+        
+        Timesteps are quantized to block timesteps (powers of 2) for efficiency.
+        
+        Args:
+            eta: Accuracy parameter (smaller = more accurate but slower)
+            min_dt: Minimum allowed timestep in Myr
+            max_dt: Maximum allowed timestep in Myr
+        """
+        if self.positions is None:
+            raise ValueError("Must generate positions first")
+        
+        n_stars = len(self.positions)
+        
+        # Compute accelerations
+        self.stellar_accelerations = self._compute_gravitational_acceleration(self.positions)
+        a_mag = np.linalg.norm(self.stellar_accelerations, axis=1)
+        
+        # Compute galactocentric radius
+        r = np.sqrt(self.positions[:, 0]**2 + self.positions[:, 1]**2 + self.positions[:, 2]**2)
+        
+        # Compute individual timesteps: dt = η × sqrt(r / |a|)
+        # This gives approximately dt ~ T_orbit / (2π/η) where T_orbit is orbital period
+        with np.errstate(divide='ignore', invalid='ignore'):
+            dt_ideal = eta * np.sqrt(r / (a_mag + 1e-30))
+        
+        # Clamp to [min_dt, max_dt]
+        dt_clamped = np.clip(dt_ideal, min_dt, max_dt)
+        
+        # Quantize to block timesteps (powers of 2 multiples of min_dt)
+        # Available timesteps: min_dt, 2*min_dt, 4*min_dt, 8*min_dt, ...
+        block_levels = np.floor(np.log2(dt_clamped / min_dt)).astype(int)
+        block_levels = np.maximum(block_levels, 0)  # At least level 0
+        max_level = int(np.log2(max_dt / min_dt))
+        block_levels = np.minimum(block_levels, max_level)
+        
+        self.stellar_timesteps = min_dt * (2.0 ** block_levels)
+        self.time_until_update = self.stellar_timesteps.copy()
+        
+    def evolve_positions_adaptive(
+        self, 
+        dt_myr: float, 
+        use_numba: bool = True
+    ) -> None:
+        """
+        Evolve stellar positions using adaptive individual timesteps.
+        
+        Only stars whose time_until_update <= 0 are integrated.
+        This provides major speedup since outer disk stars (80%+) use
+        much larger timesteps than inner bulge stars.
+        
+        Args:
+            dt_myr: Global simulation timestep in Myr
+            use_numba: Use Numba kernels for acceleration
+        """
+        if self.positions is None or self.velocities is None:
+            raise ValueError("Must generate positions and velocities first")
+        
+        if self.stellar_timesteps is None:
+            self.initialize_adaptive_timesteps()
+        
+        # Decrement time until update
+        self.time_until_update -= dt_myr
+        
+        # Find stars that need updating
+        needs_update = self.time_until_update <= 0
+        update_indices = np.where(needs_update)[0]
+        
+        if len(update_indices) == 0:
+            return
+        
+        # Get positions and velocities of stars to update
+        pos_update = self.positions[update_indices]
+        vel_update = self.velocities[update_indices]
+        dt_update = self.stellar_timesteps[update_indices]
+        
+        # Compute accelerations at current positions
+        a_current = self._compute_gravitational_acceleration(pos_update)
+        
+        # Leapfrog integration for each star with its own timestep
+        v_kpc_myr = vel_update * 0.001022
+        
+        # Position update: r' = r + v*dt + 0.5*a*dt²
+        pos_new = pos_update + v_kpc_myr * dt_update[:, np.newaxis] + \
+                  0.5 * a_current * (dt_update[:, np.newaxis] ** 2)
+        
+        # Compute acceleration at new positions
+        a_new = self._compute_gravitational_acceleration(pos_new)
+        
+        # Velocity update: v' = v + 0.5*(a + a')*dt
+        v_kpc_myr_new = v_kpc_myr + 0.5 * (a_current + a_new) * dt_update[:, np.newaxis]
+        
+        # Write back
+        self.positions[update_indices] = pos_new
+        self.velocities[update_indices] = v_kpc_myr_new / 0.001022
+        
+        # Reset timers for updated stars and recompute their timesteps
+        # (timestep may change as star moves to different radius)
+        a_mag_new = np.linalg.norm(a_new, axis=1)
+        r_new = np.sqrt(pos_new[:, 0]**2 + pos_new[:, 1]**2 + pos_new[:, 2]**2)
+        
+        eta = 0.02
+        min_dt = self.stellar_timesteps.min()
+        max_dt = self.stellar_timesteps.max()
+        
+        with np.errstate(divide='ignore', invalid='ignore'):
+            dt_ideal = eta * np.sqrt(r_new / (a_mag_new + 1e-30))
+        dt_clamped = np.clip(dt_ideal, min_dt, max_dt)
+        
+        block_levels = np.floor(np.log2(dt_clamped / min_dt)).astype(int)
+        block_levels = np.maximum(block_levels, 0)
+        max_level = int(np.log2(max_dt / min_dt))
+        block_levels = np.minimum(block_levels, max_level)
+        
+        new_timesteps = min_dt * (2.0 ** block_levels)
+        self.stellar_timesteps[update_indices] = new_timesteps
+        self.time_until_update[update_indices] = new_timesteps
 
     def get_distance_matrix(self, indices: Optional[np.ndarray] = None) -> np.ndarray:
         """

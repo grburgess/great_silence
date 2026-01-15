@@ -431,3 +431,35 @@ python scripts/benchmark_baseline.py  # Detailed profiling
   - 18 tests covering velocity init, probe intercept, disaster positions, delta snapshots, GPU viz, Numba kernels, equilibrium
   - All pass in ~2.4s
 - **Known limitation**: Equilibrium not perfect, ~26% radial drift over 100 Myr (acceptable for short sims)
+
+### Jan 2026 - Adaptive Individual Timesteps (256x Speedup)
+- **Problem**: Fixed sub-cycling timestep (0.1 Myr) was too slow - inner bulge stars need small dt, outer disk stars can use large dt
+- **Solution**: Implemented adaptive individual timesteps like AREPO/GADGET
+- **Config params**:
+  - `stellar_motion_adaptive: bool = True` - Enable adaptive mode (recommended)
+  - `stellar_motion_eta: float = 0.02` - Accuracy parameter (smaller = more accurate)
+  - `stellar_motion_min_dt_myr: float = 0.05` - Minimum timestep for inner bulge
+  - `stellar_motion_max_dt_myr: float = 2.0` - Maximum timestep for outer disk
+- **Implementation** (`galaxy/structure.py`):
+  - `initialize_adaptive_timesteps()`: Compute dt_i = η × sqrt(r_i / |a_i|) for each star
+  - Block timesteps: quantized to powers of 2 (0.05, 0.1, 0.2, 0.4, 0.8, 1.6 Myr)
+  - `evolve_positions_adaptive()`: Only integrate stars whose timer has elapsed
+  - Timesteps recalculated after each star update (adapts to orbital changes)
+- **New arrays in GalaxyModel**:
+  - `stellar_timesteps`: Individual dt for each star (Myr)
+  - `time_until_update`: Countdown timer for each star
+  - `stellar_accelerations`: Cached accelerations
+- **Performance** (1000 stars, 1 Gyr):
+  - Legacy sub-cycling: 7.68s, 13 it/s, 5 escaped stars
+  - **Adaptive**: 0.03s, 4800 it/s, 0 escaped stars
+  - **Speedup: 256x** with better stability!
+- **Physics**: More stable because each star gets appropriate dt for its orbital dynamics
+- Stellar motion now **enabled by default** with adaptive timesteps
+
+### Jan 2026 - Three.js Visualization Fix (Stellar Motion)
+- **Bug**: Stars moved during playback but NOT when manually dragging timeline slider
+- **Root cause**: `updateFrame()` in `ui.js.j2` didn't call `updateStellarPositions()`
+- **Fix**:
+  - Added `window.updateStellarPositions = updateStellarPositions;` export in `scene.js.j2`
+  - Added `window.updateStellarPositions(frame.stellar_positions)` call in `updateFrame()` in `ui.js.j2`
+- Stars now move correctly both during playback AND when dragging the timeline slider

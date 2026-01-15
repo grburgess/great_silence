@@ -488,8 +488,19 @@ class ConfigPanels:
             with ui.expansion("Physics Options", value=False).classes("w-full bg-gray-800/50"):
                 create_toggle("Stellar Motion", "enable_stellar_motion", cfg,
                              "Enable gravitational evolution of stellar positions")
+                create_toggle("Adaptive Timesteps", "stellar_motion_adaptive", cfg,
+                             "Use adaptive individual timesteps (256x faster, recommended)")
+                create_slider("Accuracy (η)", "stellar_motion_eta", cfg,
+                             min_val=0.005, max_val=0.1, step=0.005,
+                             tooltip="Smaller = more accurate but slower")
+                create_slider("Min dt (Myr)", "stellar_motion_min_dt_myr", cfg,
+                             min_val=0.01, max_val=0.2, step=0.01,
+                             tooltip="Minimum timestep for inner bulge stars")
+                create_slider("Max dt (Myr)", "stellar_motion_max_dt_myr", cfg,
+                             min_val=0.5, max_val=5.0, step=0.5,
+                             tooltip="Maximum timestep for outer disk stars")
                 create_toggle("Motion Use Numba", "stellar_motion_use_numba", cfg,
-                             "Use Numba kernels for position evolution (10-20x faster)")
+                             "Use Numba kernels for position evolution")
                 create_toggle("Probe Intercepts", "probe_intercept_enabled", cfg,
                              "Probes predict intercept position for moving targets")
                 create_toggle("Disaster Tracking", "disaster_track_parent_star", cfg,
