@@ -174,7 +174,7 @@ class ResultsDashboard:
                         ui.button(icon="close", on_click=self._fullscreen_dialog.close).props(
                             "flat round"
                         ).classes("text-white")
-                    self._fullscreen_frame = ui.html("").classes("w-full h-full")
+                    self._fullscreen_frame = ui.html("", sanitize=False).classes("w-full h-full")
 
     def _generate_viz(self, sim) -> None:
         """Generate the Three.js visualization."""
@@ -200,7 +200,8 @@ class ResultsDashboard:
                 ui.html(
                     f'<iframe src="/viz/visualization.html" '
                     f'style="width: 100%; height: 600px; border: 1px solid #333; border-radius: 8px;">'
-                    f"</iframe>"
+                    f"</iframe>",
+                    sanitize=False,
                 )
 
             self._fullscreen_frame.content = (
