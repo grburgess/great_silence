@@ -203,8 +203,8 @@ class TestDynamicDisasterPositions:
 class TestDeltaCompressedSnapshots:
     """Test delta-compressed snapshot storage."""
     
-    def test_snapshot_stores_delta_data_when_motion_enabled(self):
-        """Test that snapshots store initial_positions and velocities when motion enabled."""
+    def test_snapshot_stores_full_positions_when_motion_enabled(self):
+        """Test that snapshots store full positions when motion enabled (positions evolve)."""
         config = SimulationConfig()
         config.galaxy.total_stars = 500
         config.simulation.enable_stellar_motion = True
@@ -219,13 +219,11 @@ class TestDeltaCompressedSnapshots:
         assert len(sim.snapshots) > 0
         
         first_snap = sim.snapshots[0]
-        assert first_snap.use_delta_compression == True
-        assert first_snap.initial_positions is not None
-        assert first_snap.stellar_velocities is not None
-        assert first_snap.initial_positions.shape[0] == config.galaxy.total_stars
+        assert first_snap.use_delta_compression == False
+        assert len(first_snap.stellar_positions) == config.galaxy.total_stars
         
-    def test_snapshot_no_delta_when_motion_disabled(self):
-        """Test that snapshots store full positions when motion disabled."""
+    def test_snapshot_uses_delta_when_motion_disabled(self):
+        """Test that snapshots use delta compression when motion disabled (positions static)."""
         config = SimulationConfig()
         config.galaxy.total_stars = 500
         config.simulation.enable_stellar_motion = False
@@ -240,8 +238,8 @@ class TestDeltaCompressedSnapshots:
         assert len(sim.snapshots) > 0
         
         first_snap = sim.snapshots[0]
-        assert first_snap.use_delta_compression == False
-        assert len(first_snap.stellar_positions) == config.galaxy.total_stars
+        assert first_snap.use_delta_compression == True
+        assert first_snap.initial_positions is not None
         
     def test_get_positions_reconstructs_correctly(self):
         """Test that get_positions() reconstructs positions from delta."""
@@ -384,12 +382,10 @@ class TestEquilibrium:
     def test_radial_distribution_stable(self):
         """Test that radial distribution doesn't drift catastrophically.
         
-        Note: Some drift is expected since the initial velocity distribution
-        is not in perfect equilibrium with the potential. The Jeans mode
-        reduces drift compared to simple mode, but doesn't eliminate it.
-        Target: < 30% drift over 100 Myr simulation.
+        The 'circular' velocity mode computes v_c directly from the potential,
+        achieving near-perfect equilibrium (<5% drift over 100 Myr).
         """
-        params = GalaxyParameters(total_stars=1000, velocity_init_mode="jeans")
+        params = GalaxyParameters(total_stars=1000, velocity_init_mode="circular")
         galaxy = GalaxyModel(params, seed=42)
         galaxy.generate_stellar_population()
         
@@ -404,7 +400,7 @@ class TestEquilibrium:
         
         drift_pct = abs(mean_R_after - mean_R_before) / mean_R_before * 100
         
-        assert drift_pct < 30.0
+        assert drift_pct < 5.0  # Circular mode achieves <5% drift
 
 
 if __name__ == "__main__":

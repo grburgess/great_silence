@@ -298,14 +298,68 @@ class GalaxyModel:
         """
         Generate stellar velocities based on configured mode.
         
-        Dispatches to either simple (empirical) or Jeans (equilibrium) mode.
+        Modes:
+        - 'circular': Pure circular velocities from actual potential (most stable)
+        - 'jeans': Jeans equilibrium with dispersions (for realism)
+        - 'simple': Empirical circular + dispersions (original method)
         """
-        mode = getattr(self.params, 'velocity_init_mode', 'simple')
+        mode = getattr(self.params, 'velocity_init_mode', 'circular')
         
-        if mode == 'jeans':
+        if mode == 'circular':
+            return self._generate_velocities_circular()
+        elif mode == 'jeans':
             return self._generate_velocities_jeans()
         else:
             return self._generate_velocities_simple()
+    
+    def _generate_velocities_circular(self) -> np.ndarray:
+        """
+        Generate pure circular velocities from the actual gravitational potential.
+        
+        This is the most stable mode for long simulations because the
+        velocities are computed directly from v_c = sqrt(R × |∂Φ/∂R|),
+        ensuring perfect circular orbits with minimal radial drift.
+        
+        Small velocity dispersions are added only to bulge stars.
+        """
+        if self.positions is None:
+            raise ValueError("Must generate positions before velocities")
+
+        print("  Computing circular velocities from potential...")
+        
+        n_stars = len(self.positions)
+        x, y, z = self.positions[:, 0], self.positions[:, 1], self.positions[:, 2]
+        R = np.sqrt(x**2 + y**2)
+
+        v_x = np.zeros(n_stars)
+        v_y = np.zeros(n_stars)
+        v_z = np.zeros(n_stars)
+
+        for i in range(n_stars):
+            r_i = max(0.1, R[i])
+            x_i, y_i = x[i], y[i]
+            
+            pos_i = np.array([[x_i, y_i, z[i]]])
+            a_total = self._compute_gravitational_acceleration(pos_i)[0]
+            
+            a_R = (a_total[0] * x_i + a_total[1] * y_i) / (r_i + 1e-10)
+            v_circ_kpc_myr = np.sqrt(max(0, -a_R * r_i))
+            v_circ = v_circ_kpc_myr / 0.001022
+            
+            cos_phi = x_i / r_i
+            sin_phi = y_i / r_i
+            
+            v_x[i] = -v_circ * sin_phi
+            v_y[i] = v_circ * cos_phi
+            v_z[i] = 0.0
+            
+            if self.component_type is not None and self.component_type[i] == 0:
+                sigma_bulge = 0.2 * v_circ
+                v_x[i] += self.rng.normal(0, sigma_bulge)
+                v_y[i] += self.rng.normal(0, sigma_bulge)
+                v_z[i] = self.rng.normal(0, sigma_bulge)
+
+        return np.column_stack([v_x, v_y, v_z])
     
     def _compute_epicyclic_frequency(self, R: float) -> float:
         """
@@ -336,6 +390,37 @@ class GalaxyModel:
         
         return kappa
     
+    def _compute_disk_surface_density(self, R: float) -> float:
+        """
+        Compute disk surface density Σ(R) for exponential disk.
+        
+        Σ(R) = Σ_0 × exp(-R/h_R)
+        
+        The central surface density Σ_0 is derived from the disk mass
+        contribution to the rotation curve:
+        v_disk² = π G Σ_0 h_R × (I_0 K_0 - I_1 K_1) at R = 2.2 h_R
+        
+        For simplicity, we use the fact that for a maximal disk:
+        Σ_0 ≈ v_c² / (2 π G h_R) × correction_factor
+        
+        Args:
+            R: Cylindrical radius in kpc
+            
+        Returns:
+            Surface density in M_sun/pc² (standard units)
+        """
+        h_R = self.params.scale_length_kpc
+        v_disk_frac = 0.72  # Disk contributes 72% to rotation curve
+        v_disk = v_disk_frac * self.params.rotation_velocity_km_s
+        
+        G_kpc = 4.498e-12  # G in kpc³/(M_sun Myr²)
+        v_disk_kpc_myr = v_disk * 0.001022
+        
+        Sigma_0 = v_disk_kpc_myr**2 / (2 * np.pi * G_kpc * h_R) * 0.6
+        Sigma_0_pc2 = Sigma_0 * 1e-6
+        
+        return Sigma_0_pc2 * np.exp(-R / h_R)
+    
     def _compute_velocity_dispersion_jeans(
         self, 
         R: np.ndarray, 
@@ -344,10 +429,13 @@ class GalaxyModel:
         """
         Compute velocity dispersions (σ_R, σ_φ, σ_z) from Jeans equations.
         
-        For an exponential disk in a combined potential:
-        - σ_R follows Toomre Q stability criterion
-        - σ_φ = σ_R × κ/(2Ω) from epicyclic approximation
-        - σ_z from vertical Jeans equation
+        Uses self-consistent derivation from the gravitational potential:
+        1. σ_R from Toomre stability: Q = κ σ_R / (3.36 G Σ) ≈ 1.5
+        2. σ_φ = σ_R × κ/(2Ω) from epicyclic approximation
+        3. σ_z from vertical equilibrium: σ_z² = π G Σ h_z
+        
+        This ensures the velocity distribution is in equilibrium with
+        the gravitational potential, minimizing radial drift.
         
         Args:
             R: Cylindrical radii (kpc)
@@ -365,65 +453,94 @@ class GalaxyModel:
         h_z = self.params.disk_height_kpc
         v_0 = self.params.rotation_velocity_km_s
         
-        sigma_R_0 = 35.0
-        sigma_z_0 = 20.0
+        G_cgs = 6.674e-8  # cm³ g⁻¹ s⁻²
+        M_sun = 1.989e33  # grams
+        pc_cm = 3.086e18  # cm per pc
+        km_s_to_cm_s = 1e5
+        
+        G_for_sigma = G_cgs * M_sun / (pc_cm * km_s_to_cm_s**2)
+        
+        Q_target = 1.5
         
         for i in range(n_stars):
-            r_i = max(0.1, R[i])
+            r_i = max(0.3, R[i])
             z_i = z[i]
             
-            sigma_R[i] = sigma_R_0 * np.exp(-r_i / (2 * h_R))
-            sigma_R[i] *= (1.0 + np.abs(z_i) / h_z)
+            Sigma = self._compute_disk_surface_density(r_i)
+            Sigma = max(Sigma, 1.0)
             
             kappa = self._compute_epicyclic_frequency(r_i)
             Omega = v_0 / r_i
+            kappa_s = kappa * 0.001022 * 1e5 / pc_cm
+            
+            sigma_R_toomre = Q_target * 3.36 * G_for_sigma * Sigma / kappa_s
+            sigma_R_toomre = max(5.0, min(sigma_R_toomre, 80.0))
+            
+            z_factor = 1.0 + 0.3 * (np.abs(z_i) / h_z)
+            sigma_R[i] = sigma_R_toomre * z_factor
             
             if Omega > 1e-10:
-                sigma_phi[i] = sigma_R[i] * kappa / (2 * Omega)
+                kappa_over_2Omega = kappa / (2 * Omega)
+                kappa_over_2Omega = max(0.5, min(kappa_over_2Omega, 0.85))
+                sigma_phi[i] = sigma_R[i] * kappa_over_2Omega
             else:
                 sigma_phi[i] = sigma_R[i] * 0.7
             
-            sigma_z[i] = sigma_z_0 * np.exp(-r_i / (2 * h_R))
-            sigma_z[i] *= (1.0 + 0.5 * np.abs(z_i) / h_z)
+            sigma_z_sq = np.pi * G_for_sigma * Sigma * (h_z * 1000)
+            sigma_z_base = np.sqrt(max(0, sigma_z_sq))
+            sigma_z_base = max(3.0, min(sigma_z_base, 50.0))
+            
+            z_factor_vert = 1.0 + 0.2 * (np.abs(z_i) / h_z)
+            sigma_z[i] = sigma_z_base * z_factor_vert
         
         return sigma_R, sigma_phi, sigma_z
     
     def _compute_asymmetric_drift(
         self, 
         R: np.ndarray, 
-        sigma_R: np.ndarray
+        sigma_R: np.ndarray,
+        sigma_phi: np.ndarray = None
     ) -> np.ndarray:
         """
         Compute asymmetric drift correction for disk stars.
         
-        v_φ = v_c - v_a where v_a ≈ σ_R² / (2 × v_c) × d(ln(ρ × σ_R²)) / d(ln R)
+        From the radial Jeans equation for an axisymmetric disk:
+        v_φ² = v_c² - σ_R² × (∂ln(ρσ_R²)/∂lnR - 1 + (σ_φ/σ_R)²)
         
-        For an exponential disk with exponentially declining σ_R:
-        v_a ≈ σ_R² × (1/h_R + 1/h_σ) / (2 × v_c)
+        For a marginally stable disk where σ_φ/σ_R ≈ κ/(2Ω) ≈ 0.7:
+        v_a ≈ σ_R² / (2v_c) × |∂ln(ρσ_R²)/∂lnR|
+        
+        For exponential disk with Toomre-derived dispersions:
+        ∂ln(ρσ_R²)/∂lnR ≈ -R/h_R (density gradient dominates)
         
         Args:
             R: Cylindrical radii (kpc)
             sigma_R: Radial velocity dispersions (km/s)
+            sigma_phi: Azimuthal velocity dispersions (km/s), optional
             
         Returns:
             Asymmetric drift velocities (km/s) to subtract from circular
         """
         h_R = self.params.scale_length_kpc
-        h_sigma = 2 * h_R
-        
         v_a = np.zeros(len(R))
         
         for i in range(len(R)):
-            r_i = max(0.1, R[i])
+            r_i = max(0.3, R[i])
             v_c = self._compute_circular_velocity(np.array([r_i, 0.0, 0.0]))
             
-            if v_c > 10.0:
+            if v_c > 10.0 and sigma_R[i] > 1.0:
                 dlnrho_dlnR = -r_i / h_R
-                dlnsigma_dlnR = -r_i / h_sigma
                 
-                v_a[i] = sigma_R[i]**2 / (2 * v_c) * abs(dlnrho_dlnR + 2 * dlnsigma_dlnR)
+                if sigma_phi is not None and sigma_phi[i] > 0:
+                    ratio_sq = (sigma_phi[i] / sigma_R[i])**2
+                else:
+                    ratio_sq = 0.5
+                
+                correction_factor = abs(dlnrho_dlnR) + (1.0 - ratio_sq)
+                v_a[i] = sigma_R[i]**2 / (2 * v_c) * correction_factor
         
-        return np.clip(v_a, 0, 50.0)
+        v_a_max = 0.15 * self.params.rotation_velocity_km_s
+        return np.clip(v_a, 0, v_a_max)
     
     def _generate_velocities_simple(self) -> np.ndarray:
         """
@@ -550,7 +667,7 @@ class GalaxyModel:
                 sigma_R, sigma_phi, sigma_z = self._compute_velocity_dispersion_jeans(
                     R_disk, z_disk
                 )
-                v_a = self._compute_asymmetric_drift(R_disk, sigma_R)
+                v_a = self._compute_asymmetric_drift(R_disk, sigma_R, sigma_phi)
 
                 for j, i in enumerate(disk_indices):
                     v_circ = self._compute_circular_velocity(self.positions[i])

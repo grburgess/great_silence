@@ -225,8 +225,8 @@ class ConfigPanels:
                              "Amplitude of spiral perturbation")
                 create_toggle("Enable Bar", "enable_bar", cfg,
                              "Include central bar structure")
-                create_dropdown("Velocity Init Mode", "velocity_init_mode", cfg, ["simple", "jeans"],
-                               "Velocity initialization: simple (circular) or jeans (equilibrium)")
+                create_dropdown("Velocity Init Mode", "velocity_init_mode", cfg, ["circular", "jeans", "simple"],
+                               "Velocity initialization: circular (stable), jeans (dispersions), simple (legacy)")
 
             with ui.expansion("Habitable Zone", value=False).classes("w-full bg-gray-800/50"):
                 create_slider("Min Habitable Mass", "habitable_mass_min_msun", cfg, 0.3, 0.8, 0.05, "M☉",

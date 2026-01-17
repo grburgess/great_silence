@@ -14,11 +14,15 @@ let downsamplePercent = 0;
 let loopMode = 'repeat';
 let playbackDirection = 1;
 
+window.isPlaying = false;
+window.currentFrame = 0;
+
 function initUI() {
     initPlaybackControls();
     initLoopModeControls();
     initLayerControls();
     initChartToggleControls();
+    initCivControls();
     initDisasterControls();
     initSpeedControl();
     initDownsampleControl();
@@ -282,6 +286,48 @@ function initDownsampleControl() {
     }
 }
 
+function initCivControls() {
+    const panel = document.getElementById('civ-panel');
+    if (!panel) return;
+    
+    // History (show extinct) toggle
+    const historyToggle = document.getElementById('civ-history-toggle');
+    if (historyToggle) {
+        historyToggle.addEventListener('change', (e) => {
+            if (window.setCivShowExtinct) {
+                window.setCivShowExtinct(e.target.checked);
+            }
+            updateCivModeDisplay();
+        });
+    }
+    
+    // Only expanding toggle
+    const expandingToggle = document.getElementById('civ-expanding-toggle');
+    if (expandingToggle) {
+        expandingToggle.addEventListener('change', (e) => {
+            if (window.setCivShowOnlyExpanding) {
+                window.setCivShowOnlyExpanding(e.target.checked);
+            }
+            updateCivModeDisplay();
+        });
+    }
+}
+
+function updateCivModeDisplay() {
+    const historyLabel = document.getElementById('civ-history-label');
+    const expandingLabel = document.getElementById('civ-expanding-label');
+    
+    if (historyLabel && window.civState) {
+        historyLabel.textContent = window.civState.showExtinct ? 'Show Extinct' : 'Active Only';
+        historyLabel.style.color = window.civState.showExtinct ? '#888' : '#00ff88';
+    }
+    
+    if (expandingLabel && window.civState) {
+        expandingLabel.textContent = window.civState.showOnlyExpanding ? 'Expanding Only' : 'All Civs';
+        expandingLabel.style.color = window.civState.showOnlyExpanding ? '#00ff88' : '#888';
+    }
+}
+
 function initDisasterControls() {
     const panel = document.getElementById('disaster-panel');
     if (!panel) return;
@@ -405,9 +451,13 @@ function initDisasterTimeline() {
         }
     });
     
-    // Remove duplicates (same time and type)
+    // Remove duplicates (same time and type), filter out invalid entries
     const seen = new Set();
     allDisasters = allDisasters.filter(d => {
+        if (d.time === undefined || d.time === null) {
+            console.warn('Disaster missing time field:', d);
+            return false;
+        }
         const key = `${d.time.toFixed(3)}_${d.type}`;
         if (seen.has(key)) return false;
         seen.add(key);
@@ -754,9 +804,19 @@ function updateFrame(frameIndex) {
     timeStats.textContent = 'Time: ' + frame.time.toFixed(2) + ' Gyr';
     civStats.textContent = 'Active: ' + frame.civilizations.filter(c => c.is_active).length + ' | Total: ' + frame.civilizations.length;
 
-    // Update stellar positions (for stellar motion visualization)
-    if (window.updateStellarPositions && frame.stellar_positions) {
-        window.updateStellarPositions(frame.stellar_positions);
+    // Update stellar positions using Hermite interpolation (GPU) if enabled
+    // This must be called FIRST to update shader uniforms before rendering
+    const timeMyr = (frame.time || 0) * 1000.0;  // Convert Gyr to Myr
+    if (window.updateStellarTime) {
+        window.updateStellarTime(timeMyr);
+    }
+    
+    // Fallback: Update stellar positions directly if not using Hermite
+    // (only if Hermite is disabled AND frame has position data)
+    if (!window.isHermiteEnabled || !window.isHermiteEnabled()) {
+        if (window.updateStellarPositions && frame.stellar_positions) {
+            window.updateStellarPositions(frame.stellar_positions);
+        }
     }
 
     if (window.updateCivilizations) {
@@ -796,3 +856,5 @@ window.jumpToEnd = jumpToEnd;
 window.setLoopMode = setLoopMode;
 window.getLoopMode = function() { return loopMode; };
 window.getPlaybackDirection = function() { return playbackDirection; };
+window.updateAnimation = updateAnimation;
+window.updateFrame = updateFrame;

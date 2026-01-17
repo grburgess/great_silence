@@ -1,4 +1,4 @@
-{# particles.js.j2 - Enhanced particle system #}
+{# particles.js.j2 - Enhanced particle system with Hermite interpolation #}
 
 function initParticles() {
     updateParticles();
@@ -18,7 +18,86 @@ function updateParticles() {
     }
 }
 
-function createCivilizationSprite(civData) {
+// Hermite interpolation helper for computing civ/colony positions
+// Uses the same math as the GPU shader for consistency
+function hermiteInterpolateCPU(p0, v0, p1, v1, time0, time1, currentTime, velocityScale) {
+    const h = time1 - time0;
+    if (h < 0.001) return [...p0];
+    
+    let s = (currentTime - time0) / h;
+    s = Math.max(0, Math.min(1, s));
+    const s2 = s * s;
+    const s3 = s2 * s;
+    
+    // Hermite basis functions
+    const h00 = 2*s3 - 3*s2 + 1;
+    const h10 = s3 - 2*s2 + s;
+    const h01 = -2*s3 + 3*s2;
+    const h11 = s3 - s2;
+    
+    // Scale velocities
+    const scale = velocityScale * h;
+    
+    return [
+        h00 * p0[0] + h10 * v0[0] * scale + h01 * p1[0] + h11 * v1[0] * scale,
+        h00 * p0[1] + h10 * v0[1] * scale + h01 * p1[1] + h11 * v1[1] * scale,
+        h00 * p0[2] + h10 * v0[2] * scale + h01 * p1[2] + h11 * v1[2] * scale,
+    ];
+}
+
+// Get star position at a given time using Hermite interpolation
+function getStarPositionAtTime(starIdx, timeMyr) {
+    if (!window.isHermiteEnabled || !window.isHermiteEnabled()) {
+        // Fall back to static position from galaxy data
+        if (window.galaxyData && window.galaxyData.positions && starIdx < window.galaxyData.positions.length) {
+            return window.galaxyData.positions[starIdx];
+        }
+        return [0, 0, 0];
+    }
+    
+    const keyframes = window.getKeyframes ? window.getKeyframes() : [];
+    if (keyframes.length < 2) {
+        if (window.galaxyData && window.galaxyData.positions && starIdx < window.galaxyData.positions.length) {
+            return window.galaxyData.positions[starIdx];
+        }
+        return [0, 0, 0];
+    }
+    
+    // Find keyframe interval
+    let kfIndex = 0;
+    for (let i = 0; i < keyframes.length - 1; i++) {
+        if (timeMyr >= keyframes[i].time_myr && timeMyr <= keyframes[i + 1].time_myr) {
+            kfIndex = i;
+            break;
+        }
+        if (timeMyr > keyframes[i + 1].time_myr) {
+            kfIndex = i;
+        }
+    }
+    kfIndex = Math.min(kfIndex, keyframes.length - 2);
+    
+    const kf0 = keyframes[kfIndex];
+    const kf1 = keyframes[kfIndex + 1];
+    
+    if (starIdx >= kf0.positions.length) {
+        return [0, 0, 0];
+    }
+    
+    const velocityScale = window.config.velocity_conversion_factor || 0.001022;
+    
+    return hermiteInterpolateCPU(
+        kf0.positions[starIdx],
+        kf0.velocities[starIdx],
+        kf1.positions[starIdx],
+        kf1.velocities[starIdx],
+        kf0.time_myr,
+        kf1.time_myr,
+        timeMyr,
+        velocityScale
+    );
+}
+
+function createCivilizationSprite(civData, currentTimeMyr) {
     const canvas = document.createElement('canvas');
     canvas.width = 64;
     canvas.height = 64;
@@ -46,7 +125,14 @@ function createCivilizationSprite(civData) {
     });
 
     const sprite = new THREE.Sprite(material);
-    sprite.position.set(civData.position[0], civData.position[1], civData.position[2]);
+    
+    // Compute position: use Hermite interpolation if available and star_idx is provided
+    let position = civData.position;
+    if (civData.star_idx !== undefined && currentTimeMyr !== undefined) {
+        position = getStarPositionAtTime(civData.star_idx, currentTimeMyr);
+    }
+    
+    sprite.position.set(position[0], position[1], position[2]);
     sprite.scale.set(
         civData.is_active ? (window.config.civ_active_size || 0.15) : (window.config.civ_extinct_size || 0.1),
         civData.is_active ? (window.config.civ_active_size || 0.15) : (window.config.civ_extinct_size || 0.1),
@@ -100,10 +186,22 @@ function getKardashevColor(kardashev) {
 let showCivSprites = true;
 let showProbeSprites = true;
 let showHazardSprites = true;
+let currentAnimationTimeMyr = 0;
 
-function updateCivilizations(civilizations) {
+// Civilization visualization state (similar to disaster state)
+window.civState = {
+    showExtinct: true,       // Show extinct civs (history mode)
+    showOnlyExpanding: false // Only show civs that have colonized
+};
+
+function updateCivilizations(civilizations, timeMyr) {
     civSprites.forEach(sprite => scene.remove(sprite));
     civSprites = [];
+    
+    // Update current time for interpolation
+    if (timeMyr !== undefined) {
+        currentAnimationTimeMyr = timeMyr;
+    }
 
     const maxAge = Math.max(...civilizations.map(c => c.age), 0.01);
     const downsampleCutoff = maxAge * (downsamplePercent / 100);
@@ -112,12 +210,38 @@ function updateCivilizations(civilizations) {
         if (downsamplePercent > 0 && civ.age > downsampleCutoff) {
             return;
         }
+        
+        // Filter by extinct status if not showing extinct
+        if (!window.civState.showExtinct && civ.is_extinct) {
+            return;
+        }
+        
+        // Filter to only expanding civs if enabled
+        if (window.civState.showOnlyExpanding && !civ.has_colonies) {
+            return;
+        }
 
-        const sprite = createCivilizationSprite(civ);
+        const sprite = createCivilizationSprite(civ, currentAnimationTimeMyr);
         sprite.visible = showCivSprites;
         civSprites.push(sprite);
         scene.add(sprite);
     });
+}
+
+function setCivShowExtinct(show) {
+    window.civState.showExtinct = show;
+    // Force refresh of current frame
+    if (window.animationData && window.animationData.frames && window.animationData.frames[window.currentFrame]) {
+        updateCivilizations(window.animationData.frames[window.currentFrame].civilizations, currentAnimationTimeMyr);
+    }
+}
+
+function setCivShowOnlyExpanding(show) {
+    window.civState.showOnlyExpanding = show;
+    // Force refresh of current frame
+    if (window.animationData && window.animationData.frames && window.animationData.frames[window.currentFrame]) {
+        updateCivilizations(window.animationData.frames[window.currentFrame].civilizations, currentAnimationTimeMyr);
+    }
 }
 
 function setCivVisibility(visible) {
@@ -250,22 +374,14 @@ let trajectoryLines = [];
 let showTrajectoryLines = true;
 
 function createExpansionLine(trajectory) {
-    const positions = [];
     const start = trajectory.start;
     const end = trajectory.end;
     
-    const numSegments = 20;
-    for (let i = 0; i <= numSegments; i++) {
-        const t = i / numSegments;
-        positions.push(
-            start[0] + (end[0] - start[0]) * t,
-            start[1] + (end[1] - start[1]) * t,
-            start[2] + (end[2] - start[2]) * t
-        );
-    }
-
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+        start[0], start[1], start[2],
+        end[0], end[1], end[2]
+    ], 3));
 
     const civId = trajectory.civ_id || 0;
     const hue = (civId * 0.618033988749895) % 1.0;
@@ -274,36 +390,24 @@ function createExpansionLine(trajectory) {
     const material = new THREE.LineBasicMaterial({
         color: color,
         transparent: true,
-        opacity: 0.9,
-        linewidth: 3,
+        opacity: 0.7,
+        linewidth: 2,
         blending: THREE.AdditiveBlending
     });
 
     const line = new THREE.Line(geometry, material);
     line.userData = trajectory;
 
-    const sphereGeom = new THREE.SphereGeometry(0.03, 8, 8);
-    const sphereMat = new THREE.MeshBasicMaterial({
-        color: color,
-        transparent: true,
-        opacity: 0.95,
-        blending: THREE.AdditiveBlending
-    });
-    const endMarker = new THREE.Mesh(sphereGeom, sphereMat);
-    endMarker.position.set(end[0], end[1], end[2]);
-    
-    const group = new THREE.Group();
-    group.add(line);
-    group.add(endMarker);
-    group.userData = trajectory;
-
-    return group;
+    return line;
 }
 
 function updateTrajectories(trajectories, currentTimeGyr) {
+    // Clear existing trajectories
     trajectoryLines.forEach(obj => scene.remove(obj));
     trajectoryLines = [];
 
+    // Skip trajectory rendering if hidden, but don't skip stellar motion
+    // (stellar motion is now handled by updateFrame calling updateStellarTime)
     if (!showTrajectoryLines) return;
     if (!trajectories || !Array.isArray(trajectories)) return;
 
@@ -319,11 +423,6 @@ function updateTrajectories(trajectories, currentTimeGyr) {
             }
         }
     });
-    
-    // Update stellar motion time if enabled
-    if (window.updateStellarTime && typeof window.updateStellarTime === 'function') {
-        window.updateStellarTime(currentTimeMyr);
-    }
 }
 
 function setTrajectoryVisibility(visible) {
@@ -345,6 +444,8 @@ window.updateParticles = updateParticles;
 window.createCivilizationSprite = createCivilizationSprite;
 window.updateCivilizations = updateCivilizations;
 window.setCivVisibility = setCivVisibility;
+window.setCivShowExtinct = setCivShowExtinct;
+window.setCivShowOnlyExpanding = setCivShowOnlyExpanding;
 window.createProbeTrail = createProbeTrail;
 window.updateProbes = updateProbes;
 window.setProbeVisibility = setProbeVisibility;
@@ -355,3 +456,5 @@ window.updateCivilizationDisplay = updateCivilizationDisplay;
 window.createExpansionLine = createExpansionLine;
 window.updateTrajectories = updateTrajectories;
 window.setTrajectoryVisibility = setTrajectoryVisibility;
+window.hermiteInterpolateCPU = hermiteInterpolateCPU;
+window.getStarPositionAtTime = getStarPositionAtTime;

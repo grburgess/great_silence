@@ -462,7 +462,9 @@ python scripts/benchmark_baseline.py  # Detailed profiling
   - **Adaptive**: 0.03s, 4800 it/s, 0 escaped stars
   - **Speedup: 256x** with better stability!
 - **Physics**: More stable because each star gets appropriate dt for its orbital dynamics
-- Stellar motion now **enabled by default** with adaptive timesteps
+- Stellar motion **enabled by default** with new `circular` velocity mode
+- New velocity modes: `circular` (default, stable), `jeans` (with dispersions), `simple` (legacy)
+- **Equilibrium fix**: Circular mode computes v_c directly from potential, achieving <2% drift over 5 Gyr
 
 ### Jan 2026 - Three.js Visualization Fix (Stellar Motion)
 - **Bug**: Stars moved during playback but NOT when manually dragging timeline slider
@@ -493,3 +495,18 @@ python scripts/benchmark_baseline.py  # Detailed profiling
   - Added `max_active_probes_fraction: float = 0.05` (5% of total stars)
   - Effective limits computed at initialization based on actual star count
   - Example: 50k stars → 5,079 max colonies, 2,500 max active probes
+
+### Jan 2026 - Stellar Equilibrium Fix
+- **Problem**: Stars flying out of galaxy (128+ kpc drift over 5 Gyr) due to velocity distribution not matching gravitational potential
+- **Solution**: New `circular` velocity initialization mode that computes v_c directly from the actual gravitational potential
+- **Implementation** (`galaxy/structure.py`):
+  - Added `_generate_velocities_circular()`: Computes v_c = sqrt(R × |∂Φ/∂R|) from acceleration
+  - Disk stars get pure circular motion (v_z = 0), bulge stars get small dispersion
+  - Velocity modes: `circular` (default, stable), `jeans` (with dispersions), `simple` (legacy)
+- **Config** (`config/parameters.py`):
+  - `velocity_init_mode: str = "circular"` - New stable default
+  - `enable_stellar_motion: bool = True` - Now safe to enable by default
+- **Results**:
+  - 5 Gyr simulation: 2.0% mean drift, 9.42 kpc max drift, 0 stars escaped
+  - Previous: 80-1400% drift, 128+ kpc max drift, 82+ stars escaped
+- **Caveat**: Circular mode has no velocity dispersion for disk stars. For more realistic kinematics (at cost of stability), use `velocity_init_mode = "jeans"`

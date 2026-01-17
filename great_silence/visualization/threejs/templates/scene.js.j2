@@ -11,6 +11,19 @@ let hazardMeshes = [];
 
 let clock;
 
+// Hermite keyframe interpolation state
+let hermiteEnabled = false;
+let keyframes = [];
+let currentKeyframeIndex = 0;
+let keyframeBuffers = {
+    pos0: null,
+    vel0: null,
+    pos1: null,
+    vel1: null,
+    time0: 0,
+    time1: 0,
+};
+
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -80,25 +93,19 @@ function createStarField() {
     const sizes = window.galaxyData.sizes || [];
     const count = positions.length;
     
-    // Check for stellar motion data (initial positions + velocities)
+    // Check for Hermite keyframe data (new system)
+    hermiteEnabled = window.keyframeData && window.keyframeData.keyframes && window.keyframeData.keyframes.length >= 2;
+    
+    // Legacy check for old-style motion data
     const initialPositions = window.galaxyData.initial_positions || null;
     const velocities = window.galaxyData.velocities || null;
-    stellarMotionEnabled = initialPositions && velocities && initialPositions.length === count;
+    stellarMotionEnabled = (initialPositions && velocities && initialPositions.length === count) || hermiteEnabled;
     stellarReferenceTime = window.galaxyData.reference_time || 0.0;
 
     starGeometry = new THREE.BufferGeometry();
     const positionArray = new Float32Array(count * 3);
     const colorArray = new Float32Array(count * 3);
     const sizeArray = new Float32Array(count);
-    
-    // For stellar motion: store initial positions and velocities as attributes
-    let initialPosArray = null;
-    let velocityArray = null;
-    
-    if (stellarMotionEnabled) {
-        initialPosArray = new Float32Array(count * 3);
-        velocityArray = new Float32Array(count * 3);
-    }
 
     const baseSize = window.config.star_point_size || 0.05;
 
@@ -118,30 +125,73 @@ function createStarField() {
         }
 
         sizeArray[i] = sizes.length > 0 ? sizes[i] : baseSize;
-        
-        if (stellarMotionEnabled) {
-            initialPosArray[i * 3] = initialPositions[i][0];
-            initialPosArray[i * 3 + 1] = initialPositions[i][1];
-            initialPosArray[i * 3 + 2] = initialPositions[i][2];
-            
-            // Velocities in km/s - will be converted in shader
-            velocityArray[i * 3] = velocities[i][0];
-            velocityArray[i * 3 + 1] = velocities[i][1];
-            velocityArray[i * 3 + 2] = velocities[i][2];
-        }
     }
 
     starGeometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
     starGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
     starGeometry.setAttribute('size', new THREE.BufferAttribute(sizeArray, 1));
     
-    // Note: initialPosition and velocity attributes are no longer used
-    // Stellar motion is handled by updating the 'position' attribute per-frame
-    // from the physically-correct simulation snapshots
+    // Initialize Hermite keyframe buffers if available
+    if (hermiteEnabled) {
+        initHermiteBuffers(count);
+    }
 
-    // Vertex shader - uses 'position' attribute which is updated per-frame
-    // when stellar motion is enabled (from simulation snapshots)
-    const starVertexShader = `
+    // Vertex shader with Hermite interpolation support
+    const starVertexShader = hermiteEnabled ? `
+        // Hermite interpolation vertex shader
+        uniform float u_time0;       // Start keyframe time (Myr)
+        uniform float u_time1;       // End keyframe time (Myr)
+        uniform float u_currentTime; // Current animation time (Myr)
+        uniform float u_velocityScale; // km/s to kpc/Myr conversion
+        
+        attribute float size;
+        attribute vec3 color;
+        attribute vec3 a_pos0;  // Position at keyframe 0
+        attribute vec3 a_vel0;  // Velocity at keyframe 0 (km/s)
+        attribute vec3 a_pos1;  // Position at keyframe 1
+        attribute vec3 a_vel1;  // Velocity at keyframe 1 (km/s)
+        
+        varying vec3 vColor;
+        varying float vDistance;
+        
+        vec3 hermiteInterpolate() {
+            float h = u_time1 - u_time0;
+            if (h < 0.001) return a_pos0; // Avoid division by zero
+            
+            float s = clamp((u_currentTime - u_time0) / h, 0.0, 1.0);
+            float s2 = s * s;
+            float s3 = s2 * s;
+            
+            // Hermite basis functions
+            float h00 = 2.0*s3 - 3.0*s2 + 1.0;  // pos0 weight
+            float h10 = s3 - 2.0*s2 + s;         // vel0 weight (tangent)
+            float h01 = -2.0*s3 + 3.0*s2;        // pos1 weight
+            float h11 = s3 - s2;                 // vel1 weight (tangent)
+            
+            // Scale velocities from km/s to kpc over the interval
+            // 1 km/s = 0.001022 kpc/Myr, multiply by interval h
+            vec3 v0_scaled = a_vel0 * u_velocityScale * h;
+            vec3 v1_scaled = a_vel1 * u_velocityScale * h;
+            
+            return h00 * a_pos0 + h10 * v0_scaled + h01 * a_pos1 + h11 * v1_scaled;
+        }
+        
+        void main() {
+            vColor = color;
+            
+            // Compute interpolated position
+            vec3 interpolatedPos = hermiteInterpolate();
+            
+            vec4 mvPosition = modelViewMatrix * vec4(interpolatedPos, 1.0);
+            vDistance = -mvPosition.z;
+            
+            float scaledSize = size * (400.0 / max(vDistance, 0.1));
+            gl_PointSize = max(scaledSize, 1.5);
+            
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    ` : `
+        // Standard vertex shader (no motion)
         attribute float size;
         attribute vec3 color;
         varying vec3 vColor;
@@ -211,6 +261,14 @@ function createStarField() {
         opacity: { value: starOpacity },
         farDistance: { value: 50.0 }
     };
+    
+    // Add Hermite uniforms if enabled
+    if (hermiteEnabled) {
+        uniforms.u_time0 = { value: 0.0 };
+        uniforms.u_time1 = { value: 1.0 };
+        uniforms.u_currentTime = { value: 0.0 };
+        uniforms.u_velocityScale = { value: window.config.velocity_conversion_factor || 0.001022 };
+    }
 
     starMaterial = new THREE.ShaderMaterial({
         uniforms: uniforms,
@@ -225,11 +283,146 @@ function createStarField() {
     scene.add(starPoints);
 }
 
+// Initialize Hermite interpolation buffers from keyframe data
+function initHermiteBuffers(starCount) {
+    if (!window.keyframeData || !window.keyframeData.keyframes) return;
+    
+    keyframes = window.keyframeData.keyframes;
+    
+    if (keyframes.length < 2) {
+        hermiteEnabled = false;
+        return;
+    }
+    
+    // Create buffer arrays for first keyframe pair
+    const kf0 = keyframes[0];
+    const kf1 = keyframes[1];
+    
+    const pos0Array = new Float32Array(starCount * 3);
+    const vel0Array = new Float32Array(starCount * 3);
+    const pos1Array = new Float32Array(starCount * 3);
+    const vel1Array = new Float32Array(starCount * 3);
+    
+    for (let i = 0; i < starCount; i++) {
+        if (i < kf0.positions.length) {
+            pos0Array[i * 3] = kf0.positions[i][0];
+            pos0Array[i * 3 + 1] = kf0.positions[i][1];
+            pos0Array[i * 3 + 2] = kf0.positions[i][2];
+            
+            vel0Array[i * 3] = kf0.velocities[i][0];
+            vel0Array[i * 3 + 1] = kf0.velocities[i][1];
+            vel0Array[i * 3 + 2] = kf0.velocities[i][2];
+        }
+        
+        if (i < kf1.positions.length) {
+            pos1Array[i * 3] = kf1.positions[i][0];
+            pos1Array[i * 3 + 1] = kf1.positions[i][1];
+            pos1Array[i * 3 + 2] = kf1.positions[i][2];
+            
+            vel1Array[i * 3] = kf1.velocities[i][0];
+            vel1Array[i * 3 + 1] = kf1.velocities[i][1];
+            vel1Array[i * 3 + 2] = kf1.velocities[i][2];
+        }
+    }
+    
+    // Add attributes to geometry
+    starGeometry.setAttribute('a_pos0', new THREE.BufferAttribute(pos0Array, 3));
+    starGeometry.setAttribute('a_vel0', new THREE.BufferAttribute(vel0Array, 3));
+    starGeometry.setAttribute('a_pos1', new THREE.BufferAttribute(pos1Array, 3));
+    starGeometry.setAttribute('a_vel1', new THREE.BufferAttribute(vel1Array, 3));
+    
+    // Store buffer state
+    keyframeBuffers.pos0 = pos0Array;
+    keyframeBuffers.vel0 = vel0Array;
+    keyframeBuffers.pos1 = pos1Array;
+    keyframeBuffers.vel1 = vel1Array;
+    keyframeBuffers.time0 = kf0.time_myr;
+    keyframeBuffers.time1 = kf1.time_myr;
+    
+    currentKeyframeIndex = 0;
+    
+    console.log(`[Hermite] Initialized with ${keyframes.length} keyframes, ${starCount} stars`);
+    console.log(`[Hermite] First interval: ${kf0.time_myr} - ${kf1.time_myr} Myr`);
+}
+
+// Update Hermite keyframe buffers when time crosses a keyframe boundary
+function updateHermiteKeyframes(timeMyr) {
+    if (!hermiteEnabled || !starMaterial || !keyframes || keyframes.length < 2) return;
+    
+    // Find the correct keyframe interval
+    let newIndex = 0;
+    for (let i = 0; i < keyframes.length - 1; i++) {
+        if (timeMyr >= keyframes[i].time_myr && timeMyr <= keyframes[i + 1].time_myr) {
+            newIndex = i;
+            break;
+        }
+        if (timeMyr > keyframes[i + 1].time_myr) {
+            newIndex = i;
+        }
+    }
+    
+    // Clamp to valid range
+    newIndex = Math.min(newIndex, keyframes.length - 2);
+    
+    // Check if we need to swap keyframe buffers
+    if (newIndex !== currentKeyframeIndex) {
+        swapKeyframeBuffers(newIndex);
+    }
+    
+    // Always update current time uniform
+    starMaterial.uniforms.u_currentTime.value = timeMyr;
+}
+
+// Swap to a new keyframe pair
+function swapKeyframeBuffers(newIndex) {
+    if (newIndex < 0 || newIndex >= keyframes.length - 1) return;
+    
+    const kf0 = keyframes[newIndex];
+    const kf1 = keyframes[newIndex + 1];
+    const starCount = starGeometry.getAttribute('a_pos0').count;
+    
+    console.log(`[Hermite] Swapping to keyframe pair ${newIndex}: ${kf0.time_myr} - ${kf1.time_myr} Myr`);
+    
+    // Update buffer arrays
+    const pos0Attr = starGeometry.getAttribute('a_pos0');
+    const vel0Attr = starGeometry.getAttribute('a_vel0');
+    const pos1Attr = starGeometry.getAttribute('a_pos1');
+    const vel1Attr = starGeometry.getAttribute('a_vel1');
+    
+    for (let i = 0; i < starCount; i++) {
+        if (i < kf0.positions.length) {
+            pos0Attr.setXYZ(i, kf0.positions[i][0], kf0.positions[i][1], kf0.positions[i][2]);
+            vel0Attr.setXYZ(i, kf0.velocities[i][0], kf0.velocities[i][1], kf0.velocities[i][2]);
+        }
+        
+        if (i < kf1.positions.length) {
+            pos1Attr.setXYZ(i, kf1.positions[i][0], kf1.positions[i][1], kf1.positions[i][2]);
+            vel1Attr.setXYZ(i, kf1.velocities[i][0], kf1.velocities[i][1], kf1.velocities[i][2]);
+        }
+    }
+    
+    pos0Attr.needsUpdate = true;
+    vel0Attr.needsUpdate = true;
+    pos1Attr.needsUpdate = true;
+    vel1Attr.needsUpdate = true;
+    
+    // Update uniforms
+    starMaterial.uniforms.u_time0.value = kf0.time_myr;
+    starMaterial.uniforms.u_time1.value = kf1.time_myr;
+    
+    keyframeBuffers.time0 = kf0.time_myr;
+    keyframeBuffers.time1 = kf1.time_myr;
+    currentKeyframeIndex = newIndex;
+}
+
 // Update stellar positions based on current simulation time
-// (No longer used - positions are updated directly from frame data via updateStellarPositions)
 function updateStellarTime(timeMyr) {
-    // No-op: stellar motion is now handled by updateStellarPositions() 
-    // which updates the position attribute from simulation snapshot data
+    // Use Hermite interpolation if available (smooth, memory-efficient)
+    if (hermiteEnabled) {
+        updateHermiteKeyframes(timeMyr);
+        return;
+    }
+    // Otherwise, positions are updated directly via updateStellarPositions()
 }
 
 function createCivilizationSprites() {
@@ -258,136 +451,6 @@ function createHazardMarkers() {
 
 function renderStatic() {
     renderer.render(scene, camera);
-}
-
-function initAnimation() {
-    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
-        return;
-    }
-    
-    // Initialize the timeline slider
-    const maxFrame = window.animationData.frames.length - 1;
-    const timelineSlider = document.getElementById('timeline-slider');
-    timelineSlider.max = maxFrame;
-    timelineSlider.value = 0;
-    
-    // Initialize buttons
-    const playBtn = document.getElementById('btn-playpause');
-    playBtn.textContent = '▶ Play';
-    
-    const stepBtn = document.getElementById('btn-step');
-    
-    // Set up play/pause button
-    playBtn.addEventListener('click', function() {
-        isPlaying = !isPlaying;
-        playBtn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
-        
-        if (isPlaying) {
-            playAnimation();
-        }
-    });
-    
-    // Set up step button
-    stepBtn.addEventListener('click', function() {
-        if (!isPlaying) {
-            stepAnimation();
-        }
-    });
-    
-    // Timeline slider
-    timelineSlider.addEventListener('input', function() {
-        currentFrame = parseInt(this.value);
-        updateAnimation(0);  // Update immediately
-    });
-    
-    // Set up reset button
-    document.getElementById('btn-reset').addEventListener('click', function() {
-        currentFrame = 0;
-        timelineSlider.value = 0;
-        updateAnimation(0);
-        isPlaying = false;
-        document.getElementById('btn-playpause').textContent = '▶ Play';
-    });
-}
-
-function playAnimation() {
-    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
-        return;
-    }
-    
-    const speed = parseFloat(document.getElementById('speed-slider').value);
-    
-    function animateStep() {
-        if (isPlaying) {
-            stepAnimation();
-            setTimeout(animateStep, 100 / speed);  // Adjust for speed setting
-        }
-    }
-    
-    animateStep();
-}
-
-function stepAnimation() {
-    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
-        return;
-    }
-    
-    const totalFrames = window.animationData.frames.length;
-    const timelineSlider = document.getElementById('timeline-slider');
-    
-    currentFrame++;
-    if (currentFrame >= totalFrames) {
-        currentFrame = 0;
-    }
-    
-    timelineSlider.value = currentFrame;
-    updateAnimation(0);
-}
-
-function updateAnimation(delta) {
-    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
-        return;
-    }
-    
-    const totalFrames = window.animationData.frames.length;
-    const timeRange = window.animationData.time_range || [0, 1];
-    
-    // Update time display (time in Gyr)
-    const timeGyr = timeRange[0] + (timeRange[1] - timeRange[0]) * currentFrame / (totalFrames - 1);
-    document.getElementById('time-display').textContent = timeGyr.toFixed(2) + ' Gyr';
-    
-    // Update stellar positions if motion enabled (time in Myr for GPU shader)
-    const timeMyr = timeGyr * 1000.0;
-    updateStellarTime(timeMyr);
-    
-    const frame = window.animationData.frames[currentFrame];
-    
-    if (frame) {
-        // Update stellar positions from snapshot (for physically-correct stellar motion)
-        const hasPositions = frame.stellar_positions && frame.stellar_positions.length > 0;
-        const hasGeometry = starGeometry !== undefined && starGeometry !== null;
-        console.log(`[Animation] Frame ${currentFrame}/${window.animationData.frames.length}: stellar_positions=${hasPositions ? frame.stellar_positions.length : 0}, starGeometry=${hasGeometry}`);
-        
-        if (hasPositions && hasGeometry) {
-            try {
-                updateStellarPositions(frame.stellar_positions);
-            } catch (e) {
-                console.error('[Animation] Error updating stellar positions:', e);
-            }
-        } else {
-            console.warn(`[Animation] Skipping stellar update: hasPositions=${hasPositions}, hasGeometry=${hasGeometry}`);
-        }
-        
-        updateCivilizations(frame.civilizations);
-        updateProbes(frame.probes);
-        updateHazards(frame.hazards);
-    }
-    
-    // Update stats
-    const civilStats = document.getElementById('civ-stats');
-    const activeCivs = frame.civilizations ? frame.civilizations.filter(c => c.is_active).length : 0;
-    const totalCivs = frame.civilizations ? frame.civilizations.length : 0;
-    civilStats.textContent = `Active: ${activeCivs} | Total: ${totalCivs}`;
 }
 
 // Update star positions from snapshot data (for stellar motion visualization)
@@ -449,8 +512,8 @@ function animate() {
         window.updateLOD();
     }
 
-    if (isPlaying) {
-        updateAnimation(delta);
+    if (window.isPlaying && window.updateAnimation) {
+        window.updateAnimation(delta);
     }
 
     if (composer && window.usePostProcessing) {
@@ -459,8 +522,6 @@ function animate() {
         renderer.render(scene, camera);
     }
 }
-
-window.isPlaying = false;
 
 function updateStarsVisible(visible) {
     if (starPoints) {
@@ -497,6 +558,9 @@ window.updateHazardsVisible = updateHazardsVisible;
 window.updateStellarTime = updateStellarTime;
 window.updateStellarPositions = updateStellarPositions;
 window.isStellarMotionEnabled = function() { return stellarMotionEnabled; };
+window.isHermiteEnabled = function() { return hermiteEnabled; };
+window.updateHermiteKeyframes = updateHermiteKeyframes;
+window.getKeyframes = function() { return keyframes; };
 
 // Export scene and camera for other modules
 window.getScene = function() { return scene; };

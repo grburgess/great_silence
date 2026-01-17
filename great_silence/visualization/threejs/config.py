@@ -84,6 +84,15 @@ class ThreeJSConfig:
     include_threejs_bundle: bool = True
     data_embed_threshold_mb: float = 10.0
 
+    max_keyframes: int = 20
+    keyframe_include_events: bool = True
+    hermite_interpolation: bool = True
+    velocity_conversion_factor: float = 0.001022
+    
+    only_expanding_civs: bool = False
+    star_subsample_limit: int = 10000
+    max_trajectories: int = 5000  # Limit trajectories for performance (was 10000)
+
     def to_dict(self) -> dict:
         """Convert config to dict for JSON serialization."""
         return {
@@ -144,4 +153,11 @@ class ThreeJSConfig:
             "max_playback_speed": self.max_playback_speed,
             "include_threejs_bundle": self.include_threejs_bundle,
             "data_embed_threshold_mb": self.data_embed_threshold_mb,
+            "max_keyframes": self.max_keyframes,
+            "keyframe_include_events": self.keyframe_include_events,
+            "hermite_interpolation": self.hermite_interpolation,
+            "velocity_conversion_factor": self.velocity_conversion_factor,
+            "only_expanding_civs": self.only_expanding_civs,
+            "star_subsample_limit": self.star_subsample_limit,
+            "max_trajectories": self.max_trajectories,
         }

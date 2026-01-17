@@ -859,6 +859,21 @@
                     </div>
                 </div>
 
+                <!-- Civilization Visualization Panel -->
+                <div id="civ-panel" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; padding-top: 5px; border-top: 1px solid #333;">
+                    <div style="font-size: 11px; color: #00ff88; font-weight: bold;">CIVILIZATIONS</div>
+                    
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="civ-history-toggle" checked>
+                        <label for="civ-history-toggle" style="font-size: 11px; color: #888;" id="civ-history-label">Show Extinct</label>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="civ-expanding-toggle">
+                        <label for="civ-expanding-toggle" style="font-size: 11px; color: #888;" id="civ-expanding-label">Only Expanding</label>
+                    </div>
+                </div>
+
                 <!-- Disaster Visualization Panel -->
                 <div id="disaster-panel" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; padding-top: 5px; border-top: 1px solid #333;">
                     <div style="font-size: 11px; color: #ff6600; font-weight: bold;">DISASTERS</div>
@@ -964,6 +979,9 @@
         </div>
     </div>
 
+    <!-- KEYFRAME_DATA -->
+    <!-- ANIMATION_DATA -->
+
     <script>
         window.config = {{ config | tojson | safe }};
         window.showTrajectories = {{ show_trajectories | lower }};
@@ -994,6 +1012,30 @@
         };
         {% endif %}
 
+        {% if animated and keyframe_data %}
+        window.keyframeData = {{ keyframe_data | safe }};
+        window.useHermite = true;
+        {% elif animated and keyframe_data_url %}
+        // Keyframe data loaded externally via fetch
+        window.useHermite = true;
+        window.keyframeDataPromise = fetch("{{ keyframe_data_url }}")
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to load keyframe data');
+                return response.json();
+            })
+            .then(data => {
+                window.keyframeData = data;
+                console.log('[Hermite] Loaded external keyframe data:', data.keyframes ? data.keyframes.length : 0, 'keyframes');
+                return data;
+            })
+            .catch(err => {
+                console.error('Failed to load keyframe data:', err);
+                window.useHermite = false;
+            });
+        {% else %}
+        window.useHermite = false;
+        {% endif %}
+
         {% if not animated %}
         window.civData = {{ data.civilizations | tojson | safe }};
         window.trajectoryData = {{ data.trajectories | tojson | safe }};
@@ -1010,11 +1052,31 @@
         window.civStatsData = {{ data.civ_stats | tojson | safe }};
         {% endif %}
 
-        function init() {
+        async function init() {
             if (typeof THREE === 'undefined') {
                 document.getElementById('loading-text').textContent = 'Error: Three.js failed to load. Please check your internet connection and refresh.';
                 console.error('THREE is not defined. Check browser console for CDN loading errors.');
                 return;
+            }
+
+            // Wait for any external data to load
+            const pendingPromises = [];
+            if (window.keyframeDataPromise) {
+                document.getElementById('loading-text').textContent = 'Loading keyframe data...';
+                pendingPromises.push(window.keyframeDataPromise);
+            }
+            if (window.animationDataPromise) {
+                document.getElementById('loading-text').textContent = 'Loading animation data...';
+                pendingPromises.push(window.animationDataPromise);
+            }
+            if (pendingPromises.length > 0) {
+                try {
+                    await Promise.all(pendingPromises);
+                } catch (err) {
+                    console.error('Error loading external data:', err);
+                    document.getElementById('loading-text').textContent = 'Error loading data. Check console for details.';
+                    return;
+                }
             }
 
             initScene();

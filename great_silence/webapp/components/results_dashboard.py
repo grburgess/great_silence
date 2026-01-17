@@ -16,6 +16,36 @@ class ResultsDashboard:
         self._container = None
         self._viz_html_path = None
         self._fullscreen_dialog = None
+        
+        # Visualization settings (defaults from ThreeJSConfig)
+        self._viz_settings = {
+            # Animation
+            "max_keyframes": 20,
+            "frame_duration_ms": 50,
+            "default_playback_speed": 1.0,
+            "hermite_interpolation": True,
+            # Stars
+            "star_point_size": 0.05,
+            "star_opacity": 0.8,
+            # Civilizations
+            "civ_active_size": 0.15,
+            "civ_active_opacity": 0.9,
+            "kardashev_colorscale": "viridis",
+            "only_expanding_civs": False,
+            # Disasters
+            "hazard_marker_size": 0.3,
+            "hazard_opacity": 0.7,
+            "shockwave_duration_myr": 50.0,
+            # Camera
+            "auto_rotate": False,
+            "auto_rotate_speed": 2.0,
+            # Probes
+            "probe_trail_length": 3,
+            "probe_glow_enabled": True,
+            "trajectory_opacity": 0.6,
+            "max_trajectories": 5000,  # Limit for performance
+        }
+        
         self._build()
 
     def _build(self) -> None:
@@ -151,6 +181,153 @@ class ResultsDashboard:
         with self._viz_container:
             ui.label("Interactive 3D Galaxy Visualization").classes("text-gray-400 mb-2")
 
+            # Visualization Settings Panel
+            with ui.expansion("⚙️ Visualization Settings", icon="settings").classes("w-full mb-4 bg-gray-800"):
+                with ui.column().classes("w-full gap-2 p-2"):
+                    # Animation Settings
+                    ui.label("Animation").classes("text-cyan-400 font-semibold text-sm")
+                    with ui.row().classes("w-full gap-4 flex-wrap"):
+                        ui.number(
+                            "Max Keyframes",
+                            value=self._viz_settings["max_keyframes"],
+                            min=5, max=100, step=5,
+                            on_change=lambda e: self._update_viz_setting("max_keyframes", int(e.value)),
+                        ).classes("w-32").props("dense dark outlined")
+                        ui.number(
+                            "Frame Duration (ms)",
+                            value=self._viz_settings["frame_duration_ms"],
+                            min=10, max=500, step=10,
+                            on_change=lambda e: self._update_viz_setting("frame_duration_ms", int(e.value)),
+                        ).classes("w-40").props("dense dark outlined")
+                        ui.number(
+                            "Playback Speed",
+                            value=self._viz_settings["default_playback_speed"],
+                            min=0.1, max=10.0, step=0.1,
+                            on_change=lambda e: self._update_viz_setting("default_playback_speed", float(e.value)),
+                        ).classes("w-36").props("dense dark outlined")
+                        ui.checkbox(
+                            "Hermite Interpolation",
+                            value=self._viz_settings["hermite_interpolation"],
+                            on_change=lambda e: self._update_viz_setting("hermite_interpolation", e.value),
+                        ).classes("text-gray-300")
+
+                    ui.separator().classes("my-2")
+
+                    # Stars Settings
+                    ui.label("Stars").classes("text-cyan-400 font-semibold text-sm")
+                    with ui.row().classes("w-full gap-4 flex-wrap"):
+                        ui.number(
+                            "Point Size",
+                            value=self._viz_settings["star_point_size"],
+                            min=0.01, max=0.5, step=0.01,
+                            on_change=lambda e: self._update_viz_setting("star_point_size", float(e.value)),
+                        ).classes("w-28").props("dense dark outlined")
+                        ui.number(
+                            "Opacity",
+                            value=self._viz_settings["star_opacity"],
+                            min=0.1, max=1.0, step=0.1,
+                            on_change=lambda e: self._update_viz_setting("star_opacity", float(e.value)),
+                        ).classes("w-24").props("dense dark outlined")
+
+                    ui.separator().classes("my-2")
+
+                    # Civilization Settings
+                    ui.label("Civilizations").classes("text-cyan-400 font-semibold text-sm")
+                    with ui.row().classes("w-full gap-4 flex-wrap"):
+                        ui.number(
+                            "Size",
+                            value=self._viz_settings["civ_active_size"],
+                            min=0.05, max=0.5, step=0.05,
+                            on_change=lambda e: self._update_viz_setting("civ_active_size", float(e.value)),
+                        ).classes("w-24").props("dense dark outlined")
+                        ui.number(
+                            "Opacity",
+                            value=self._viz_settings["civ_active_opacity"],
+                            min=0.1, max=1.0, step=0.1,
+                            on_change=lambda e: self._update_viz_setting("civ_active_opacity", float(e.value)),
+                        ).classes("w-24").props("dense dark outlined")
+                        ui.select(
+                            ["viridis", "plasma", "inferno", "magma", "cividis", "turbo"],
+                            value=self._viz_settings["kardashev_colorscale"],
+                            label="Color Scale",
+                            on_change=lambda e: self._update_viz_setting("kardashev_colorscale", e.value),
+                        ).classes("w-32").props("dense dark outlined")
+                        ui.checkbox(
+                            "Only Expanding Civs",
+                            value=self._viz_settings["only_expanding_civs"],
+                            on_change=lambda e: self._update_viz_setting("only_expanding_civs", e.value),
+                        ).classes("text-gray-300").tooltip("Show only civilizations that colonized other stars")
+
+                    ui.separator().classes("my-2")
+
+                    # Disaster Settings
+                    ui.label("Disasters").classes("text-cyan-400 font-semibold text-sm")
+                    with ui.row().classes("w-full gap-4 flex-wrap"):
+                        ui.number(
+                            "Marker Size",
+                            value=self._viz_settings["hazard_marker_size"],
+                            min=0.1, max=1.0, step=0.1,
+                            on_change=lambda e: self._update_viz_setting("hazard_marker_size", float(e.value)),
+                        ).classes("w-28").props("dense dark outlined")
+                        ui.number(
+                            "Opacity",
+                            value=self._viz_settings["hazard_opacity"],
+                            min=0.1, max=1.0, step=0.1,
+                            on_change=lambda e: self._update_viz_setting("hazard_opacity", float(e.value)),
+                        ).classes("w-24").props("dense dark outlined")
+                        ui.number(
+                            "Shockwave Duration (Myr)",
+                            value=self._viz_settings["shockwave_duration_myr"],
+                            min=10, max=200, step=10,
+                            on_change=lambda e: self._update_viz_setting("shockwave_duration_myr", float(e.value)),
+                        ).classes("w-48").props("dense dark outlined")
+
+                    ui.separator().classes("my-2")
+
+                    # Camera Settings
+                    ui.label("Camera").classes("text-cyan-400 font-semibold text-sm")
+                    with ui.row().classes("w-full gap-4 flex-wrap"):
+                        ui.checkbox(
+                            "Auto Rotate",
+                            value=self._viz_settings["auto_rotate"],
+                            on_change=lambda e: self._update_viz_setting("auto_rotate", e.value),
+                        ).classes("text-gray-300")
+                        ui.number(
+                            "Rotation Speed",
+                            value=self._viz_settings["auto_rotate_speed"],
+                            min=0.5, max=10.0, step=0.5,
+                            on_change=lambda e: self._update_viz_setting("auto_rotate_speed", float(e.value)),
+                        ).classes("w-36").props("dense dark outlined")
+
+                    ui.separator().classes("my-2")
+
+                    # Probe Settings
+                    ui.label("Probes & Trajectories").classes("text-cyan-400 font-semibold text-sm")
+                    with ui.row().classes("w-full gap-4 flex-wrap"):
+                        ui.number(
+                            "Trail Length",
+                            value=self._viz_settings["probe_trail_length"],
+                            min=1, max=20, step=1,
+                            on_change=lambda e: self._update_viz_setting("probe_trail_length", int(e.value)),
+                        ).classes("w-28").props("dense dark outlined")
+                        ui.checkbox(
+                            "Probe Glow",
+                            value=self._viz_settings["probe_glow_enabled"],
+                            on_change=lambda e: self._update_viz_setting("probe_glow_enabled", e.value),
+                        ).classes("text-gray-300")
+                        ui.number(
+                            "Trajectory Opacity",
+                            value=self._viz_settings["trajectory_opacity"],
+                            min=0.1, max=1.0, step=0.1,
+                            on_change=lambda e: self._update_viz_setting("trajectory_opacity", float(e.value)),
+                        ).classes("w-36").props("dense dark outlined")
+                        ui.number(
+                            "Max Trajectories",
+                            value=self._viz_settings["max_trajectories"],
+                            min=1000, max=100000, step=1000,
+                            on_change=lambda e: self._update_viz_setting("max_trajectories", int(e.value)),
+                        ).classes("w-36").props("dense dark outlined").tooltip("Limit trajectories to prevent huge files (default: 10,000)")
+
             with ui.row().classes("w-full gap-4"):
                 ui.button(
                     "Generate Visualization",
@@ -175,35 +352,123 @@ class ResultsDashboard:
                             "flat round"
                         ).classes("text-white")
                     self._fullscreen_frame = ui.html("", sanitize=False).classes("w-full h-full")
+    
+    def _update_viz_setting(self, key: str, value) -> None:
+        """Update a visualization setting."""
+        self._viz_settings[key] = value
 
     def _generate_viz(self, sim) -> None:
-        """Generate the Three.js visualization."""
+        """Generate the Three.js visualization with progress feedback."""
         import traceback
         import time
+        import sys
+        
+        def log(msg):
+            """Print timestamped log message to terminal."""
+            timestamp = time.strftime("%H:%M:%S")
+            print(f"[VIZ {timestamp}] {msg}", flush=True)
+        
         try:
+            log("Starting visualization generation...")
             from great_silence.visualization.threejs import export_html
-
+            from great_silence.visualization.threejs.config import ThreeJSConfig
+            
+            n_stars = len(sim.galaxy.positions) if hasattr(sim, 'galaxy') else 0
+            n_snapshots = len(sim.snapshots) if hasattr(sim, 'snapshots') else 0
+            log(f"Simulation data: {n_stars:,} stars, {n_snapshots} snapshots")
+            
+            # Create progress dialog in the main context
+            with ui.dialog() as progress_dialog:
+                with ui.card().classes("w-96 bg-gray-800 p-6"):
+                    ui.label("🎬 Generating Visualization").classes("text-lg font-semibold text-cyan-400 mb-4")
+                    
+                    status_label = ui.label("Preparing data...").classes("text-gray-400 text-sm mb-2")
+                    progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
+                    
+                    size_estimate = self._estimate_data_size(n_stars, n_snapshots)
+                    ui.label(f"Estimated data: {size_estimate:.1f} MB").classes("text-gray-500 text-xs mt-2")
+                    ui.label(f"Stars: {n_stars:,} | Snapshots: {n_snapshots}").classes("text-gray-500 text-xs")
+            
+            progress_dialog.open()
+            log(f"Estimated data size: {size_estimate:.1f} MB")
+            
             # Use unique path to avoid browser caching
             viz_id = int(time.time() * 1000)
             temp_dir = tempfile.mkdtemp()
             self._viz_html_path = os.path.join(temp_dir, "visualization.html")
-
+            log(f"Output path: {self._viz_html_path}")
+            
+            status_label.set_text("Extracting keyframes...")
+            progress_bar.set_value(0.2)
+            log("Configuring ThreeJSConfig...")
+            
+            # Configure visualization from user settings
+            config = ThreeJSConfig()
+            # Animation
+            config.hermite_interpolation = self._viz_settings["hermite_interpolation"]
+            config.max_keyframes = self._viz_settings["max_keyframes"]
+            config.keyframe_include_events = True
+            config.frame_duration_ms = self._viz_settings["frame_duration_ms"]
+            config.default_playback_speed = self._viz_settings["default_playback_speed"]
+            # Stars
+            config.star_point_size = self._viz_settings["star_point_size"]
+            config.star_opacity = self._viz_settings["star_opacity"]
+            # Civilizations
+            config.civ_active_size = self._viz_settings["civ_active_size"]
+            config.civ_active_opacity = self._viz_settings["civ_active_opacity"]
+            config.kardashev_colorscale = self._viz_settings["kardashev_colorscale"]
+            config.only_expanding_civs = self._viz_settings["only_expanding_civs"]
+            # Disasters
+            config.hazard_marker_size = self._viz_settings["hazard_marker_size"]
+            config.hazard_opacity = self._viz_settings["hazard_opacity"]
+            config.shockwave_duration_myr = self._viz_settings["shockwave_duration_myr"]
+            # Camera
+            config.auto_rotate = self._viz_settings["auto_rotate"]
+            config.auto_rotate_speed = self._viz_settings["auto_rotate_speed"]
+            # Probes
+            config.probe_trail_length = self._viz_settings["probe_trail_length"]
+            config.probe_glow_enabled = self._viz_settings["probe_glow_enabled"]
+            config.trajectory_opacity = self._viz_settings["trajectory_opacity"]
+            config.max_trajectories = self._viz_settings["max_trajectories"]
+            
+            log(f"Config: hermite={config.hermite_interpolation}, max_keyframes={config.max_keyframes}, max_traj={config.max_trajectories}")
+            
+            status_label.set_text("Building visualization...")
+            progress_bar.set_value(0.5)
+            log("Starting export_html...")
+            start_time = time.time()
+            
+            # Run export (synchronous for now - avoids context issues)
             export_html(
                 sim,
                 self._viz_html_path,
+                config=config,
                 animated=True,
                 show_trajectories=True,
                 show_spheres=True,
                 show_hazards=True,
             )
             
+            export_time = time.time() - start_time
+            log(f"export_html completed in {export_time:.2f}s")
+            
+            status_label.set_text("Finalizing...")
+            progress_bar.set_value(0.9)
+            
             if not os.path.exists(self._viz_html_path):
+                log("ERROR: Visualization file not created!")
+                progress_dialog.close()
                 ui.notify("Error: Visualization file not created", type="negative")
                 return
 
+            # Check file size
+            file_size = os.path.getsize(self._viz_html_path) / (1024 * 1024)
+            log(f"HTML file created: {file_size:.2f} MB")
+            
             # Use unique path to bust cache
             viz_path = f"/viz_{viz_id}"
             app.add_static_files(viz_path, temp_dir)
+            log(f"Static files registered at {viz_path}")
 
             self._viz_frame_container.clear()
             with self._viz_frame_container:
@@ -213,18 +478,40 @@ class ResultsDashboard:
                     f"</iframe>",
                     sanitize=False,
                 )
+            log("iframe created")
 
             self._fullscreen_frame.content = (
                 f'<iframe src="{viz_path}/visualization.html" '
                 f'style="width: 100%; height: calc(100vh - 80px); border: none;"></iframe>'
             )
             self._fullscreen_btn.visible = True
-
-            ui.notify("Visualization generated!", type="positive")
+            
+            progress_bar.set_value(1.0)
+            status_label.set_text("Complete!")
+            
+            progress_dialog.close()
+            log("✅ Visualization generation complete!")
+            ui.notify("Visualization generated with Hermite interpolation!", type="positive")
 
         except Exception as e:
+            print(f"[VIZ ERROR] Exception during visualization generation:", flush=True)
             traceback.print_exc()
+            print(f"[VIZ ERROR] {type(e).__name__}: {e}", flush=True)
             ui.notify(f"Error generating visualization: {e}", type="negative")
+    
+    def _estimate_data_size(self, n_stars: int, n_snapshots: int) -> float:
+        """Estimate the data size in MB for the visualization.
+        
+        With Hermite interpolation, we store:
+        - 20 keyframes × n_stars × 6 floats (pos + vel) × 4 bytes
+        - Events: ~1KB per event, estimate ~100 events
+        - Legacy frames: n_snapshots × small metadata (~1KB each)
+        """
+        keyframe_size_mb = (20 * n_stars * 6 * 4) / (1024 * 1024)
+        events_size_mb = 0.1
+        legacy_frames_mb = (n_snapshots * 1024) / (1024 * 1024)
+        
+        return keyframe_size_mb + events_size_mb + legacy_frames_mb
 
     def _open_fullscreen(self) -> None:
         """Open the fullscreen visualization dialog."""

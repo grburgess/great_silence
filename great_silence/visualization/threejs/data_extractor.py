@@ -1,12 +1,59 @@
 """Data extraction for Three.js visualization."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, List, Union, Dict, Any
+from typing import Optional, List, Union, Dict, Any, Tuple
 import numpy as np
 import json
 
 from .config import ThreeJSConfig
+
+
+@dataclass
+class StellarKeyframe:
+    """Keyframe data for Hermite interpolation of stellar motion."""
+    
+    time_myr: float
+    positions: np.ndarray
+    velocities: np.ndarray
+    
+    def to_dict(self, subsample_indices: Optional[np.ndarray] = None) -> dict:
+        """Convert to JSON-serializable dict, optionally subsampling."""
+        pos = self.positions
+        vel = self.velocities
+        
+        if subsample_indices is not None:
+            pos = pos[subsample_indices]
+            vel = vel[subsample_indices]
+        
+        return {
+            "time_myr": self.time_myr,
+            "positions": pos.tolist(),
+            "velocities": vel.tolist(),
+        }
+
+
+@dataclass  
+class EventData:
+    """Sparse event data for civs, probes, and disasters."""
+    
+    civ_births: List[Dict[str, Any]] = field(default_factory=list)
+    civ_deaths: List[Dict[str, Any]] = field(default_factory=list)
+    civ_updates: List[Dict[str, Any]] = field(default_factory=list)
+    disasters: List[Dict[str, Any]] = field(default_factory=list)
+    probes: List[Dict[str, Any]] = field(default_factory=list)
+    trajectories: List[Dict[str, Any]] = field(default_factory=list)
+    
+    def to_dict(self) -> dict:
+        """Convert to JSON-serializable dict."""
+        return {
+            "civ_births": self.civ_births,
+            "civ_deaths": self.civ_deaths,
+            "civ_updates": self.civ_updates,
+            "disasters": self.disasters,
+            "probes": self.probes,
+            "trajectories": self.trajectories,
+        }
 
 
 def _extract_civ_list(snap, galaxy_positions=None):
@@ -31,13 +78,23 @@ def _extract_civ_list(snap, galaxy_positions=None):
             else:
                 pos = [0.0, 0.0, 0.0]
             
+            # Check if civ has colonies
+            has_colonies = False
+            if hasattr(c, 'colonized_stars') and c.colonized_stars:
+                has_colonies = len(c.colonized_stars) > 1 or (
+                    len(c.colonized_stars) == 1 and 
+                    c.parent_star_idx not in c.colonized_stars
+                )
+            
             civs.append({
                 'civ_id': c.civ_id,
                 'position': pos,
                 'kardashev': c.kardashev_scale,
                 'age': (snap.time_myr - c.birth_time_myr) / 1000.0 
                        if hasattr(snap, 'time_myr') else c.birth_time_myr / 1000.0,
-                'is_active': c.is_active
+                'is_active': c.is_active,
+                'is_extinct': not c.is_active,
+                'has_colonies': has_colonies
             })
         return civs
     elif hasattr(snap, 'civilizations'):
@@ -112,7 +169,10 @@ def _extract_expansion_trajectories(snap):
         home_idx = civ.parent_star_idx
         home_pos = stellar_positions[home_idx].tolist() if home_idx < len(stellar_positions) else [0, 0, 0]
         
+        # Prefer archived_probes (actual probe paths) over colonized_stars (starburst from home)
+        has_archived_probes = False
         if hasattr(civ, 'archived_probes') and civ.archived_probes:
+            has_archived_probes = True
             for probe in civ.archived_probes:
                 launch_idx = probe.launch_star_idx
                 target_idx = probe.target_star_idx
@@ -133,7 +193,8 @@ def _extract_expansion_trajectories(snap):
                         'time_myr': arrival_time
                     })
         
-        if hasattr(civ, 'colonized_stars') and civ.colonized_stars:
+        # Only use colonized_stars as fallback if no archived probes
+        if not has_archived_probes and hasattr(civ, 'colonized_stars') and civ.colonized_stars:
             for colony_idx in civ.colonized_stars:
                 edge_key = (civ.civ_id, home_idx, colony_idx)
                 if edge_key not in seen_edges and colony_idx != home_idx and colony_idx < len(stellar_positions):
@@ -337,9 +398,9 @@ class SimulationDataExtractor:
                 velocities = self.simulation_data.get("stellar_velocities", None)
                 
                 if initial_positions is not None and velocities is not None:
-                    if indices is not None:
-                        initial_positions = initial_positions[indices]
-                        velocities = velocities[indices]
+                    if self._subsample_indices is not None:
+                        initial_positions = initial_positions[self._subsample_indices]
+                        velocities = velocities[self._subsample_indices]
                     
                     result["initial_positions"] = initial_positions.tolist()
                     result["velocities"] = velocities.tolist()
@@ -609,7 +670,7 @@ class SimulationDataExtractor:
         }
 
     def extract_stellar_hr_data(
-        self, subsample: int = 5000, seed: int = 42
+        self, subsample: int = 2000, seed: int = 42, max_frames: int = 20
     ) -> dict:
         """Extract stellar data for HR diagram visualization.
 
@@ -618,6 +679,7 @@ class SimulationDataExtractor:
         Args:
             subsample: Number of stars to include
             seed: Random seed for subsampling
+            max_frames: Maximum number of frames to include per-frame data (to limit size)
 
         Returns:
             Dict with temperatures, luminosities, colors, habitable flags, and per-frame data
@@ -653,7 +715,19 @@ class SimulationDataExtractor:
 
         per_frame_data = []
         if self.snapshots:
-            for snap in self.snapshots:
+            # Subsample snapshots to limit data size
+            n_snaps = len(self.snapshots)
+            if n_snaps > max_frames:
+                step = n_snaps // max_frames
+                snap_indices = list(range(0, n_snaps, step))[:max_frames]
+                # Always include last frame
+                if snap_indices[-1] != n_snaps - 1:
+                    snap_indices[-1] = n_snaps - 1
+            else:
+                snap_indices = list(range(n_snaps))
+            
+            for snap_idx in snap_indices:
+                snap = self.snapshots[snap_idx]
                 frame_hr = {"time": snap.get("time", 0)}
                 if "stellar_ages" in snap and snap["stellar_ages"] is not None:
                     ages = np.array(snap["stellar_ages"])
@@ -782,3 +856,490 @@ class SimulationDataExtractor:
             "death_times": death_time_list,
             "peak_kardashev": peak_kardashev,
         }
+
+    def extract_keyframes(
+        self,
+        max_keyframes: int = 20,
+        include_events: bool = True,
+        subsample: int = 10000,
+        seed: int = 42,
+    ) -> Tuple[List[StellarKeyframe], EventData]:
+        """Extract stellar keyframes and sparse event data for Hermite interpolation.
+        
+        This method extracts:
+        1. Sparse keyframes with position + velocity for GPU Hermite interpolation
+        2. Event-based data for civs, probes, and disasters (stored sparsely)
+        
+        Args:
+            max_keyframes: Maximum number of keyframes to extract
+            include_events: Include event-dense frames as keyframes
+            subsample: Number of stars to subsample
+            seed: Random seed for subsampling
+            
+        Returns:
+            Tuple of (keyframes list, event data)
+        """
+        import time as time_module
+        print(f"[Keyframes] Starting extract_keyframes(max={max_keyframes}, subsample={subsample})", flush=True)
+        t0 = time_module.time()
+        
+        if not hasattr(self.source, "snapshots") or not self.source.snapshots:
+            print(f"[Keyframes] No snapshots available", flush=True)
+            return [], EventData()
+        
+        snapshots = self.source.snapshots
+        n_snaps = len(snapshots)
+        print(f"[Keyframes] Found {n_snaps} snapshots", flush=True)
+        
+        if n_snaps == 0:
+            return [], EventData()
+        
+        rng = np.random.default_rng(seed)
+        n_stars = len(self.simulation_data.get("galaxy_positions", []))
+        print(f"[Keyframes] Total stars: {n_stars:,}", flush=True)
+        
+        if n_stars > subsample:
+            subsample_indices = rng.choice(n_stars, subsample, replace=False)
+            print(f"[Keyframes] Subsampling to {subsample} stars", flush=True)
+        else:
+            subsample_indices = None
+        
+        self._keyframe_subsample_indices = subsample_indices
+        
+        t1 = time_module.time()
+        keyframe_indices = self._select_keyframe_indices(
+            snapshots, max_keyframes, include_events
+        )
+        print(f"[Keyframes] Selected {len(keyframe_indices)} keyframe indices in {time_module.time()-t1:.2f}s", flush=True)
+        
+        t2 = time_module.time()
+        keyframes = []
+        for i, idx in enumerate(keyframe_indices):
+            snap = snapshots[idx]
+            kf = self._extract_single_keyframe(snap, subsample_indices)
+            if kf is not None:
+                keyframes.append(kf)
+            if (i + 1) % 5 == 0:
+                print(f"[Keyframes] Extracted {i+1}/{len(keyframe_indices)} keyframes...", flush=True)
+        print(f"[Keyframes] Extracted {len(keyframes)} keyframes in {time_module.time()-t2:.2f}s", flush=True)
+        
+        # Compute velocities from position differences for smooth Hermite interpolation
+        # This ensures velocities are consistent with actual position changes
+        if len(keyframes) >= 2:
+            t3 = time_module.time()
+            self._compute_velocities_from_positions(keyframes)
+            print(f"[Keyframes] Computed velocities in {time_module.time()-t3:.2f}s, final keyframes: {len(keyframes)}", flush=True)
+        
+        t4 = time_module.time()
+        print(f"[Keyframes] Extracting sparse events from {n_snaps} snapshots...", flush=True)
+        event_data = self._extract_sparse_events(snapshots, subsample_indices)
+        print(f"[Keyframes] Extracted events in {time_module.time()-t4:.2f}s", flush=True)
+        print(f"[Keyframes]   - civ_births: {len(event_data.civ_births)}", flush=True)
+        print(f"[Keyframes]   - civ_deaths: {len(event_data.civ_deaths)}", flush=True)
+        print(f"[Keyframes]   - disasters: {len(event_data.disasters)}", flush=True)
+        print(f"[Keyframes]   - trajectories: {len(event_data.trajectories)}", flush=True)
+        
+        # Filter to only expanding civs if configured
+        if self.config.only_expanding_civs:
+            event_data = self._filter_to_expanding_civs(event_data)
+            print(f"[Keyframes] After expanding-only filter:", flush=True)
+            print(f"[Keyframes]   - civ_births: {len(event_data.civ_births)}", flush=True)
+            print(f"[Keyframes]   - civ_deaths: {len(event_data.civ_deaths)}", flush=True)
+            print(f"[Keyframes]   - civ_updates: {len(event_data.civ_updates)}", flush=True)
+        
+        # Limit trajectories to prevent huge files
+        max_traj = self.config.max_trajectories
+        if len(event_data.trajectories) > max_traj:
+            print(f"[Keyframes] ⚠️ Limiting trajectories: {len(event_data.trajectories)} → {max_traj}", flush=True)
+            # Sample evenly across the trajectories to preserve diversity
+            step = len(event_data.trajectories) // max_traj
+            event_data.trajectories = event_data.trajectories[::step][:max_traj]
+        
+        print(f"[Keyframes] Total time: {time_module.time()-t0:.2f}s", flush=True)
+        
+        return keyframes, event_data
+    
+    def _filter_to_expanding_civs(self, events: EventData) -> EventData:
+        """Filter event data to only include civilizations that have expanded.
+        
+        A civilization is considered "expanding" if it has at least one trajectory
+        (i.e., has colonized at least one other star).
+        """
+        # Find civs that have trajectories (expanded)
+        expanding_civ_ids = set()
+        for traj in events.trajectories:
+            civ_id = traj.get('civ_id', -1)
+            if civ_id >= 0:
+                expanding_civ_ids.add(civ_id)
+        
+        if not expanding_civ_ids:
+            print(f"[Keyframes] No expanding civs found, showing all", flush=True)
+            return events
+        
+        print(f"[Keyframes] Found {len(expanding_civ_ids)} expanding civs", flush=True)
+        
+        # Filter events to only include expanding civs
+        filtered = EventData()
+        filtered.civ_births = [b for b in events.civ_births if b.get('civ_id') in expanding_civ_ids]
+        filtered.civ_deaths = [d for d in events.civ_deaths if d.get('civ_id') in expanding_civ_ids]
+        filtered.civ_updates = [u for u in events.civ_updates if u.get('civ_id') in expanding_civ_ids]
+        filtered.disasters = events.disasters  # Keep all disasters
+        filtered.probes = [p for p in events.probes if p.get('civ_id') in expanding_civ_ids]
+        filtered.trajectories = events.trajectories  # Already only from expanding civs
+        
+        return filtered
+    
+    def _compute_velocities_from_positions(self, keyframes: List[StellarKeyframe]) -> None:
+        """Compute velocities from position differences between adjacent keyframes.
+        
+        This replaces the initial velocities with velocities derived from actual
+        position changes, ensuring smooth Hermite interpolation that matches
+        the actual stellar motion.
+        
+        Uses central differences for interior keyframes and forward/backward
+        differences for endpoints.
+        """
+        n = len(keyframes)
+        if n < 2:
+            return
+        
+        # Remove duplicate keyframes (same time)
+        unique_keyframes = [keyframes[0]]
+        for kf in keyframes[1:]:
+            if abs(kf.time_myr - unique_keyframes[-1].time_myr) > 0.01:  # > 0.01 Myr apart
+                unique_keyframes.append(kf)
+        
+        # Update the list in place
+        keyframes.clear()
+        keyframes.extend(unique_keyframes)
+        n = len(keyframes)
+        
+        if n < 2:
+            return
+        
+        # Velocity conversion: kpc/Myr to km/s
+        # 1 kpc/Myr = 977.8 km/s (inverse of 0.001022)
+        kpc_per_myr_to_km_s = 977.8
+        
+        # Minimum time difference to avoid numerical issues
+        min_dt = 1.0  # 1 Myr minimum
+        
+        for i in range(n):
+            if i == 0:
+                # Forward difference for first keyframe
+                dt_myr = max(keyframes[1].time_myr - keyframes[0].time_myr, min_dt)
+                dpos = keyframes[1].positions - keyframes[0].positions
+                vel_kpc_per_myr = dpos / dt_myr
+                keyframes[i].velocities = (vel_kpc_per_myr * kpc_per_myr_to_km_s).astype(np.float32)
+            elif i == n - 1:
+                # Backward difference for last keyframe
+                dt_myr = max(keyframes[n-1].time_myr - keyframes[n-2].time_myr, min_dt)
+                dpos = keyframes[n-1].positions - keyframes[n-2].positions
+                vel_kpc_per_myr = dpos / dt_myr
+                keyframes[i].velocities = (vel_kpc_per_myr * kpc_per_myr_to_km_s).astype(np.float32)
+            else:
+                # Central difference for interior keyframes
+                dt_myr = max(keyframes[i+1].time_myr - keyframes[i-1].time_myr, min_dt)
+                dpos = keyframes[i+1].positions - keyframes[i-1].positions
+                vel_kpc_per_myr = dpos / dt_myr
+                keyframes[i].velocities = (vel_kpc_per_myr * kpc_per_myr_to_km_s).astype(np.float32)
+    
+    def _select_keyframe_indices(
+        self,
+        snapshots: list,
+        max_keyframes: int,
+        include_events: bool,
+    ) -> List[int]:
+        """Select which snapshot indices to use as keyframes.
+        
+        Strategy:
+        1. Always include first and last
+        2. If include_events, prioritize frames with significant events
+        3. Fill remaining with evenly spaced frames
+        """
+        n_snaps = len(snapshots)
+        
+        if n_snaps <= max_keyframes:
+            return list(range(n_snaps))
+        
+        selected = set([0, n_snaps - 1])
+        
+        if include_events:
+            event_scores = []
+            for i, snap in enumerate(snapshots):
+                score = 0
+                
+                if hasattr(snap, 'hazard_events'):
+                    score += len(snap.hazard_events) * 3
+                elif isinstance(snap, dict) and 'hazards' in snap:
+                    score += len(snap.get('hazards', [])) * 3
+                
+                if hasattr(snap, 'civilization_states'):
+                    for civ in snap.civilization_states:
+                        if hasattr(civ, 'is_active'):
+                            if not civ.is_active and hasattr(civ, 'death_time_myr'):
+                                snap_time = snap.time_myr if hasattr(snap, 'time_myr') else 0
+                                if abs(civ.death_time_myr - snap_time) < 100:
+                                    score += 2
+                elif isinstance(snap, dict) and 'civilizations' in snap:
+                    prev_civs = set()
+                    if i > 0:
+                        prev_snap = snapshots[i-1]
+                        if isinstance(prev_snap, dict):
+                            prev_civs = set(c.get('civ_id', -1) for c in prev_snap.get('civilizations', []))
+                    
+                    curr_civs = set(c.get('civ_id', -1) for c in snap.get('civilizations', []))
+                    new_civs = curr_civs - prev_civs
+                    score += len(new_civs) * 2
+                
+                event_scores.append((i, score))
+            
+            event_scores.sort(key=lambda x: -x[1])
+            
+            event_budget = max_keyframes // 3
+            for idx, score in event_scores[:event_budget]:
+                if score > 0:
+                    selected.add(idx)
+        
+        remaining = max_keyframes - len(selected)
+        if remaining > 0:
+            step = n_snaps / (remaining + 1)
+            for i in range(1, remaining + 1):
+                idx = int(i * step)
+                if idx not in selected and idx < n_snaps:
+                    selected.add(idx)
+        
+        return sorted(selected)[:max_keyframes]
+    
+    def _extract_single_keyframe(
+        self,
+        snap,
+        subsample_indices: Optional[np.ndarray],
+    ) -> Optional[StellarKeyframe]:
+        """Extract a single keyframe from a snapshot."""
+        if hasattr(snap, 'time_myr'):
+            time_myr = snap.time_myr
+        elif isinstance(snap, dict):
+            time_myr = snap.get('time_myr', snap.get('time', 0) * 1000)
+        else:
+            return None
+        
+        positions = None
+        velocities = None
+        
+        if hasattr(snap, 'stellar_positions') and snap.stellar_positions is not None:
+            positions = snap.stellar_positions
+        elif isinstance(snap, dict) and 'stellar_positions' in snap:
+            positions = np.array(snap['stellar_positions'])
+        else:
+            positions = self.simulation_data.get("galaxy_positions")
+        
+        if positions is None or len(positions) == 0:
+            return None
+        
+        velocities = self.simulation_data.get("stellar_velocities")
+        
+        if velocities is None:
+            velocities = np.zeros_like(positions)
+        
+        positions = np.asarray(positions, dtype=np.float32)
+        velocities = np.asarray(velocities, dtype=np.float32)
+        
+        if subsample_indices is not None:
+            positions = positions[subsample_indices]
+            velocities = velocities[subsample_indices]
+        
+        return StellarKeyframe(
+            time_myr=time_myr,
+            positions=positions.copy(),
+            velocities=velocities.copy(),
+        )
+    
+    def _extract_sparse_events(
+        self,
+        snapshots: list,
+        subsample_indices: Optional[np.ndarray],
+    ) -> EventData:
+        """Extract sparse event data from all snapshots.
+        
+        IMPORTANT: For trajectories, we use INITIAL positions (first snapshot)
+        to ensure consistency with the Hermite-interpolated star display.
+        This prevents trajectories from pointing to evolved positions while
+        stars are shown at interpolated positions.
+        """
+        events = EventData()
+        
+        seen_civs = set()
+        dead_civs = set()
+        
+        galaxy_pos = self.simulation_data.get("galaxy_positions", np.array([]))
+        
+        # Get INITIAL positions for trajectory consistency
+        # Use first snapshot's positions so trajectories match displayed stars
+        initial_positions = None
+        if snapshots and hasattr(snapshots[0], 'stellar_positions'):
+            initial_positions = snapshots[0].stellar_positions
+        elif len(galaxy_pos) > 0:
+            initial_positions = galaxy_pos
+        
+        for i, snap in enumerate(snapshots):
+            if hasattr(snap, 'time_myr'):
+                time_myr = snap.time_myr
+            elif isinstance(snap, dict):
+                time_myr = snap.get('time_myr', snap.get('time', 0) * 1000)
+            else:
+                continue
+            
+            if hasattr(snap, 'hazard_events'):
+                for h in snap.hazard_events:
+                    events.disasters.append({
+                        'time_myr': h.time_myr,
+                        'type': h.event_type,
+                        'position': h.position.tolist(),
+                        'lethal_radius_kpc': h.sterilization_radius_pc / 1000.0,
+                        'affected_civs': getattr(h, 'affected_civ_ids', []),
+                    })
+            elif isinstance(snap, dict) and 'hazards' in snap:
+                for h in snap.get('hazards', []):
+                    events.disasters.append({
+                        'time_myr': time_myr,
+                        'type': h.get('type', 'unknown'),
+                        'position': h.get('position', [0, 0, 0]),
+                        'lethal_radius_kpc': h.get('lethal_radius', 0),
+                    })
+            
+            civs = []
+            if hasattr(snap, 'civilization_states'):
+                civs = snap.civilization_states
+            elif isinstance(snap, dict) and 'civilizations' in snap:
+                civs = snap.get('civilizations', [])
+            
+            positions = None
+            if hasattr(snap, 'stellar_positions') and snap.stellar_positions is not None:
+                positions = snap.stellar_positions
+            elif len(galaxy_pos) > 0:
+                positions = galaxy_pos
+            
+            for civ in civs:
+                if hasattr(civ, 'civ_id'):
+                    civ_id = civ.civ_id
+                    star_idx = civ.parent_star_idx
+                    kardashev = civ.kardashev_scale
+                    is_active = civ.is_active
+                    birth_time = civ.birth_time_myr
+                else:
+                    civ_id = civ.get('civ_id', -1)
+                    star_idx = civ.get('parent_star_idx', 0)
+                    kardashev = civ.get('kardashev', 0.7)
+                    is_active = civ.get('is_active', False)
+                    birth_time = civ.get('birth_time_myr', 0)
+                
+                if civ_id not in seen_civs:
+                    seen_civs.add(civ_id)
+                    events.civ_births.append({
+                        'time_myr': birth_time,
+                        'civ_id': civ_id,
+                        'star_idx': star_idx,
+                        'kardashev': kardashev,
+                    })
+                
+                if not is_active and civ_id not in dead_civs:
+                    dead_civs.add(civ_id)
+                    death_cause = None
+                    if hasattr(civ, 'death_cause'):
+                        death_cause = civ.death_cause
+                    elif isinstance(civ, dict):
+                        death_cause = civ.get('death_cause')
+                    
+                    events.civ_deaths.append({
+                        'time_myr': time_myr,
+                        'civ_id': civ_id,
+                        'cause': death_cause,
+                    })
+                
+                if is_active:
+                    events.civ_updates.append({
+                        'time_myr': time_myr,
+                        'civ_id': civ_id,
+                        'star_idx': star_idx,
+                        'kardashev': kardashev,
+                    })
+            
+            probes = []
+            if hasattr(snap, 'active_probes_in_flight'):
+                probes = snap.active_probes_in_flight
+            elif isinstance(snap, dict) and 'probes' in snap:
+                probes = snap.get('probes', [])
+            
+            for p in probes:
+                if hasattr(p, 'probe_id'):
+                    events.probes.append({
+                        'time_myr': time_myr,
+                        'probe_id': p.probe_id,
+                        'civ_id': p.civ_id,
+                        'position': p.current_position.tolist(),
+                        'progress': p.progress_fraction,
+                    })
+                elif isinstance(p, dict):
+                    events.probes.append({
+                        'time_myr': time_myr,
+                        'probe_id': p.get('probe_id', -1),
+                        'civ_id': p.get('civ_id', -1),
+                        'position': p.get('position', [0, 0, 0]),
+                        'progress': p.get('progress', 0),
+                    })
+            
+            # Extract trajectories from SimulationSnapshot objects
+            # Use INITIAL positions for consistency with Hermite-interpolated stars
+            trajs = []
+            if hasattr(snap, 'civilization_states') and initial_positions is not None:
+                n_stars = len(initial_positions)
+                if n_stars > 0:
+                    for civ in snap.civilization_states:
+                        home_idx = civ.parent_star_idx
+                        if home_idx >= n_stars:
+                            continue
+                        home_pos = initial_positions[home_idx].tolist()
+                        
+                        # Extract from archived probes (proper launch→target paths)
+                        has_archived_probes = False
+                        if hasattr(civ, 'archived_probes') and civ.archived_probes:
+                            has_archived_probes = True
+                            for probe in civ.archived_probes:
+                                if hasattr(probe, 'launch_star_idx') and hasattr(probe, 'target_star_idx'):
+                                    launch_idx = probe.launch_star_idx
+                                    target_idx = probe.target_star_idx
+                                    if launch_idx < n_stars and target_idx < n_stars:
+                                        arrival_time = probe.arrival_time_myr if hasattr(probe, 'arrival_time_myr') else time_myr
+                                        events.trajectories.append({
+                                            'time_myr': arrival_time,
+                                            'start': initial_positions[launch_idx].tolist(),
+                                            'end': initial_positions[target_idx].tolist(),
+                                            'civ_id': civ.civ_id,
+                                            'generation': probe.generation if hasattr(probe, 'generation') else 0,
+                                        })
+                        
+                        # Only use colonized_stars as fallback if no archived probes
+                        # (archived_probes shows actual probe paths, colonized_stars shows home→colony starburst)
+                        if not has_archived_probes and hasattr(civ, 'colonized_stars') and civ.colonized_stars:
+                            for colony_idx in civ.colonized_stars:
+                                if colony_idx != home_idx and colony_idx < n_stars:
+                                    events.trajectories.append({
+                                        'time_myr': time_myr,
+                                        'start': home_pos,
+                                        'end': initial_positions[colony_idx].tolist(),
+                                        'civ_id': civ.civ_id,
+                                        'generation': 0,
+                                    })
+            elif isinstance(snap, dict) and 'trajectories' in snap:
+                trajs = snap.get('trajectories', [])
+                for t in trajs:
+                    events.trajectories.append({
+                        'time_myr': t.get('time_myr', time_myr),
+                        'start': t.get('start', [0, 0, 0]),
+                        'end': t.get('end', [0, 0, 0]),
+                        'civ_id': t.get('civ_id', -1),
+                        'generation': t.get('generation', 0),
+                    })
+        
+        return events

@@ -399,39 +399,88 @@ function renderBirthDeathTimeline(frameIndex) {
     const maxTime = Math.max(...times);
     const maxCount = Math.max(...total_births, ...extinct_counts, 1);
     
-    const toX = (t) => padding.left + (t / maxTime) * plotWidth;
-    const toY = (c) => padding.top + plotHeight - (c / maxCount) * plotHeight;
+    // Use log scale for Y-axis (better visualization when deaths >> births)
+    const useLogScale = maxCount > 10;
+    const logMin = 0; // log10(1) = 0, we'll show values >= 1
+    const logMax = Math.ceil(Math.log10(Math.max(maxCount, 10)));
     
+    const toX = (t) => padding.left + (t / maxTime) * plotWidth;
+    const toY = (c) => {
+        if (!useLogScale) {
+            return padding.top + plotHeight - (c / maxCount) * plotHeight;
+        }
+        // Log scale: map log10(c) from [0, logMax] to [plotHeight, 0]
+        if (c <= 0) return padding.top + plotHeight; // 0 maps to bottom
+        const logC = Math.log10(Math.max(c, 1));
+        return padding.top + plotHeight - (logC / logMax) * plotHeight;
+    };
+    
+    // Draw grid lines
     ctx.strokeStyle = '#1a2a3a';
     ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-        const y = padding.top + (plotHeight * i / 4);
-        ctx.beginPath();
-        ctx.moveTo(padding.left, y);
-        ctx.lineTo(width - padding.right, y);
-        ctx.stroke();
+    
+    if (useLogScale) {
+        // Log scale grid: draw lines at powers of 10
+        for (let exp = 0; exp <= logMax; exp++) {
+            const y = padding.top + plotHeight - (exp / logMax) * plotHeight;
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(width - padding.right, y);
+            ctx.stroke();
+        }
+    } else {
+        for (let i = 0; i <= 4; i++) {
+            const y = padding.top + (plotHeight * i / 4);
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(width - padding.right, y);
+            ctx.stroke();
+        }
     }
     
+    // Draw birth line
     if (displayTimes.length > 1) {
         ctx.beginPath();
-        ctx.moveTo(toX(displayTimes[0]), toY(displayBirths[0]));
-        for (let i = 1; i < displayTimes.length; i++) {
-            ctx.lineTo(toX(displayTimes[i]), toY(displayBirths[i]));
+        let started = false;
+        for (let i = 0; i < displayTimes.length; i++) {
+            const val = displayBirths[i];
+            if (val > 0 || !useLogScale) {
+                const x = toX(displayTimes[i]);
+                const y = toY(val);
+                if (!started) {
+                    ctx.moveTo(x, y);
+                    started = true;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
         }
         ctx.strokeStyle = '#00ff88';
         ctx.lineWidth = 2;
         ctx.stroke();
         
+        // Draw death line
         ctx.beginPath();
-        ctx.moveTo(toX(displayTimes[0]), toY(displayDeaths[0]));
-        for (let i = 1; i < displayTimes.length; i++) {
-            ctx.lineTo(toX(displayTimes[i]), toY(displayDeaths[i]));
+        started = false;
+        for (let i = 0; i < displayTimes.length; i++) {
+            const val = displayDeaths[i];
+            if (val > 0 || !useLogScale) {
+                const x = toX(displayTimes[i]);
+                const y = toY(val);
+                if (!started) {
+                    ctx.moveTo(x, y);
+                    started = true;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
         }
         ctx.strokeStyle = '#ff4466';
         ctx.lineWidth = 2;
         ctx.stroke();
     }
     
+    // Draw current time indicator
     if (frameIndex < times.length) {
         const currentTime = times[frameIndex];
         ctx.strokeStyle = 'rgba(138, 196, 255, 0.5)';
@@ -444,6 +493,7 @@ function renderBirthDeathTimeline(frameIndex) {
         ctx.setLineDash([]);
     }
     
+    // X-axis labels
     ctx.fillStyle = '#667';
     ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
@@ -453,18 +503,36 @@ function renderBirthDeathTimeline(frameIndex) {
     }
     ctx.fillText('Time (Gyr)', width / 2, height - 3);
     
+    // Y-axis labels
     ctx.textAlign = 'right';
-    for (let i = 0; i <= 4; i++) {
-        const c = Math.round(maxCount * (4 - i) / 4);
-        ctx.fillText(c, padding.left - 5, padding.top + (plotHeight * i / 4) + 4);
+    if (useLogScale) {
+        // Log scale labels: 1, 10, 100, 1000, etc.
+        for (let exp = 0; exp <= logMax; exp++) {
+            const y = padding.top + plotHeight - (exp / logMax) * plotHeight;
+            const label = exp === 0 ? '1' : '10^' + exp;
+            ctx.fillText(label, padding.left - 5, y + 4);
+        }
+    } else {
+        for (let i = 0; i <= 4; i++) {
+            const c = Math.round(maxCount * (4 - i) / 4);
+            ctx.fillText(c, padding.left - 5, padding.top + (plotHeight * i / 4) + 4);
+        }
     }
     
+    // Legend
     ctx.font = '9px sans-serif';
     ctx.fillStyle = '#00ff88';
     ctx.textAlign = 'left';
     ctx.fillText('● Births', padding.left + 5, padding.top + 10);
     ctx.fillStyle = '#ff4466';
     ctx.fillText('● Deaths', padding.left + 60, padding.top + 10);
+    
+    // Show "LOG" indicator when using log scale
+    if (useLogScale) {
+        ctx.fillStyle = '#8ac4ff';
+        ctx.font = '8px sans-serif';
+        ctx.fillText('LOG', width - padding.right - 20, padding.top + 10);
+    }
     
     const totalBirths = displayBirths[displayBirths.length - 1] || 0;
     const totalDeaths = displayDeaths[displayDeaths.length - 1] || 0;
