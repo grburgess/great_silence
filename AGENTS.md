@@ -510,3 +510,20 @@ python scripts/benchmark_baseline.py  # Detailed profiling
   - 5 Gyr simulation: 2.0% mean drift, 9.42 kpc max drift, 0 stars escaped
   - Previous: 80-1400% drift, 128+ kpc max drift, 82+ stars escaped
 - **Caveat**: Circular mode has no velocity dispersion for disk stars. For more realistic kinematics (at cost of stability), use `velocity_init_mode = "jeans"`
+
+### Jan 2026 - Visualization Code Cleanup & Bug Fixes
+- **Bug Fixed**: Trajectory toggle stopped stellar motion
+  - **Root cause**: `updateTrajectories()` in `particles.js.j2` returned early when hidden and skipped `updateStellarTime()` call
+  - **Fix**: Moved `updateStellarTime()` to `updateFrame()` in `ui.js.j2` so it's always called
+- **Dead Code Removal** (`scene.js.j2`): Removed 131 lines of duplicate functions overwritten by `ui.js.j2`:
+  - `initAnimation()`, `playAnimation()`, `stepAnimation()`, `updateAnimation()`
+  - These were never called because `ui.js.j2` loads after and overwrites them
+- **Module Dependencies**: Made explicit with window exports
+  - `ui.js.j2` now exports: `window.updateAnimation`, `window.updateFrame`
+  - `ui.js.j2` initializes: `window.isPlaying = false`, `window.currentFrame = 0`
+  - `scene.js.j2` animate() now uses: `if (window.isPlaying && window.updateAnimation)`
+- **Trajectory Simplification** (`particles.js.j2`):
+  - Removed endpoint sphere markers (were blocking view)
+  - Simplified to just 2-point lines (start → end)
+  - Reduced opacity (0.9 → 0.7) and linewidth (3 → 2)
+- **Webapp Update**: Added "circular" to velocity init mode dropdown in `config_panels.py`

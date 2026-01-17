@@ -929,15 +929,16 @@ ASCII diagrams and visual representations of the simulation architecture.
               ┌─────────────────────┐
               │   Jinja2 Templates  │
               │                     │
-              │ • index.html.j2     │
-              │ • scene.js.j2       │
-              │ • particles.js.j2   │
-              │ • animation.js.j2   │
-              │ • camera.js.j2      │
-              │ • ui.js.j2          │
-              │ • layers.js.j2      │
-              │ • lod.js.j2         │
-              │ • postprocess.js.j2 │
+              │ • index.html.j2     │  Entry point, data embedding
+              │ • scene.js.j2       │  Three.js setup, Hermite interpolation
+              │ • particles.js.j2   │  Stars, civs, probes, trajectories
+              │ • camera.js.j2      │  Camera controls and presets
+              │ • ui.js.j2          │  Playback controls, animation loop
+              │ • layers.js.j2      │  Disaster visualization
+              │ • lod.js.j2         │  Level of detail
+              │ • charts.js.j2      │  HR diagram, timeline charts
+              │ • postprocess.js.j2 │  Bloom, film grain effects
+              │ • recorder.js.j2    │  Video export
               └──────────┬──────────┘
                          │
                          ▼
