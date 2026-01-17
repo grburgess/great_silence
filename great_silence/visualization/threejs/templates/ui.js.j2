@@ -28,6 +28,10 @@ function initUI() {
     initDisasterTimeline();
     initCameraModeControls();
 
+    if (window.initRecorder) {
+        window.initRecorder();
+    }
+
     const savedLoopMode = localStorage.getItem('loopMode');
     if (savedLoopMode) {
         setLoopMode(savedLoopMode);
@@ -675,6 +679,7 @@ function updateAnimation(delta) {
     const frameDuration = (window.config.frame_duration_ms || 50) / 1000;
     const speedMultiplier = playbackSpeed;
 
+    const oldFrameIndex = Math.floor(currentFrame);
     const frameIncrement = (speedMultiplier * delta) / frameDuration * playbackDirection;
     currentFrame += frameIncrement;
 
@@ -690,6 +695,9 @@ function updateAnimation(delta) {
                 break;
             case 'repeat':
                 currentFrame = 0;
+                if (window.checkLoopBoundary) {
+                    window.checkLoopBoundary(oldFrameIndex, 0, maxFrame);
+                }
                 break;
             case 'pingpong':
                 currentFrame = maxFrame;
@@ -706,10 +714,16 @@ function updateAnimation(delta) {
                 break;
             case 'repeat':
                 currentFrame = maxFrame;
+                if (window.checkLoopBoundary) {
+                    window.checkLoopBoundary(oldFrameIndex, maxFrame, maxFrame);
+                }
                 break;
             case 'pingpong':
                 currentFrame = 0;
                 playbackDirection = 1;
+                if (window.checkLoopBoundary) {
+                    window.checkLoopBoundary(oldFrameIndex, 0, maxFrame);
+                }
                 break;
         }
     }

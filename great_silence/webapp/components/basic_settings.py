@@ -57,8 +57,8 @@ class BasicSettings:
             ui.label("Duration:").classes("w-24 text-gray-300")
             self._duration_slider = ui.slider(
                 min=1.0,
-                max=15.0,
-                step=0.5,
+                max=100.0,
+                step=1.0,
                 value=app_state.config.simulation.simulation_duration_gyr,
             ).classes("flex-grow")
             self._duration_label = ui.label(

@@ -135,8 +135,15 @@ class CivilizationParameters:
         False  # PRIORITY 1D: Disabled (O(N) brute force, needs spatial index fix)
     )
 
-    # Expansion limits
+    # Expansion limits (fixed values, used when use_scaled_probe_limits=False)
     max_colonies_per_civilization: int = 1000  # Cap to prevent runaway expansion
+    max_active_probes_per_civilization: int = 500  # Cap on in-flight probes
+    max_probe_generation: int = 20  # Maximum replication depth (Hayflick-style limit)
+
+    # Scaled expansion limits (used when use_scaled_probe_limits=True)
+    use_scaled_probe_limits: bool = True  # Scale limits by star count
+    max_colonies_fraction: float = 0.5  # Max colonies as fraction of habitable stars
+    max_active_probes_fraction: float = 0.05  # Max active probes as fraction of total stars
 
     # Emergence constraints
     min_stellar_age_for_life_gyr: float = 1.0  # Minimum stellar age for complex life (Gyr)

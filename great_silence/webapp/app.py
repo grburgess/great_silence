@@ -2,11 +2,30 @@
 
 from nicegui import ui, app
 from pathlib import Path
+from typing import Callable, Optional
 
 from .state import app_state
 from .components import PresetSelector, BasicSettings, SimulationRunner, ConfigPanels, ResultsDashboard, ParameterPlots
 from .config_io import create_load_config_dialog, create_save_config_dialog, create_save_preset_dialog
 from .themes import SPACE_THEMES, get_theme_css, get_base_css, get_theme_options
+
+
+class DebouncedCallback:
+    """Debounces a callback to only fire after a delay with no new calls."""
+    
+    def __init__(self, callback: Callable[[], None], delay_seconds: float = 0.3):
+        self._callback = callback
+        self._delay = delay_seconds
+        self._timer: Optional[ui.timer] = None
+    
+    def __call__(self) -> None:
+        if self._timer is not None:
+            self._timer.cancel()
+        self._timer = ui.timer(self._delay, self._execute, once=True)
+    
+    def _execute(self) -> None:
+        self._timer = None
+        self._callback()
 
 
 def apply_dark_theme(theme_name: str = "deep_space"):
@@ -89,14 +108,16 @@ def main_page():
 
     plots_ref = {'component': None}
 
-    def refresh_plots():
+    def refresh_plots_immediate():
         if plots_ref['component']:
             plots_ref['component'].refresh()
+
+    refresh_plots = DebouncedCallback(refresh_plots_immediate, delay_seconds=0.3)
 
     def on_preset_select(preset_name: str):
         app_state.apply_preset(preset_name)
         ui.notify(f"Applied '{preset_name}' preset", type="positive", position="top")
-        refresh_plots()
+        refresh_plots_immediate()
 
     with ui.element('div').classes("w-full flex flex-row gap-4 p-4").style("max-width: 1800px; margin: 0 auto;"):
         with ui.column().classes("gap-4").style("flex: 1; min-width: 0;"):
