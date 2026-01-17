@@ -1,0 +1,153 @@
+---
+title: "Spatial Index"
+description: "API reference for great_silence.simulation.disasters.spatial_index"
+sidebar:
+  order: 23
+---
+
+# Spatial Index
+
+**Module:** `great_silence.simulation.disasters.spatial_index`
+
+Spatial indexing for disaster events.
+
+Provides O(k*m) spatial queries using 3D voxel grid.
+
+```python
+from great_silence.simulation.disasters.spatial_index import ...
+```
+
+## Classes
+
+
+### DisasterSpatialIndex 
+
+3D voxel index for efficient disaster lookup.
+
+```python
+class DisasterSpatialIndex:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize spatial index.
+
+Args:
+    kpc_range: Half-width of indexed region
+    resolution: Voxels per axis (30^3 = 27K default)
+
+```python
+def __init__(kpc_range: float = 20.0, resolution: int = 30)
+```
+
+**Parameters:**
+
+- `kpc_range` (`float`) — default: `20.0`
+- `resolution` (`int`) — default: `30`
+
+---
+
+##### `add_disaster`
+
+Add disaster to index.
+
+Args:
+    disaster: DisasterBinary to add
+
+Returns:
+    Disaster ID (index in disasters list)
+
+```python
+def add_disaster(disaster: DisasterBinary) -> int
+```
+
+**Parameters:**
+
+- `disaster` (`DisasterBinary`)
+
+---
+
+##### `query_spatial`
+
+Query disasters within radius of center.
+
+Complexity: O(k * m) where k = touched voxels, m = disasters/voxel
+
+Args:
+    center: (3,) query center in kpc
+    radius_kpc: Search radius
+
+Returns:
+    List of disasters within radius
+
+```python
+def query_spatial(center: np.ndarray, radius_kpc: float) -> List[DisasterBinary]
+```
+
+**Parameters:**
+
+- `center` (`np.ndarray`)
+- `radius_kpc` (`float`)
+
+---
+
+##### `query_temporal`
+
+Query disasters in time window.
+
+Uses binary search on sorted times.
+
+Args:
+    time_start: Window start (Myr)
+    time_end: Window end (Myr)
+
+Returns:
+    List of disasters in window
+
+```python
+def query_temporal(time_start: float, time_end: float) -> List[DisasterBinary]
+```
+
+**Parameters:**
+
+- `time_start` (`float`)
+- `time_end` (`float`)
+
+---
+
+##### `query_spatiotemporal`
+
+Combined spatial and temporal query.
+
+Args:
+    center: (3,) query center in kpc
+    radius_kpc: Search radius
+    time_start: Window start (Myr)
+    time_end: Window end (Myr)
+
+Returns:
+    List of disasters matching both criteria
+
+```python
+def query_spatiotemporal(center: np.ndarray, radius_kpc: float, time_start: float, time_end: float) -> List[DisasterBinary]
+```
+
+**Parameters:**
+
+- `center` (`np.ndarray`)
+- `radius_kpc` (`float`)
+- `time_start` (`float`)
+- `time_end` (`float`)
+
+---
+
+##### `clear`
+
+Clear all stored disasters.
+
+```python
+def clear()
+```
+---

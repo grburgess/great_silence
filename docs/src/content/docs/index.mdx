@@ -1,0 +1,211 @@
+---
+title: Great Silence
+description: Monte Carlo simulation of galactic civilizations and the Fermi Paradox
+template: splash
+hero:
+  tagline: Explore the Fermi Paradox through physics-based simulations of galactic civilizations, astrophysical hazards, and the Great Filter.
+  image:
+    file: ../../assets/galaxy-hero.svg
+  actions:
+    - text: Get Started
+      link: /getting-started/installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/grburgess/great_silence
+      icon: github
+      variant: minimal
+---
+
+import { Card, CardGrid, Icon, Tabs, TabItem } from '@astrojs/starlight/components';
+
+<div class="hero-quote">
+  <blockquote>
+    "The universe is a pretty big place. If it's just us, seems like an awful waste of space."
+    <cite>— Carl Sagan</cite>
+  </blockquote>
+</div>
+
+## Where is everybody?
+
+The Milky Way contains 100-400 billion stars. If even a tiny fraction develop intelligent life, 
+the galaxy should be teeming with civilizations. Yet we see... nothing. **Only silence.**
+
+**Great Silence** is a physics-based simulation framework that lets you explore solutions 
+to the Fermi Paradox by modeling:
+
+<CardGrid stagger>
+  <Card title="Realistic Galaxy" icon="star">
+    Hernquist bulge, exponential disk, spiral arms, and gravitational stellar motion
+  </Card>
+  <Card title="Civilization Emergence" icon="rocket">
+    Drake equation with configurable parameters and probabilistic emergence
+  </Card>
+  <Card title="Interstellar Expansion" icon="seti">
+    Self-replicating probes with relativistic travel times and wavefront propagation
+  </Card>
+  <Card title="Astrophysical Hazards" icon="warning">
+    Supernovae, gamma-ray bursts, and neutron star mergers as extinction events
+  </Card>
+  <Card title="Great Filter Scenarios" icon="bars">
+    Crisis peaks at technological transitions based on Kardashev scale
+  </Card>
+  <Card title="Monte Carlo Analysis" icon="random">
+    Statistical ensembles across parameter space for robust conclusions
+  </Card>
+</CardGrid>
+
+## Quick Start
+
+<Tabs>
+  <TabItem label="Python API">
+```python
+from great_silence import GalaxySimulation, SimulationConfig
+
+# Use an optimistic preset
+config = SimulationConfig.with_preset("optimistic")
+config.simulation.save_snapshots = True
+
+# Run simulation
+sim = GalaxySimulation(config, seed=42)
+sim.run(verbose=True)
+
+# Get results
+stats = sim.get_statistics()
+print(f"Total civilizations emerged: {stats['total_civilizations']}")
+print(f"Active at end: {stats['active_civilizations']}")
+```
+  </TabItem>
+  <TabItem label="CLI">
+```bash
+# Quick test run with visualization
+great-silence --quick --visualize
+
+# Full simulation with custom config
+great-silence --config my_scenario.yaml --output results/
+
+# Monte Carlo ensemble (100 realizations)
+great-silence --mode monte-carlo --output monte_carlo/
+```
+  </TabItem>
+  <TabItem label="Web App">
+```bash
+# Launch interactive web interface
+great-silence-webapp --port 8080
+```
+
+Then open **http://localhost:8080** for the interactive dashboard with preset scenario selector, real-time simulation progress, embedded 3D visualization, and configuration management.
+  </TabItem>
+</Tabs>
+
+## Scientific Foundations
+
+| Concept | Description |
+|---------|-------------|
+| **Drake Equation** | N = R★ × fp × ne × fl × fi × fc × L — estimates detectable civilizations |
+| **Kardashev Scale** | Civilization energy usage: Type I (planet), II (star), III (galaxy) |
+| **Great Filter** | Hypothetical barrier preventing civilizations from becoming spacefaring |
+| **Fermi Paradox** | The contradiction between lack of evidence and high probability estimates |
+
+## Interactive Visualization
+
+Great Silence includes a stunning **Three.js WebGL visualization**:
+
+- 🌌 **Star particles** with GPU-accelerated instanced rendering
+- 🏛️ **Civilization markers** colored by Kardashev scale
+- 🛸 **Probe trajectories** showing expansion wavefronts
+- 💥 **Disaster effects** for supernovae, GRBs, and kilonovae
+- 🎬 **Timeline animation** with playback controls
+
+<div class="action-buttons">
+  <a href="https://grburgess.github.io/great_silence/demo/" class="action primary">
+    🚀 Try the Live Demo
+  </a>
+  <a href="/tutorials/threejs-visualization/" class="action secondary">
+    Learn More
+  </a>
+</div>
+
+## Explore the Presets
+
+<CardGrid>
+  <Card title="Early Filter" icon="puzzle">
+    Abiogenesis is extremely rare — life itself is the bottleneck
+  </Card>
+  <Card title="Late Filter" icon="error">
+    Technology self-destructs — civilizations destroy themselves
+  </Card>
+  <Card title="Rare Earth" icon="earth">
+    Habitable planets are rare — geology and climate alignment
+  </Card>
+  <Card title="Optimistic" icon="sun">
+    Life is common — the galaxy teems with civilizations
+  </Card>
+</CardGrid>
+
+<style>
+{`
+  .hero-quote {
+    text-align: center;
+    margin: 2rem 0 3rem;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(0, 255, 255, 0.05) 100%);
+    border-radius: 0.75rem;
+    border-left: 4px solid var(--sl-color-accent);
+  }
+  
+  .hero-quote blockquote {
+    font-size: 1.25rem;
+    font-style: italic;
+    color: var(--sl-color-gray-2);
+    margin: 0;
+  }
+  
+  .hero-quote cite {
+    display: block;
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--sl-color-gray-3);
+    font-style: normal;
+  }
+  
+  .action-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin: 2rem 0;
+    flex-wrap: wrap;
+  }
+  
+  .action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+  }
+  
+  .action.primary {
+    background: linear-gradient(135deg, #8B5CF6 0%, #6d28d9 100%);
+    color: white;
+  }
+  
+  .action.primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
+  }
+  
+  .action.secondary {
+    background: transparent;
+    color: #a78bfa;
+    border: 1px solid #8B5CF6;
+  }
+  
+  .action.secondary:hover {
+    background: rgba(139, 92, 246, 0.1);
+  }
+`}
+</style>

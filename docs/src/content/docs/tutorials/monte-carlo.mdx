@@ -1,0 +1,374 @@
+---
+title: Monte Carlo Analysis
+description: Running statistical ensembles for robust scientific conclusions
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# Monte Carlo Analysis Tutorial
+
+Individual simulations are subject to random variation. Monte Carlo analysis runs 
+many simulations to derive robust statistical conclusions about galactic civilization dynamics.
+
+## Why Monte Carlo?
+
+A single simulation might produce 50 civilizations or 150 due to random chance. 
+Monte Carlo analysis answers questions like:
+
+- What's the **expected** number of civilizations for given parameters?
+- What's the **variance** in outcomes?
+- What's the **probability** of a specific scenario (e.g., galaxy-spanning expansion)?
+
+## Using MonteCarloRunner
+
+**Step 1: Import and Configure**
+
+```python
+from great_silence import SimulationConfig
+from great_silence.simulation import MonteCarloRunner
+
+# Base configuration
+config = SimulationConfig.with_preset("moderate")
+config.galaxy.total_stars = 30_000
+config.simulation.simulation_duration_gyr = 5.0
+config.simulation.save_snapshots = False  # Faster without snapshots
+```
+
+**Step 2: Create Runner**
+
+```python
+runner = MonteCarloRunner(config, n_realizations=100)
+```
+
+**Step 3: Run Ensemble**
+
+```python
+# Sequential (for debugging)
+results = runner.run_sequential(verbose=True)
+
+# Or parallel (faster on multi-core)
+results = runner.run_parallel(max_workers=8, verbose=True)
+```
+
+**Step 4: Analyze Results**
+
+```python
+analysis = runner.analyze_results(results)
+
+print("=== Monte Carlo Results (100 runs) ===")
+print(f"Total civilizations: {analysis['total_civilizations']['mean']:.1f} ± {analysis['total_civilizations']['std']:.1f}")
+print(f"  95% CI: [{analysis['total_civilizations']['ci_95'][0]:.1f}, {analysis['total_civilizations']['ci_95'][1]:.1f}]")
+print()
+print(f"Active at end: {analysis['active_civilizations']['mean']:.1f} ± {analysis['active_civilizations']['std']:.1f}")
+print(f"Peak simultaneous: {analysis['peak_civilizations']['mean']:.1f} ± {analysis['peak_civilizations']['std']:.1f}")
+```
+
+## Example Output
+
+```
+=== Monte Carlo Results (100 runs) ===
+Total civilizations: 24.3 ± 5.2
+  95% CI: [15.0, 35.0]
+
+Active at end: 8.7 ± 3.1
+Peak simultaneous: 11.2 ± 2.8
+
+Civilizations that expanded: 4.1 ± 1.8
+Total colonies: 167.4 ± 89.3
+
+Extinction breakdown:
+  Self-destruction: 52.3%
+  Age extinction: 31.7%
+  Hazards: 16.0%
+```
+
+## Statistical Analysis
+
+### Confidence Intervals
+
+```python
+import numpy as np
+
+# Extract total civilizations from each run
+totals = [r['total_civilizations'] for r in results]
+
+mean = np.mean(totals)
+std = np.std(totals)
+ci_95 = np.percentile(totals, [2.5, 97.5])
+
+print(f"Mean: {mean:.1f}")
+print(f"Std Dev: {std:.1f}")
+print(f"95% CI: [{ci_95[0]:.1f}, {ci_95[1]:.1f}]")
+```
+
+### Distribution Plots
+
+```python
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+
+# Total civilizations distribution
+sns.histplot([r['total_civilizations'] for r in results], ax=axes[0], kde=True)
+axes[0].set_xlabel("Total Civilizations")
+axes[0].set_title("Emergence Distribution")
+
+# Peak civilizations
+sns.histplot([r['peak_civilizations'] for r in results], ax=axes[1], kde=True)
+axes[1].set_xlabel("Peak Simultaneous")
+axes[1].set_title("Peak Distribution")
+
+# Colony counts
+sns.histplot([r['total_colonized_systems'] for r in results], ax=axes[2], kde=True)
+axes[2].set_xlabel("Total Colonies")
+axes[2].set_title("Expansion Distribution")
+
+plt.tight_layout()
+plt.savefig("monte_carlo_distributions.png", dpi=150)
+plt.show()
+```
+
+## Parameter Sensitivity Analysis
+
+Test how results depend on a specific parameter:
+
+```python
+import numpy as np
+import pandas as pd
+
+# Vary fraction_develop_life
+fl_values = [0.01, 0.05, 0.1, 0.2, 0.5]
+sensitivity_results = []
+
+for fl in fl_values:
+    config = SimulationConfig.with_preset("moderate")
+    config.galaxy.total_stars = 30_000
+    config.civilization.fraction_develop_life = fl
+    config.simulation.save_snapshots = False
+    
+    runner = MonteCarloRunner(config, n_realizations=50)
+    results = runner.run_parallel(max_workers=8)
+    analysis = runner.analyze_results(results)
+    
+    sensitivity_results.append({
+        'fl': fl,
+        'mean_civs': analysis['total_civilizations']['mean'],
+        'std_civs': analysis['total_civilizations']['std'],
+        'ci_low': analysis['total_civilizations']['ci_95'][0],
+        'ci_high': analysis['total_civilizations']['ci_95'][1],
+    })
+
+df = pd.DataFrame(sensitivity_results)
+print(df.to_string(index=False))
+```
+
+### Visualization
+
+```python
+fig, ax = plt.subplots(figsize=(10, 6))
+
+ax.errorbar(
+    df['fl'], 
+    df['mean_civs'],
+    yerr=[df['mean_civs'] - df['ci_low'], df['ci_high'] - df['mean_civs']],
+    fmt='o-',
+    capsize=5,
+    color='#8B5CF6',
+    linewidth=2,
+    markersize=8,
+)
+
+ax.set_xlabel("Fraction Develop Life (fl)", fontsize=12)
+ax.set_ylabel("Total Civilizations", fontsize=12)
+ax.set_title("Sensitivity to fl Parameter", fontsize=14)
+ax.grid(alpha=0.3)
+
+plt.tight_layout()
+plt.savefig("sensitivity_fl.png", dpi=150)
+plt.show()
+```
+
+## Multi-Parameter Grid Search
+
+Explore the parameter space systematically:
+
+```python
+from itertools import product
+
+# Define parameter grid
+fl_grid = [0.05, 0.1, 0.2]
+lifetime_grid = [0.5, 1.0, 5.0]
+
+grid_results = []
+
+for fl, lifetime in product(fl_grid, lifetime_grid):
+    config = SimulationConfig.with_preset("moderate")
+    config.galaxy.total_stars = 20_000  # Smaller for speed
+    config.civilization.fraction_develop_life = fl
+    config.civilization.mean_civilization_lifetime_myr = lifetime
+    config.simulation.save_snapshots = False
+    
+    runner = MonteCarloRunner(config, n_realizations=30)
+    results = runner.run_parallel(max_workers=8)
+    analysis = runner.analyze_results(results)
+    
+    grid_results.append({
+        'fl': fl,
+        'lifetime': lifetime,
+        'mean_civs': analysis['total_civilizations']['mean'],
+        'mean_active': analysis['active_civilizations']['mean'],
+        'expansion_rate': analysis['civilizations_that_expanded']['mean'] / max(analysis['total_civilizations']['mean'], 1),
+    })
+
+df = pd.DataFrame(grid_results)
+```
+
+### Heatmap Visualization
+
+```python
+import seaborn as sns
+
+# Pivot for heatmap
+pivot = df.pivot(index='lifetime', columns='fl', values='mean_civs')
+
+fig, ax = plt.subplots(figsize=(8, 6))
+sns.heatmap(
+    pivot, 
+    annot=True, 
+    fmt='.0f', 
+    cmap='viridis',
+    ax=ax,
+)
+ax.set_xlabel("Fraction Develop Life (fl)")
+ax.set_ylabel("Mean Lifetime (Myr)")
+ax.set_title("Total Civilizations vs. Parameters")
+plt.tight_layout()
+plt.savefig("parameter_heatmap.png", dpi=150)
+```
+
+## Probability Calculations
+
+### P(Galaxy-Spanning Civilization)
+
+What's the probability of at least one civilization achieving 1000+ colonies?
+
+```python
+n_galaxy_spanning = sum(
+    1 for r in results 
+    if r['max_colonies_single_civ'] >= 1000
+)
+
+p_galaxy_spanning = n_galaxy_spanning / len(results)
+print(f"P(galaxy-spanning) = {p_galaxy_spanning:.1%}")
+```
+
+### P(Complete Silence)
+
+What's the probability of no active civilizations at simulation end?
+
+```python
+n_silence = sum(
+    1 for r in results 
+    if r['active_civilizations'] == 0
+)
+
+p_silence = n_silence / len(results)
+print(f"P(complete silence) = {p_silence:.1%}")
+```
+
+## Best Practices
+
+<Aside type="tip" title="Running Large Ensembles">
+- Start with 30-50 runs to estimate variance
+- Use 100+ runs for publication-quality statistics
+- Parallelize on multi-core machines
+- Disable snapshots for faster execution
+</Aside>
+
+### Memory Management
+
+For very large ensembles:
+
+```python
+# Process results in batches to avoid memory issues
+batch_size = 50
+all_stats = []
+
+for batch_start in range(0, n_total, batch_size):
+    runner = MonteCarloRunner(config, n_realizations=batch_size)
+    # Set starting seeds to avoid overlap
+    batch_results = runner.run_parallel(
+        max_workers=8,
+        start_seed=batch_start,
+    )
+    
+    # Extract only needed statistics
+    for r in batch_results:
+        all_stats.append({
+            'total': r['total_civilizations'],
+            'active': r['active_civilizations'],
+            'colonies': r['total_colonized_systems'],
+        })
+```
+
+### Reproducibility
+
+```python
+# Fixed seed sequence for reproducibility
+config.simulation.random_seed = 42  # Base seed
+
+runner = MonteCarloRunner(config, n_realizations=100)
+# Seeds will be 42, 43, 44, ..., 141
+results = runner.run_parallel(max_workers=8)
+```
+
+## Complete Example
+
+```python
+#!/usr/bin/env python3
+"""Monte Carlo analysis of Fermi Paradox scenarios."""
+
+from great_silence import SimulationConfig
+from great_silence.simulation import MonteCarloRunner
+import pandas as pd
+
+def analyze_preset(preset_name: str, n_runs: int = 50):
+    """Run Monte Carlo analysis for a preset."""
+    config = SimulationConfig.with_preset(preset_name)
+    config.galaxy.total_stars = 30_000
+    config.simulation.save_snapshots = False
+    
+    runner = MonteCarloRunner(config, n_realizations=n_runs)
+    results = runner.run_parallel(max_workers=8)
+    return runner.analyze_results(results)
+
+def main():
+    presets = ["optimistic", "moderate", "late_filter", "early_filter"]
+    
+    summary = []
+    for preset in presets:
+        print(f"Analyzing {preset}...")
+        analysis = analyze_preset(preset)
+        
+        summary.append({
+            'Preset': preset,
+            'Civs (mean±std)': f"{analysis['total_civilizations']['mean']:.1f}±{analysis['total_civilizations']['std']:.1f}",
+            'Active': f"{analysis['active_civilizations']['mean']:.1f}",
+            'Colonies': f"{analysis['total_colonized_systems']['mean']:.0f}",
+        })
+    
+    print("\n" + "="*60)
+    print(pd.DataFrame(summary).to_string(index=False))
+
+if __name__ == "__main__":
+    main()
+```
+
+## Next Steps
+
+- **[Three.js Visualization](/tutorials/threejs-visualization/)** — Visualize representative runs
+- **[Configuration Guide](/getting-started/configuration/)** — Full parameter reference
+- **[API: MonteCarloRunner](/api/simulation-monte-carlo/)** — Detailed API reference

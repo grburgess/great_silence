@@ -1,0 +1,327 @@
+---
+title: "Parameters"
+description: "API reference for great_silence.config.parameters"
+sidebar:
+  order: 12
+---
+
+# Parameters
+
+**Module:** `great_silence.config.parameters`
+
+Configuration and parameter classes for simulations.
+
+```python
+from great_silence.config.parameters import ...
+```
+
+## Classes
+
+
+### GalaxyParameters <span class="badge">dataclass</span>
+
+Parameters for galaxy structure and dynamics.
+
+```python
+@dataclass
+class GalaxyParameters:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `disk_radius_kpc` | `float = 15.0` |
+| `disk_height_kpc` | `float = 0.3` |
+| `thick_disk_height_kpc` | `float = 1.0` |
+| `bulge_radius_kpc` | `float = 1.0` |
+| `halo_radius_kpc` | `float = 50.0` |
+| `stellar_density_profile` | `str = 'exponential'` |
+| `scale_length_kpc` | `float = 3.5` |
+| `include_bulge` | `bool = True` |
+| `bulge_fraction` | `float = 0.2` |
+| `bulge_to_total_ratio` | `float = 0.2` |
+| `include_thick_disk` | `bool = False` |
+| `thick_disk_fraction` | `float = 0.1` |
+| `use_age_gradient` | `bool = True` |
+| `age_gradient_scale_kpc` | `float = 8.0` |
+| `central_mean_age_gyr` | `float = 11.0` |
+| `outer_mean_age_gyr` | `float = 3.0` |
+| `use_metallicity_gradient` | `bool = True` |
+| `central_metallicity_feh` | `float = 0.3` |
+| `metallicity_gradient_dex_per_kpc` | `float = -0.07` |
+| `rotation_velocity_km_s` | `float = 220.0` |
+| `bulge_velocity_dispersion_km_s` | `float = 100.0` |
+| `spiral_arm_count` | `int = 4` |
+| `spiral_arm_strength` | `float = 0.2` |
+| `enable_bar` | `bool = True` |
+| `velocity_init_mode` | `str = 'simple'` |
+| `total_stars` | `int = 100000000` |
+| `max_stellar_age_gyr` | `float = 13.0` |
+| `habitable_mass_min_msun` | `float = 0.5` |
+| `habitable_mass_max_msun` | `float = 1.5` |
+
+
+### AstrophysicsParameters <span class="badge">dataclass</span>
+
+Parameters for astrophysical processes.
+
+```python
+@dataclass
+class AstrophysicsParameters:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `current_sfr_msun_yr` | `float = 1.5` |
+| `sfr_peak_age_gyr` | `float = 10.0` |
+| `imf_type` | `str = 'kroupa'` |
+| `sn_rate_per_century` | `float = 2.0` |
+| `sn_lethal_range_pc` | `float = 10.0` |
+| `sn_sterilization_range_pc` | `float = 30.0` |
+| `grb_rate_per_century` | `float = 0.01` |
+| `grb_lethal_range_kpc` | `float = 5.0` |
+| `grb_beaming_angle_deg` | `float = 10.0` |
+| `grb_fraction_of_sne` | `float = 0.01` |
+| `grb_min_progenitor_mass` | `float = 20.0` |
+| `ns_merger_rate_per_myr` | `float = 50.0` |
+| `ns_sgrb_beaming_angle_deg` | `float = 5.0` |
+| `ns_sgrb_lethal_range_kpc` | `float = 3.0` |
+| `ns_kilonova_lethal_range_pc` | `float = 30.0` |
+| `ns_kilonova_sterilization_range_pc` | `float = 100.0` |
+| `ns_delay_time_min_gyr` | `float = 0.01` |
+| `ns_delay_time_max_gyr` | `float = 10.0` |
+
+
+### CivilizationParameters <span class="badge">dataclass</span>
+
+Parameters for civilization emergence and expansion.
+
+Default values are calibrated to be consistent with Fermi Paradox
+observations (no detection of alien civilizations). Current defaults
+represent a "Moderate Filter" scenario.
+
+```python
+@dataclass
+class CivilizationParameters:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `fraction_stars_with_planets` | `float = 1.0` |
+| `avg_habitable_planets_per_system` | `float = 0.2` |
+| `fraction_develop_life` | `float = 0.1` |
+| `fraction_develop_intelligence` | `float = 0.01` |
+| `fraction_develop_technology` | `float = 0.1` |
+| `mean_civilization_lifetime_myr` | `float = 1.0` |
+| `lifetime_stddev_myr` | `float = 0.5` |
+| `expansion_enabled` | `bool = True` |
+| `min_kardashev_for_expansion` | `float = 0.85` |
+| `metallicity_threshold_k085` | `float = -0.3` |
+| `metallicity_threshold_k095` | `float = -0.5` |
+| `metallicity_threshold_k120` | `float = -1.0` |
+| `probe_sensor_range_pc` | `float = 10.0` |
+| `enable_mid_flight_retargeting` | `bool = False` |
+| `max_colonies_per_civilization` | `int = 1000` |
+| `max_active_probes_per_civilization` | `int = 500` |
+| `max_probe_generation` | `int = 20` |
+| `use_scaled_probe_limits` | `bool = True` |
+| `max_colonies_fraction` | `float = 0.5` |
+| `max_active_probes_fraction` | `float = 0.05` |
+| `min_stellar_age_for_life_gyr` | `float = 1.0` |
+| `self_destruction_model_type` | `str = 'kardashev_dependent'` |
+| `self_destruction_probability_per_myr` | `float = 0.1` |
+| `baseline_self_destruction_rate` | `float = 0.01` |
+| `baseline_risk_scaling` | `float = 0.05` |
+| `crisis_nuclear_age_amplitude` | `float = 0.15` |
+| `crisis_planetary_unification_amplitude` | `float = 0.12` |
+| `crisis_ai_transition_amplitude` | `float = 0.2` |
+| `crisis_interplanetary_amplitude` | `float = 0.1` |
+| `crisis_stellar_engineering_amplitude` | `float = 0.08` |
+| `crisis_relativistic_weapons_amplitude` | `float = 0.06` |
+| `enable_nuclear_crisis` | `bool = True` |
+| `enable_planetary_unification_crisis` | `bool = True` |
+| `enable_ai_crisis` | `bool = True` |
+| `enable_interplanetary_crisis` | `bool = True` |
+| `enable_stellar_crisis` | `bool = True` |
+| `enable_relativistic_weapons_crisis` | `bool = True` |
+| `initial_kardashev_scale_mean` | `float = 0.7` |
+| `initial_kardashev_scale_stddev` | `float = 0.1` |
+| `kardashev_advancement_rate_mean` | `float = 0.01` |
+| `kardashev_advancement_rate_stddev` | `float = 0.005` |
+| `kardashev_stagnation_probability_per_myr` | `float = 0.05` |
+| `kardashev_breakthrough_probability_per_myr` | `float = 0.02` |
+| `kardashev_breakthrough_multiplier` | `float = 3.0` |
+| `kardashev_max_scale` | `float = 3.0` |
+| `colony_maturation_time_myr` | `float = 0.1` |
+| `colonization_lifetime_bonus_myr` | `float = 0.5` |
+| `home_world_fragility_period_myr` | `float = 0.5` |
+| `home_world_fragility_factor` | `float = 0.5` |
+| `colonial_war_colony_threshold` | `int = 10` |
+| `colonial_war_kardashev_threshold` | `float = 1.5` |
+| `colonial_war_amplitude` | `float = 0.05` |
+| `personality_assignment_model` | `str = 'kardashev_dependent'` |
+| `personality_fixed_friendliness` | `float = 0.5` |
+| `personality_evolution_enabled` | `bool = True` |
+| `personality_evolution_rate` | `float = 0.1` |
+| `first_contact_detection_range_pc` | `float = 100.0` |
+| `encounter_scan_interval_myr` | `float = 100.0` |
+| `sensor_range_pc` | `float = 50.0` |
+| `war_outcome_model` | `str = 'winner_takes_territory'` |
+| `war_duration_max_myr` | `float = 10.0` |
+| `war_stalemate_probability` | `float = 0.1` |
+| `tech_advantage_sensitivity` | `float = 0.3` |
+| `fleet_velocity_multiplier` | `float = 0.01` |
+| `battle_resolution_interval_myr` | `float = 0.5` |
+| `reputation_enabled` | `bool = True` |
+| `reputation_weight_in_war_decision` | `float = 0.3` |
+| `reputation_propagation_enabled` | `bool = True` |
+| `reputation_decay_rate` | `float = 0.01` |
+| `alliance_formation_enabled` | `bool = True` |
+| `alliance_propagation_enabled` | `bool = True` |
+| `alliance_light_cone_constraint` | `bool = True` |
+| `resource_generation_rate` | `float = 10.0` |
+| `war_resource_cost_myr` | `float = 5.0` |
+| `vassalization_enabled` | `bool = True` |
+| `tribute_rate_default` | `float = 0.2` |
+
+
+### SimulationParameters <span class="badge">dataclass</span>
+
+Parameters for simulation execution.
+
+```python
+@dataclass
+class SimulationParameters:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `simulation_duration_gyr` | `float = 10.0` |
+| `time_step_myr` | `float = 1.0` |
+| `adaptive_timestepping` | `bool = True` |
+| `min_timestep_myr` | `float = 0.01` |
+| `medium_timestep_myr` | `float = 0.1` |
+| `max_timestep_myr` | `float = 10.0` |
+| `max_adaptive_step_myr` | `float = 1.0` |
+| `num_realizations` | `int = 100` |
+| `random_seed` | `int = 42` |
+| `use_numba` | `bool = True` |
+| `parallel_processing` | `bool = True` |
+| `chunk_size` | `int = 10000` |
+| `enable_stellar_motion` | `bool = True` |
+| `stellar_motion_adaptive` | `bool = True` |
+| `stellar_motion_eta` | `float = 0.02` |
+| `stellar_motion_min_dt_myr` | `float = 0.05` |
+| `stellar_motion_max_dt_myr` | `float = 2.0` |
+| `stellar_motion_use_numba` | `bool = True` |
+| `probe_intercept_enabled` | `bool = True` |
+| `disaster_track_parent_star` | `bool = True` |
+| `enable_star_formation` | `bool = True` |
+| `disaster_start_offset_myr` | `float = 0.0` |
+| `spread_initial_disasters` | `bool = False` |
+| `save_snapshots` | `bool = True` |
+| `snapshot_interval_myr` | `float = 100.0` |
+| `output_directory` | `str = 'output'` |
+| `progress_verbose_level` | `int = 1` |
+| `progress_update_interval_pct` | `float = 0.1` |
+| `progress_update_interval_steps` | `int = 10` |
+| `progress_update_interval_seconds` | `float = 0.5` |
+| `progress_show_iteration_rate` | `bool = True` |
+| `progress_show_probe_count` | `bool = True` |
+| `enable_within_sim_parallel` | `bool = False` |
+| `parallel_worker_threads` | `int = 8` |
+| `parallel_min_civs_threshold` | `int = 10` |
+| `enable_causality_checks` | `bool = True` |
+| `parallel_check_shared_colonies` | `bool = True` |
+
+
+### SimulationConfig <span class="badge">dataclass</span>
+
+Main configuration container for simulations.
+
+```python
+@dataclass
+class SimulationConfig:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `galaxy` | `GalaxyParameters = field(default_factory=GalaxyParameters)` |
+| `astrophysics` | `AstrophysicsParameters = field(default_factory=AstrophysicsParameters)` |
+| `civilization` | `CivilizationParameters = field(default_factory=CivilizationParameters)` |
+| `simulation` | `SimulationParameters = field(default_factory=SimulationParameters)` |
+
+#### Methods
+
+##### `from_yaml` `classmethod`
+
+Load configuration from YAML file.
+
+```python
+def from_yaml(filepath: str) -> 'SimulationConfig'
+```
+
+**Parameters:**
+
+- `filepath` (`str`)
+
+---
+
+##### `to_yaml`
+
+Save configuration to YAML file.
+
+```python
+def to_yaml(filepath: str) -> None
+```
+
+**Parameters:**
+
+- `filepath` (`str`)
+
+---
+
+##### `to_dict`
+
+Convert configuration to dictionary.
+
+```python
+def to_dict() -> Dict[str, Any]
+```
+---
+
+##### `with_preset` `classmethod`
+
+Create configuration with Drake equation preset.
+
+Presets represent different Great Filter hypotheses:
+- 'early_filter': Life is extremely rare (abiogenesis is hard)
+- 'late_filter': Technology civilizations self-destruct quickly
+- 'rare_earth': Habitable planets are extremely rare
+- 'optimistic': Life and intelligence are common
+- 'moderate': Default balanced parameters (Fermi-consistent)
+
+Args:
+    preset: Name of preset ('early_filter', 'late_filter', 'rare_earth', 'optimistic', 'moderate')
+
+Returns:
+    SimulationConfig with preset parameters
+
+```python
+def with_preset(preset: str) -> 'SimulationConfig'
+```
+
+**Parameters:**
+
+- `preset` (`str`)
+
+---

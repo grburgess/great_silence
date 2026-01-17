@@ -1,0 +1,111 @@
+---
+title: "Trajectory Builder"
+description: "API reference for great_silence.visualization.trajectory_builder"
+sidebar:
+  order: 43
+---
+
+# Trajectory Builder
+
+**Module:** `great_silence.visualization.trajectory_builder`
+
+Build expansion trajectory lines from civilization colonization data.
+
+```python
+from great_silence.visualization.trajectory_builder import ...
+```
+
+## Classes
+
+
+### TrajectoryBuilder 
+
+Build expansion trajectory lines showing parent→colony connections.
+
+Creates line segments from a civilization's home world to its colonies,
+color-coded by root civilization using colorcet palettes.
+
+```python
+class TrajectoryBuilder:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize trajectory builder.
+
+Args:
+    simulation: GalaxySimulation instance
+    color_mapper: Optional ColorMapper (creates default if None)
+
+```python
+def __init__(simulation, color_mapper: Optional[ColorMapper] = None)
+```
+
+**Parameters:**
+
+- `simulation`
+- `color_mapper` (`Optional[ColorMapper]`) — default: `None`
+
+---
+
+##### `build_trajectories_for_time`
+
+Build all trajectory lines visible at current time.
+
+Args:
+    current_time_myr: Current simulation time in Myr
+
+Returns:
+    List of trajectory dictionaries with x/y/z coordinates and colors
+
+```python
+def build_trajectories_for_time(current_time_myr: float) -> List[Dict[str, Any]]
+```
+
+**Parameters:**
+
+- `current_time_myr` (`float`)
+
+---
+
+##### `get_trajectory_lines`
+
+Get all trajectory data as concatenated line data for plotly.
+
+Args:
+    current_time_myr: Current simulation time in Myr
+
+Returns:
+    Dictionary with concatenated x/y/z arrays and color list
+
+```python
+def get_trajectory_lines(current_time_myr: float) -> Dict[str, Any]
+```
+
+**Parameters:**
+
+- `current_time_myr` (`float`)
+
+---
+
+##### `get_trajectory_traces_by_civilization`
+
+Get trajectory data grouped by civilization for proper color-coding.
+
+Args:
+    current_time_myr: Current simulation time in Myr
+
+Returns:
+    Dictionary mapping civ_id to trajectory data dict with x/y/z/color
+
+```python
+def get_trajectory_traces_by_civilization(current_time_myr: float) -> Dict[int, Dict[str, Any]]
+```
+
+**Parameters:**
+
+- `current_time_myr` (`float`)
+
+---

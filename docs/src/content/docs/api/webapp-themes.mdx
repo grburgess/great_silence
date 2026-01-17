@@ -1,0 +1,55 @@
+---
+title: "Themes"
+description: "API reference for great_silence.webapp.themes"
+sidebar:
+  order: 53
+---
+
+# Themes
+
+**Module:** `great_silence.webapp.themes`
+
+Space-themed color schemes for the webapp.
+
+```python
+from great_silence.webapp.themes import ...
+```
+
+## Constants
+
+| Constant | Value |
+|----------|-------|
+| `THEME_GRAPHICS` | `\{'event_horizon': "\n        .theme-bg-effect \{\n ...` |
+
+## Functions
+
+
+### `get_theme_css`
+
+Generate CSS string for a given theme.
+
+```python
+def get_theme_css(theme_name: str) -> str
+```
+
+**Parameters:**
+
+- `theme_name` (`str`)
+
+
+### `get_base_css`
+
+Get base CSS that doesn't change between themes.
+
+```python
+def get_base_css() -> str
+```
+
+
+### `get_theme_options`
+
+Get list of theme options for dropdown.
+
+```python
+def get_theme_options() -> list
+```

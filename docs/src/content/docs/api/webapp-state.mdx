@@ -1,0 +1,230 @@
+---
+title: "State"
+description: "API reference for great_silence.webapp.state"
+sidebar:
+  order: 52
+---
+
+# State
+
+**Module:** `great_silence.webapp.state`
+
+Reactive state management for the webapp.
+
+```python
+from great_silence.webapp.state import ...
+```
+
+## Classes
+
+
+### SimulationEvent <span class="badge">dataclass</span>
+
+Represents a simulation event for the live feed.
+
+```python
+@dataclass
+class SimulationEvent:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `time_gyr` | `float` |
+| `event_type` | `str` |
+| `description` | `str` |
+| `location` | `Optional[tuple] = None` |
+
+
+### SimulationProgress <span class="badge">dataclass</span>
+
+Tracks simulation progress.
+
+```python
+@dataclass
+class SimulationProgress:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `is_running` | `bool = False` |
+| `current_time_gyr` | `float = 0.0` |
+| `total_time_gyr` | `float = 10.0` |
+| `elapsed_seconds` | `float = 0.0` |
+| `active_civilizations` | `int = 0` |
+| `total_civilizations` | `int = 0` |
+| `total_extinctions` | `int = 0` |
+| `probes_in_flight` | `int = 0` |
+| `iterations_per_second` | `float = 0.0` |
+| `recent_events` | `List[SimulationEvent] = field(default_factory=list)` |
+| `is_complete` | `bool = False` |
+| `error_message` | `Optional[str] = None` |
+
+
+### AppState 
+
+Global application state with reactive updates.
+
+```python
+class AppState:
+```
+
+#### Methods
+
+##### `__init__`
+
+```python
+def __init__()
+```
+---
+
+##### `apply_preset`
+
+Apply a named preset to the configuration.
+
+```python
+def apply_preset(preset_name: str) -> None
+```
+
+**Parameters:**
+
+- `preset_name` (`str`)
+
+---
+
+##### `update_galaxy_param`
+
+Update a galaxy parameter.
+
+```python
+def update_galaxy_param(name: str, value: Any) -> None
+```
+
+**Parameters:**
+
+- `name` (`str`)
+- `value` (`Any`)
+
+---
+
+##### `update_astrophysics_param`
+
+Update an astrophysics parameter.
+
+```python
+def update_astrophysics_param(name: str, value: Any) -> None
+```
+
+**Parameters:**
+
+- `name` (`str`)
+- `value` (`Any`)
+
+---
+
+##### `update_civilization_param`
+
+Update a civilization parameter.
+
+```python
+def update_civilization_param(name: str, value: Any) -> None
+```
+
+**Parameters:**
+
+- `name` (`str`)
+- `value` (`Any`)
+
+---
+
+##### `update_simulation_param`
+
+Update a simulation parameter.
+
+```python
+def update_simulation_param(name: str, value: Any) -> None
+```
+
+**Parameters:**
+
+- `name` (`str`)
+- `value` (`Any`)
+
+---
+
+##### `reset_progress`
+
+Reset progress for a new simulation run.
+
+```python
+def reset_progress() -> None
+```
+---
+
+##### `add_event`
+
+Add a simulation event to the feed.
+
+```python
+def add_event(event: SimulationEvent) -> None
+```
+
+**Parameters:**
+
+- `event` (`SimulationEvent`)
+
+---
+
+##### `on_update`
+
+Register a callback for state updates.
+
+```python
+def on_update(callback: callable) -> None
+```
+
+**Parameters:**
+
+- `callback` (`callable`)
+
+---
+
+##### `on_theme_change`
+
+Register a callback for theme changes.
+
+```python
+def on_theme_change(callback: callable) -> None
+```
+
+**Parameters:**
+
+- `callback` (`callable`)
+
+---
+
+##### `set_theme`
+
+Set the current theme.
+
+```python
+def set_theme(theme_name: str) -> None
+```
+
+**Parameters:**
+
+- `theme_name` (`str`)
+
+---
+
+##### `get_config_dict`
+
+Get the current configuration as a dictionary.
+
+```python
+def get_config_dict() -> Dict[str, Any]
+```
+---

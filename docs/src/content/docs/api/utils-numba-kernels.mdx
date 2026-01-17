@@ -1,0 +1,790 @@
+---
+title: "Numba Kernels"
+description: "API reference for great_silence.utils.numba_kernels"
+sidebar:
+  order: 29
+---
+
+# Numba Kernels
+
+**Module:** `great_silence.utils.numba_kernels`
+
+Numba-accelerated computational kernels for The Great Silence.
+
+This module contains Numba JIT-compiled functions for performance-critical
+operations. All functions are standalone (no class methods) to be compatible
+with Numba's nopython mode.
+
+Performance targets on Apple Silicon M1/M2/M3:
+- Position evolution: 10-20x speedup vs NumPy
+- Distance calculations: 10-30x speedup vs NumPy
+- Supernova rates: 15-25x speedup vs Python loops
+
+Usage:
+    from great_silence.utils.numba_kernels import evolve_positions_numba
+
+    # Enable Numba in config
+    config.simulation.use_numba = True
+
+    # Use in main loop
+    positions = evolve_positions_numba(positions, velocities, dt_myr)
+
+```python
+from great_silence.utils.numba_kernels import ...
+```
+
+## Functions
+
+
+### `evolve_positions_numba`
+
+Evolve stellar positions forward in time (Numba-accelerated).
+
+This function parallelizes across stars using prange, achieving 10-20x
+speedup vs NumPy on Apple Silicon.
+
+Complexity: O(N) parallelized
+
+Args:
+    positions: (N, 3) array of positions in kpc
+    velocities: (N, 3) array of velocities in km/s
+    dt_myr: Time step in million years
+
+Returns:
+    Updated positions array (N, 3) in kpc
+
+```python
+def evolve_positions_numba(positions: np.ndarray, velocities: np.ndarray, dt_myr: float) -> np.ndarray
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `velocities` (`np.ndarray`)
+- `dt_myr` (`float`)
+
+
+### `evolve_positions_inplace_numba`
+
+In-place version of position evolution (saves memory allocation).
+
+Complexity: O(N) parallelized
+
+Args:
+    positions: (N, 3) array of positions in kpc (modified in-place)
+    velocities: (N, 3) array of velocities in km/s
+    dt_myr: Time step in million years
+
+```python
+def evolve_positions_inplace_numba(positions: np.ndarray, velocities: np.ndarray, dt_myr: float) -> None
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `velocities` (`np.ndarray`)
+- `dt_myr` (`float`)
+
+
+### `compute_distances_to_point_numba`
+
+Compute distances from all positions to a single point.
+
+Complexity: O(N) parallelized
+
+Args:
+    positions: (N, 3) array of positions in kpc
+    point: (3,) array representing point position in kpc
+
+Returns:
+    distances: (N,) array of distances in kpc
+
+```python
+def compute_distances_to_point_numba(positions: np.ndarray, point: np.ndarray) -> np.ndarray
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `point` (`np.ndarray`)
+
+
+### `find_nearby_mask_numba`
+
+Find all positions within radius of point (returns boolean mask).
+
+More efficient than computing all distances when you only need
+the boolean mask. Avoids sqrt calculation by comparing squared distances.
+
+Complexity: O(N) parallelized
+
+Args:
+    positions: (N, 3) array of positions in kpc
+    point: (3,) array representing point position in kpc
+    radius: Search radius in kpc
+
+Returns:
+    mask: (N,) boolean array, True if within radius
+
+```python
+def find_nearby_mask_numba(positions: np.ndarray, point: np.ndarray, radius: float) -> np.ndarray
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `point` (`np.ndarray`)
+- `radius` (`float`)
+
+
+### `find_nearby_indices_numba`
+
+Find indices of all positions within radius of point.
+
+Note: Cannot use parallel=True because output size is variable.
+For large datasets, use find_nearby_mask_numba instead.
+
+Complexity: O(N)
+
+Args:
+    positions: (N, 3) array of positions in kpc
+    point: (3,) array representing point position in kpc
+    radius: Search radius in kpc
+
+Returns:
+    indices: (M,) array of indices within radius (M &lt;= N)
+
+```python
+def find_nearby_indices_numba(positions: np.ndarray, point: np.ndarray, radius: float) -> np.ndarray
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `point` (`np.ndarray`)
+- `radius` (`float`)
+
+
+### `compute_supernova_rates_numba`
+
+Compute supernova rates for all stars (vectorized).
+
+Only massive stars (M &gt; 8 solar masses) can go supernova.
+Rate peaks at end of main sequence lifetime.
+
+Complexity: O(N)
+
+Args:
+    stellar_masses: (N,) array of masses in solar masses
+    stellar_ages: (N,) array of ages in Gyr
+
+Returns:
+    rates: (N,) array of supernova rates (per year)
+
+```python
+def compute_supernova_rates_numba(stellar_masses: np.ndarray, stellar_ages: np.ndarray) -> np.ndarray
+```
+
+**Parameters:**
+
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+
+
+### `evaluate_supernova_destruction_vectorized`
+
+Evaluate if any nearby supernova destroys a civilization (vectorized).
+
+This combines rate calculation, probability evaluation, and random
+sampling into a single vectorized kernel.
+
+Complexity: O(M) where M is number of nearby stars
+
+Args:
+    stellar_masses: (M,) array of nearby star masses
+    stellar_ages: (M,) array of nearby star ages (Gyr)
+    distances_pc: (M,) array of distances to nearby stars (pc)
+    dt_myr: Time step in Myr
+    lethal_range_pc: Instant death range in pc
+    sterilization_range_pc: Partial sterilization range in pc
+    random_numbers: (M, 2) array of random numbers in [0, 1]
+
+Returns:
+    destroyed: True if civilization is destroyed
+
+```python
+def evaluate_supernova_destruction_vectorized(stellar_masses: np.ndarray, stellar_ages: np.ndarray, distances_pc: np.ndarray, dt_myr: float, lethal_range_pc: float, sterilization_range_pc: float, random_numbers: np.ndarray) -> bool
+```
+
+**Parameters:**
+
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `distances_pc` (`np.ndarray`)
+- `dt_myr` (`float`)
+- `lethal_range_pc` (`float`)
+- `sterilization_range_pc` (`float`)
+- `random_numbers` (`np.ndarray`)
+
+
+### `evaluate_ns_merger_hazard_kernel`
+
+Evaluate NS merger hazard effect on civilization.
+
+Returns:
+    0 = survived
+    1 = destroyed by sGRB
+    2 = destroyed by kilonova
+
+```python
+def evaluate_ns_merger_hazard_kernel(civ_position: np.ndarray, merger_position: np.ndarray, jet_theta: float, jet_phi: float, sgrb_beaming_angle_deg: float, sgrb_lethal_range_kpc: float, kilonova_lethal_range_pc: float, kilonova_sterilization_range_pc: float, random_val: float) -> int
+```
+
+**Parameters:**
+
+- `civ_position` (`np.ndarray`)
+- `merger_position` (`np.ndarray`)
+- `jet_theta` (`float`)
+- `jet_phi` (`float`)
+- `sgrb_beaming_angle_deg` (`float`)
+- `sgrb_lethal_range_kpc` (`float`)
+- `kilonova_lethal_range_pc` (`float`)
+- `kilonova_sterilization_range_pc` (`float`)
+- `random_val` (`float`)
+
+
+### `compute_ns_merger_probability_kernel`
+
+Compute NS merger probability for a single civilization location.
+
+Uses local stellar mass density of evolved massive stars to
+scale the galactic-average merger rate.
+
+Complexity: O(N) - for use with KD-tree prefiltering
+
+Args:
+    stellar_positions: (N, 3) positions in kpc
+    stellar_masses: (N,) masses in solar masses
+    stellar_ages: (N,) ages in Gyr
+    civ_position: (3,) civilization position in kpc
+    search_radius_kpc: Search radius for local rate
+    galactic_merger_rate_per_myr: Galaxy-wide rate per Myr
+    galactic_mass_msun: Total galactic stellar mass
+    
+Returns:
+    Local merger probability per Myr
+
+```python
+def compute_ns_merger_probability_kernel(stellar_positions: np.ndarray, stellar_masses: np.ndarray, stellar_ages: np.ndarray, civ_position: np.ndarray, search_radius_kpc: float, galactic_merger_rate_per_myr: float, galactic_mass_msun: float) -> float
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `civ_position` (`np.ndarray`)
+- `search_radius_kpc` (`float`)
+- `galactic_merger_rate_per_myr` (`float`)
+- `galactic_mass_msun` (`float`)
+
+
+### `batch_evaluate_hazards_kernel`
+
+Batch evaluate supernova hazards for multiple civilizations.
+
+Parallelizes across civilizations for 4-8x speedup on multi-core.
+
+Complexity: O(C * N / P) where C=civs, N=stars, P=cores
+
+Args:
+    civ_positions: (C, 3) civilization positions in kpc
+    stellar_positions: (N, 3) stellar positions in kpc
+    stellar_masses: (N,) stellar masses
+    stellar_ages: (N,) stellar ages in Gyr
+    sn_lethal_range_pc: Supernova lethal range in pc
+    sn_sterilization_range_pc: Supernova sterilization range in pc
+    dt_myr: Time step in Myr
+    random_values: (C,) random values for stochastic evaluation
+    
+Returns:
+    (C,) boolean array, True if civilization destroyed
+
+```python
+def batch_evaluate_hazards_kernel(civ_positions: np.ndarray, stellar_positions: np.ndarray, stellar_masses: np.ndarray, stellar_ages: np.ndarray, sn_lethal_range_pc: float, sn_sterilization_range_pc: float, dt_myr: float, random_values: np.ndarray) -> np.ndarray
+```
+
+**Parameters:**
+
+- `civ_positions` (`np.ndarray`)
+- `stellar_positions` (`np.ndarray`)
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `sn_lethal_range_pc` (`float`)
+- `sn_sterilization_range_pc` (`float`)
+- `dt_myr` (`float`)
+- `random_values` (`np.ndarray`)
+
+
+### `evaluate_sn_effect_on_civs_kernel`
+
+Evaluate supernova effect on multiple civilizations.
+
+Args:
+    civ_positions: (C, 3) civilization positions in kpc
+    disaster_position: (3,) disaster position in kpc
+    lethal_range_pc: Instant death range in pc
+    sterilization_range_pc: Partial sterilization range in pc
+    random_values: (C,) random values for stochastic evaluation
+    
+Returns:
+    (C,) int array: 0=survived, 1=destroyed
+
+```python
+def evaluate_sn_effect_on_civs_kernel(civ_positions: np.ndarray, disaster_position: np.ndarray, lethal_range_pc: float, sterilization_range_pc: float, random_values: np.ndarray) -> np.ndarray
+```
+
+**Parameters:**
+
+- `civ_positions` (`np.ndarray`)
+- `disaster_position` (`np.ndarray`)
+- `lethal_range_pc` (`float`)
+- `sterilization_range_pc` (`float`)
+- `random_values` (`np.ndarray`)
+
+
+### `evaluate_grb_effect_on_civs_kernel`
+
+Evaluate GRB effect on multiple civilizations.
+
+Args:
+    civ_positions: (C, 3) civilization positions in kpc
+    disaster_position: (3,) GRB position in kpc
+    jet_theta: Jet polar angle (radians)
+    jet_phi: Jet azimuthal angle (radians)
+    beaming_angle_deg: Beaming half-angle (degrees)
+    lethal_range_kpc: Lethal distance in kpc
+    
+Returns:
+    (C,) int array: 0=survived, 1=destroyed
+
+```python
+def evaluate_grb_effect_on_civs_kernel(civ_positions: np.ndarray, disaster_position: np.ndarray, jet_theta: float, jet_phi: float, beaming_angle_deg: float, lethal_range_kpc: float) -> np.ndarray
+```
+
+**Parameters:**
+
+- `civ_positions` (`np.ndarray`)
+- `disaster_position` (`np.ndarray`)
+- `jet_theta` (`float`)
+- `jet_phi` (`float`)
+- `beaming_angle_deg` (`float`)
+- `lethal_range_kpc` (`float`)
+
+
+### `evaluate_ns_merger_effect_on_civs_kernel`
+
+Evaluate NS merger effect on multiple civilizations.
+
+Considers both sGRB (beamed) and kilonova (isotropic) effects.
+
+Args:
+    civ_positions: (C, 3) civilization positions in kpc
+    disaster_position: (3,) merger position in kpc
+    jet_theta: Jet polar angle (radians)
+    jet_phi: Jet azimuthal angle (radians)
+    sgrb_beaming_angle_deg: sGRB beaming half-angle (degrees)
+    sgrb_lethal_range_kpc: sGRB lethal distance in kpc
+    kilonova_lethal_range_pc: Kilonova lethal distance in pc
+    kilonova_sterilization_range_pc: Kilonova partial sterilization range
+    random_values: (C,) random values for stochastic evaluation
+    
+Returns:
+    (C,) int array: 0=survived, 1=destroyed by sGRB, 2=destroyed by kilonova
+
+```python
+def evaluate_ns_merger_effect_on_civs_kernel(civ_positions: np.ndarray, disaster_position: np.ndarray, jet_theta: float, jet_phi: float, sgrb_beaming_angle_deg: float, sgrb_lethal_range_kpc: float, kilonova_lethal_range_pc: float, kilonova_sterilization_range_pc: float, random_values: np.ndarray) -> np.ndarray
+```
+
+**Parameters:**
+
+- `civ_positions` (`np.ndarray`)
+- `disaster_position` (`np.ndarray`)
+- `jet_theta` (`float`)
+- `jet_phi` (`float`)
+- `sgrb_beaming_angle_deg` (`float`)
+- `sgrb_lethal_range_kpc` (`float`)
+- `kilonova_lethal_range_pc` (`float`)
+- `kilonova_sterilization_range_pc` (`float`)
+- `random_values` (`np.ndarray`)
+
+
+### `batch_find_civs_in_range_kernel`
+
+Find which civilizations are within range of any disaster.
+
+Args:
+    civ_positions: (C, 3) civilization positions in kpc
+    disaster_positions: (D, 3) disaster positions in kpc
+    max_range_kpc: Maximum effect range in kpc
+    
+Returns:
+    (C,) boolean array, True if civ within range of any disaster
+
+```python
+def batch_find_civs_in_range_kernel(civ_positions: np.ndarray, disaster_positions: np.ndarray, max_range_kpc: float) -> np.ndarray
+```
+
+**Parameters:**
+
+- `civ_positions` (`np.ndarray`)
+- `disaster_positions` (`np.ndarray`)
+- `max_range_kpc` (`float`)
+
+
+### `rejection_sample_exponential_disk_radii`
+
+Sample radii from exponential disk using rejection sampling.
+
+Samples from P(r) ∝ r * exp(-r/h_R) using batch rejection sampling.
+
+Complexity: O(N) expected (depends on acceptance rate)
+
+Args:
+    n_samples: Number of radii to sample
+    scale_length_kpc: Disk scale length h_R in kpc
+    max_radius_kpc: Maximum radius to consider
+    seed: Random seed for reproducibility
+
+Returns:
+    radii: (n_samples,) array of radii in kpc
+
+```python
+def rejection_sample_exponential_disk_radii(n_samples: int, scale_length_kpc: float, max_radius_kpc: float, seed: int) -> np.ndarray
+```
+
+**Parameters:**
+
+- `n_samples` (`int`)
+- `scale_length_kpc` (`float`)
+- `max_radius_kpc` (`float`)
+- `seed` (`int`)
+
+
+### `compute_circular_velocities`
+
+Compute stellar velocities from rotation curve with dispersion.
+
+Assumes flat rotation curve with velocity dispersion that increases
+with height above disk.
+
+Complexity: O(N)
+
+Args:
+    positions: (N, 3) array of positions in kpc
+    v_circ: Circular velocity in km/s
+    sigma_r: Radial velocity dispersion at midplane (km/s)
+    sigma_theta: Azimuthal velocity dispersion at midplane (km/s)
+    sigma_z: Vertical velocity dispersion at midplane (km/s)
+    disk_height_kpc: Disk scale height in kpc
+    seed: Random seed
+
+Returns:
+    velocities: (N, 3) array of velocities in km/s
+
+```python
+def compute_circular_velocities(positions: np.ndarray, v_circ: float, sigma_r: float, sigma_theta: float, sigma_z: float, disk_height_kpc: float, seed: int) -> np.ndarray
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `v_circ` (`float`)
+- `sigma_r` (`float`)
+- `sigma_theta` (`float`)
+- `sigma_z` (`float`)
+- `disk_height_kpc` (`float`)
+- `seed` (`int`)
+
+
+### `compute_emergence_probabilities_kernel`
+
+Compute emergence and sample which stars develop civilizations.
+
+Combines filtering, probability calculation, and random sampling
+in a single Numba kernel for reduced Python overhead.
+Uses cache=True for faster repeated calls.
+
+Args:
+    habitable_indices: Indices of habitable stars
+    stellar_ages: Ages of all stars in Gyr
+    metallicities: Metallicities of all stars [Fe/H]
+    colonized_mask: Boolean mask of colonized stars
+    min_age_gyr: Minimum age for civilization development
+    f_base: Base fraction of stars with planets
+    n_habitable: Average habitable planets per system
+    f_life: Fraction developing life
+    f_intel: Fraction developing intelligence
+    f_tech: Fraction developing technology
+    dt_myr: Time step in Myr
+    use_metallicity_gradient: Use metallicity-dependent probability
+    random_values: Pre-generated random values [0, 1)
+    
+Returns:
+    emerged_indices: Indices into habitable_indices of stars that emerged
+
+```python
+def compute_emergence_probabilities_kernel(habitable_indices: np.ndarray, stellar_ages: np.ndarray, metallicities: np.ndarray, colonized_mask: np.ndarray, min_age_gyr: float, f_base: float, n_habitable: float, f_life: float, f_intel: float, f_tech: float, dt_myr: float, use_metallicity_gradient: bool, random_values: np.ndarray) -> np.ndarray
+```
+
+**Parameters:**
+
+- `habitable_indices` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `metallicities` (`np.ndarray`)
+- `colonized_mask` (`np.ndarray`)
+- `min_age_gyr` (`float`)
+- `f_base` (`float`)
+- `n_habitable` (`float`)
+- `f_life` (`float`)
+- `f_intel` (`float`)
+- `f_tech` (`float`)
+- `dt_myr` (`float`)
+- `use_metallicity_gradient` (`bool`)
+- `random_values` (`np.ndarray`)
+
+
+### `count_eligible_stars_kernel`
+
+Fast count of eligible stars for emergence probability estimation.
+
+Used by adaptive timestep to estimate emergence rate without
+doing full probability calculation.
+
+Args:
+    habitable_indices: Indices of habitable stars
+    stellar_ages: Ages of all stars in Gyr
+    colonized_mask: Boolean mask of colonized stars
+    min_age_gyr: Minimum age for civilization development
+    
+Returns:
+    Number of eligible stars
+
+```python
+def count_eligible_stars_kernel(habitable_indices: np.ndarray, stellar_ages: np.ndarray, colonized_mask: np.ndarray, min_age_gyr: float) -> int
+```
+
+**Parameters:**
+
+- `habitable_indices` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `colonized_mask` (`np.ndarray`)
+- `min_age_gyr` (`float`)
+
+
+### `count_within_radius`
+
+Count how many positions are within radius of each center.
+
+Useful for computing local stellar density around civilizations.
+
+Complexity: O(N * M) where N=positions, M=centers
+
+Args:
+    positions: (N, 3) array of positions
+    centers: (M, 3) array of center positions
+    radius: Search radius
+
+Returns:
+    counts: (M,) array of counts
+
+```python
+def count_within_radius(positions: np.ndarray, centers: np.ndarray, radius: float) -> np.ndarray
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `centers` (`np.ndarray`)
+- `radius` (`float`)
+
+
+### `leapfrog_integrate_positions_kernel`
+
+Perform leapfrog position update step (in-place).
+
+r(t+dt) = r(t) + v(t)×dt + 0.5×a(t)×dt²
+
+Velocities in km/s, positions in kpc, accelerations in kpc/Myr².
+
+Args:
+    positions: (N, 3) positions in kpc (modified in-place)
+    velocities: (N, 3) velocities in km/s
+    accelerations: (N, 3) accelerations in kpc/Myr²
+    dt_myr: Time step in Myr
+
+```python
+def leapfrog_integrate_positions_kernel(positions: np.ndarray, velocities: np.ndarray, accelerations: np.ndarray, dt_myr: float) -> None
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `velocities` (`np.ndarray`)
+- `accelerations` (`np.ndarray`)
+- `dt_myr` (`float`)
+
+
+### `leapfrog_integrate_velocities_kernel`
+
+Perform leapfrog velocity update step (in-place).
+
+v(t+dt) = v(t) + 0.5×(a(t) + a(t+dt))×dt
+
+Accelerations in kpc/Myr², velocities in km/s.
+
+Args:
+    velocities: (N, 3) velocities in km/s (modified in-place)
+    accel_old: (N, 3) accelerations at t in kpc/Myr²
+    accel_new: (N, 3) accelerations at t+dt in kpc/Myr²
+    dt_myr: Time step in Myr
+
+```python
+def leapfrog_integrate_velocities_kernel(velocities: np.ndarray, accel_old: np.ndarray, accel_new: np.ndarray, dt_myr: float) -> None
+```
+
+**Parameters:**
+
+- `velocities` (`np.ndarray`)
+- `accel_old` (`np.ndarray`)
+- `accel_new` (`np.ndarray`)
+- `dt_myr` (`float`)
+
+
+### `compute_miyamoto_nagai_acceleration_kernel`
+
+Compute Miyamoto-Nagai disk acceleration (in-place).
+
+Φ_disk(R, z) = -GM / sqrt(R² + (a + sqrt(z² + b²))²)
+
+Args:
+    positions: (N, 3) positions in kpc
+    out_accel: (N, 3) output acceleration in kpc/Myr² (added to existing)
+    a: Disk scale length in kpc
+    b: Disk scale height in kpc
+    G_M: G × M_disk in kpc³/Myr²
+
+```python
+def compute_miyamoto_nagai_acceleration_kernel(positions: np.ndarray, out_accel: np.ndarray, a: float, b: float, G_M: float) -> None
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `out_accel` (`np.ndarray`)
+- `a` (`float`)
+- `b` (`float`)
+- `G_M` (`float`)
+
+
+### `compute_hernquist_acceleration_kernel`
+
+Compute Hernquist bulge acceleration (in-place).
+
+Φ_bulge(r) = -GM / (r + a)
+
+Args:
+    positions: (N, 3) positions in kpc
+    out_accel: (N, 3) output acceleration in kpc/Myr² (added to existing)
+    a_bulge: Bulge scale radius in kpc
+    G_M: G × M_bulge in kpc³/Myr²
+
+```python
+def compute_hernquist_acceleration_kernel(positions: np.ndarray, out_accel: np.ndarray, a_bulge: float, G_M: float) -> None
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `out_accel` (`np.ndarray`)
+- `a_bulge` (`float`)
+- `G_M` (`float`)
+
+
+### `compute_isothermal_halo_acceleration_kernel`
+
+Compute isothermal halo acceleration (in-place).
+
+Gives flat rotation curve: a = v²/r (radially inward)
+
+Args:
+    positions: (N, 3) positions in kpc
+    out_accel: (N, 3) output acceleration in kpc/Myr² (added to existing)
+    v_halo_sq: v_halo² in kpc²/Myr²
+
+```python
+def compute_isothermal_halo_acceleration_kernel(positions: np.ndarray, out_accel: np.ndarray, v_halo_sq: float) -> None
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `out_accel` (`np.ndarray`)
+- `v_halo_sq` (`float`)
+
+
+### `compute_total_acceleration_kernel`
+
+Compute total gravitational acceleration from all components.
+
+Combines Miyamoto-Nagai disk + Hernquist bulge + isothermal halo.
+
+Args:
+    positions: (N, 3) positions in kpc
+    out_accel: (N, 3) output acceleration in kpc/Myr² (overwritten)
+    disk_a: Disk scale length (kpc)
+    disk_b: Disk scale height (kpc)
+    disk_G_M: G × M_disk (kpc³/Myr²)
+    bulge_a: Bulge scale radius (kpc)
+    bulge_G_M: G × M_bulge (kpc³/Myr²)
+    halo_v_sq: v_halo² (kpc²/Myr²)
+    include_bulge: Whether to include bulge component
+
+```python
+def compute_total_acceleration_kernel(positions: np.ndarray, out_accel: np.ndarray, disk_a: float, disk_b: float, disk_G_M: float, bulge_a: float, bulge_G_M: float, halo_v_sq: float, include_bulge: bool) -> None
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `out_accel` (`np.ndarray`)
+- `disk_a` (`float`)
+- `disk_b` (`float`)
+- `disk_G_M` (`float`)
+- `bulge_a` (`float`)
+- `bulge_G_M` (`float`)
+- `halo_v_sq` (`float`)
+- `include_bulge` (`bool`)
+
+
+### `benchmark_kernel`
+
+Benchmark a Numba kernel with warmup runs.
+
+Args:
+    kernel_func: Numba-compiled function to benchmark
+    *args: Arguments to pass to kernel
+    n_runs: Number of benchmark runs
+    warmup: Number of warmup runs (for JIT compilation)
+
+Returns:
+    dict with timing statistics
+
+```python
+def benchmark_kernel(kernel_func, *args)
+```
+
+**Parameters:**
+
+- `kernel_func`
+- `*args`

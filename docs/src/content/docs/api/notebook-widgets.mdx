@@ -1,0 +1,218 @@
+---
+title: "Widgets"
+description: "API reference for great_silence.notebook.widgets"
+sidebar:
+  order: 18
+---
+
+# Widgets
+
+**Module:** `great_silence.notebook.widgets`
+
+Interactive widgets for Jupyter notebooks.
+
+```python
+from great_silence.notebook.widgets import ...
+```
+
+## Classes
+
+
+### SimulationWidget 
+
+High-level widget for configuring and running simulations.
+
+Provides preset selector and key parameter overrides.
+
+```python
+class SimulationWidget:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize simulation widget.
+
+```python
+def __init__()
+```
+---
+
+##### `display`
+
+Display the widget interface.
+
+```python
+def display()
+```
+---
+
+##### `export_results`
+
+Export simulation results to HDF5.
+
+Args:
+    path: Output path (without extension)
+
+```python
+def export_results(path: str)
+```
+
+**Parameters:**
+
+- `path` (`str`)
+
+---
+
+
+### ResultsExplorer 
+
+Widget for exploring saved simulation results.
+
+```python
+class ResultsExplorer:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize results explorer.
+
+Args:
+    results_path: Path to HDF5 results file
+
+```python
+def __init__(results_path: Optional[str] = None)
+```
+
+**Parameters:**
+
+- `results_path` (`Optional[str]`) — default: `None`
+
+---
+
+##### `from_directory` `classmethod`
+
+Create explorer with directory file browser.
+
+Args:
+    directory: Directory containing results
+
+Returns:
+    ResultsExplorer instance
+
+```python
+def from_directory(directory: str)
+```
+
+**Parameters:**
+
+- `directory` (`str`)
+
+---
+
+##### `load`
+
+Load results from HDF5 file.
+
+```python
+def load(path: str)
+```
+
+**Parameters:**
+
+- `path` (`str`)
+
+---
+
+##### `display`
+
+Display the explorer interface.
+
+```python
+def display()
+```
+---
+
+
+### AnimationBuilder 
+
+Widget for creating animations from simulation results.
+
+```python
+class AnimationBuilder:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize animation builder.
+
+Args:
+    simulation_data: Results from NotebookSimulationRunner
+
+```python
+def __init__(simulation_data: Optional[Dict[str, Any]] = None)
+```
+
+**Parameters:**
+
+- `simulation_data` (`Optional[Dict[str, Any]]`) — default: `None`
+
+---
+
+##### `display`
+
+Display animation builder interface.
+
+```python
+def display()
+```
+---
+
+
+### Galaxy3DExplorer 
+
+Interactive widget for exploring 3D galaxy visualization with multi-layer controls.
+
+Provides checkboxes to toggle visualization layers:
+- Background star field
+- Active civilizations (Kardashev colored)
+- Extinct civilizations
+- Death location markers
+- Hazard events (supernovae, GRBs)
+
+```python
+class Galaxy3DExplorer:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize 3D explorer widget.
+
+Args:
+    runner: NotebookSimulationRunner with completed simulation
+
+```python
+def __init__(runner: NotebookSimulationRunner)
+```
+
+**Parameters:**
+
+- `runner` (`NotebookSimulationRunner`)
+
+---
+
+##### `display`
+
+Display the 3D explorer interface.
+
+```python
+def display()
+```
+---

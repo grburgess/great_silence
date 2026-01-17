@@ -202,6 +202,14 @@ Bottlenecks: get_distance_matrix O(N²), emergence checks all stars, expansion n
 4. Test thoroughly, ensure existing tests pass
 5. Update documentation
 
+## Documentation Updates
+After any significant code changes (new features, API changes, new modules), update the Astro Starlight documentation in `docs/`:
+1. Run the API doc generator: `python docs/scripts/generate-api-docs.py`
+2. Update relevant guide/tutorial pages if behavior changed
+3. Build to verify: `cd docs && npm run build`
+4. The code-documentor agent should be used for major documentation updates
+5. Links in MDX files should NOT include the `/great_silence/` base path prefix - Astro handles this automatically
+
 ## Profile performance
 ```bash
 python -m cProfile -o profile.stats examples/basic_simulation.py
@@ -463,3 +471,25 @@ python scripts/benchmark_baseline.py  # Detailed profiling
   - Added `window.updateStellarPositions = updateStellarPositions;` export in `scene.js.j2`
   - Added `window.updateStellarPositions(frame.stellar_positions)` call in `updateFrame()` in `ui.js.j2`
 - Stars now move correctly both during playback AND when dragging the timeline slider
+
+### Jan 2026 - Probe Explosion Fix (Target Coordination)
+- **Bug**: Probes could exceed star count due to exponential growth without coordination
+- **Root causes**:
+  - No tracking of stars already targeted by in-flight probes
+  - Multiple probes from different stars could target same destination
+  - Colony cap didn't stop in-flight probes from replicating
+- **Fix** (literature-supported):
+  - Added `targeted_stars: Set[int]` to `CivilizationState` for coordination
+  - Updated `_find_nearest_targets()` to exclude stars with probes en-route
+  - Add target to set on launch, remove on arrival (`discard()`)
+  - Added `max_active_probes_per_civilization: int = 500` config
+  - Added `max_probe_generation: int = 20` config (Hayflick-style limit)
+  - Check limits in `_handle_replication_complete()` before spawning offspring
+- **Literature basis**: Forgan (2019), Ellery, Hein et al. (2021) on probe coordination
+- **Fixed pre-existing bug**: `_launch_initial_probes_buffered()` had wrong argument order
+- **Scaled limits** (follow-up):
+  - Added `use_scaled_probe_limits: bool = True` (default enabled)
+  - Added `max_colonies_fraction: float = 0.5` (50% of habitable stars)
+  - Added `max_active_probes_fraction: float = 0.05` (5% of total stars)
+  - Effective limits computed at initialization based on actual star count
+  - Example: 50k stars → 5,079 max colonies, 2,500 max active probes

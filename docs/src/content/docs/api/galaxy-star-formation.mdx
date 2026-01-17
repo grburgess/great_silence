@@ -1,0 +1,265 @@
+---
+title: "Star Formation"
+description: "API reference for great_silence.galaxy.star_formation"
+sidebar:
+  order: 14
+---
+
+# Star Formation
+
+**Module:** `great_silence.galaxy.star_formation`
+
+Star formation history and Initial Mass Function (IMF) modeling.
+
+```python
+from great_silence.galaxy.star_formation import ...
+```
+
+## Classes
+
+
+### StarFormationHistory 
+
+Models star formation rate as a function of time.
+
+Uses a delayed exponential model typical for Milky Way-like galaxies.
+
+```python
+class StarFormationHistory:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize star formation history model.
+
+Args:
+    params: Astrophysics configuration parameters
+
+```python
+def __init__(params: AstrophysicsParameters)
+```
+
+**Parameters:**
+
+- `params` (`AstrophysicsParameters`)
+
+---
+
+##### `sfr`
+
+Star formation rate at a given age (lookback time).
+
+Args:
+    age_gyr: Lookback time in Gyr (0 = present, 13 = early universe)
+
+Returns:
+    Star formation rate in solar masses per year
+
+```python
+def sfr(age_gyr: float) -> float
+```
+
+**Parameters:**
+
+- `age_gyr` (`float`)
+
+---
+
+##### `cumulative_stellar_mass`
+
+Total stellar mass formed up to a given age.
+
+Args:
+    age_gyr: Age in Gyr
+
+Returns:
+    Cumulative stellar mass in solar masses
+
+```python
+def cumulative_stellar_mass(age_gyr: float) -> float
+```
+
+**Parameters:**
+
+- `age_gyr` (`float`)
+
+---
+
+##### `generate_stellar_ages`
+
+Generate stellar ages according to star formation history.
+
+Args:
+    n_stars: Number of stars to generate
+    max_age_gyr: Maximum stellar age (galaxy age)
+    seed: Random seed
+
+Returns:
+    Array of stellar ages in Gyr
+
+```python
+def generate_stellar_ages(n_stars: int, max_age_gyr: float = 13.0, seed: Optional[int] = None) -> np.ndarray
+```
+
+**Parameters:**
+
+- `n_stars` (`int`)
+- `max_age_gyr` (`float`) — default: `13.0`
+- `seed` (`Optional[int]`) — default: `None`
+
+---
+
+##### `generate_stellar_ages_with_gradient`
+
+Generate stellar ages with radial gradient (inside-out formation).
+
+Inner stars are older, outer stars are younger.
+Bulge stars are oldest.
+
+Args:
+    n_stars: Number of stars
+    radii: Galactocentric radius for each star (kpc)
+    component_types: Component type (0=bulge, 1=disk)
+    central_mean_age_gyr: Mean age at r=0
+    outer_mean_age_gyr: Mean age at large r
+    age_gradient_scale_kpc: Scale length for gradient
+    max_age_gyr: Maximum age (galaxy age)
+    seed: Random seed
+
+Returns:
+    Array of stellar ages in Gyr
+
+```python
+def generate_stellar_ages_with_gradient(n_stars: int, radii: np.ndarray, component_types: np.ndarray, central_mean_age_gyr: float = 11.0, outer_mean_age_gyr: float = 3.0, age_gradient_scale_kpc: float = 8.0, max_age_gyr: float = 13.0, seed: Optional[int] = None) -> np.ndarray
+```
+
+**Parameters:**
+
+- `n_stars` (`int`)
+- `radii` (`np.ndarray`)
+- `component_types` (`np.ndarray`)
+- `central_mean_age_gyr` (`float`) — default: `11.0`
+- `outer_mean_age_gyr` (`float`) — default: `3.0`
+- `age_gradient_scale_kpc` (`float`) — default: `8.0`
+- `max_age_gyr` (`float`) — default: `13.0`
+- `seed` (`Optional[int]`) — default: `None`
+
+---
+
+
+### InitialMassFunction 
+
+Initial Mass Function (IMF) for stellar masses.
+
+Supports Kroupa, Salpeter, and Chabrier IMFs.
+
+```python
+class InitialMassFunction:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize IMF.
+
+Args:
+    imf_type: Type of IMF ('kroupa', 'salpeter', or 'chabrier')
+
+```python
+def __init__(imf_type: str = 'kroupa')
+```
+
+**Parameters:**
+
+- `imf_type` (`str`) — default: `'kroupa'`
+
+---
+
+##### `pdf`
+
+Probability density function of IMF.
+
+Args:
+    mass: Stellar mass in solar masses
+
+Returns:
+    Probability density (unnormalized)
+
+```python
+def pdf(mass: float) -> float
+```
+
+**Parameters:**
+
+- `mass` (`float`)
+
+---
+
+##### `sample`
+
+Sample stellar masses from the IMF.
+
+Args:
+    n_stars: Number of stars to sample
+    mass_range: (min_mass, max_mass) in solar masses
+    seed: Random seed
+
+Returns:
+    Array of stellar masses in solar masses
+
+```python
+def sample(n_stars: int, mass_range: tuple = (0.08, 100.0), seed: Optional[int] = None) -> np.ndarray
+```
+
+**Parameters:**
+
+- `n_stars` (`int`)
+- `mass_range` (`tuple`) — default: `(0.08, 100.0)`
+- `seed` (`Optional[int]`) — default: `None`
+
+---
+
+##### `mean_mass`
+
+Calculate mean stellar mass for this IMF.
+
+Args:
+    mass_range: (min_mass, max_mass) in solar masses
+
+Returns:
+    Mean mass in solar masses
+
+```python
+def mean_mass(mass_range: tuple = (0.08, 100.0)) -> float
+```
+
+**Parameters:**
+
+- `mass_range` (`tuple`) — default: `(0.08, 100.0)`
+
+---
+
+##### `fraction_above_mass`
+
+Fraction of stars above a given mass threshold.
+
+Args:
+    threshold_mass: Mass threshold in solar masses
+    mass_range: (min_mass, max_mass) in solar masses
+
+Returns:
+    Fraction of stars with mass &gt; threshold_mass
+
+```python
+def fraction_above_mass(threshold_mass: float, mass_range: tuple = (0.08, 100.0)) -> float
+```
+
+**Parameters:**
+
+- `threshold_mass` (`float`)
+- `mass_range` (`tuple`) — default: `(0.08, 100.0)`
+
+---

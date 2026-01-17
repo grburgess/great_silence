@@ -1,0 +1,111 @@
+---
+title: "Scheduler"
+description: "API reference for great_silence.simulation.disasters.scheduler"
+sidebar:
+  order: 22
+---
+
+# Scheduler
+
+**Module:** `great_silence.simulation.disasters.scheduler`
+
+Supernova scheduler for pre-computed explosion times.
+
+```python
+from great_silence.simulation.disasters.scheduler import ...
+```
+
+## Classes
+
+
+### SupernovaScheduler 
+
+Pre-computed supernova schedule with O(log N) queries.
+
+```python
+class SupernovaScheduler:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize scheduler with galaxy data.
+
+Args:
+    masses: (N,) stellar masses in M_sun
+    metallicities: (N,) metallicities Z
+    ages_myr: (N,) stellar ages in Myr
+    stellar_evolution: StellarEvolution instance
+
+```python
+def __init__(masses: np.ndarray, metallicities: np.ndarray, ages_myr: np.ndarray, stellar_evolution)
+```
+
+**Parameters:**
+
+- `masses` (`np.ndarray`)
+- `metallicities` (`np.ndarray`)
+- `ages_myr` (`np.ndarray`)
+- `stellar_evolution`
+
+---
+
+##### `get_supernovae_in_window`
+
+Get star indices that go SN in time window.
+
+Complexity: O(k log N) where k = SNe in window
+
+Args:
+    start_myr: Window start (Myr)
+    end_myr: Window end (Myr)
+
+Returns:
+    List of star indices
+
+```python
+def get_supernovae_in_window(start_myr: float, end_myr: float) -> List[int]
+```
+
+**Parameters:**
+
+- `start_myr` (`float`)
+- `end_myr` (`float`)
+
+---
+
+##### `add_new_star`
+
+Add newly formed star to schedule.
+
+Args:
+    star_idx: Index of new star in galaxy arrays
+    mass: Stellar mass (M_sun)
+    metallicity: Metallicity Z
+    birth_time_myr: Birth time (Myr)
+
+```python
+def add_new_star(star_idx: int, mass: float, metallicity: float, birth_time_myr: float)
+```
+
+**Parameters:**
+
+- `star_idx` (`int`)
+- `mass` (`float`)
+- `metallicity` (`float`)
+- `birth_time_myr` (`float`)
+
+---
+
+##### `pending_count` `property`
+
+Number of stars still scheduled to explode.
+
+Returns:
+    Count of pending supernovae
+
+```python
+def pending_count() -> int
+```
+---

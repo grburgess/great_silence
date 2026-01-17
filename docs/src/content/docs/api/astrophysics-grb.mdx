@@ -1,0 +1,162 @@
+---
+title: "Grb"
+description: "API reference for great_silence.astrophysics.grb"
+sidebar:
+  order: 1
+---
+
+# Grb
+
+**Module:** `great_silence.astrophysics.grb`
+
+Gamma-ray burst modeling and hazard assessment.
+
+```python
+from great_silence.astrophysics.grb import ...
+```
+
+## Classes
+
+
+### GammaRayBurstModel 
+
+Model gamma-ray bursts and their effects.
+
+GRBs are highly beamed and extremely energetic, but rare.
+
+```python
+class GammaRayBurstModel:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize GRB model.
+
+Args:
+    params: Astrophysics configuration parameters
+
+```python
+def __init__(params: AstrophysicsParameters)
+```
+
+**Parameters:**
+
+- `params` (`AstrophysicsParameters`)
+
+---
+
+##### `sample_grb_direction`
+
+Sample random GRB jet direction (isotropic).
+
+Args:
+    rng: Random number generator
+
+Returns:
+    Unit vector representing jet direction
+
+```python
+def sample_grb_direction(rng: np.random.Generator) -> np.ndarray
+```
+
+**Parameters:**
+
+- `rng` (`np.random.Generator`)
+
+---
+
+##### `is_in_beam`
+
+Check if target is within GRB beam.
+
+Args:
+    grb_position: 3D position of GRB source
+    grb_direction: Unit vector of GRB jet direction
+    target_position: 3D position of target
+
+Returns:
+    True if target is in beam
+
+```python
+def is_in_beam(grb_position: np.ndarray, grb_direction: np.ndarray, target_position: np.ndarray) -> bool
+```
+
+**Parameters:**
+
+- `grb_position` (`np.ndarray`)
+- `grb_direction` (`np.ndarray`)
+- `target_position` (`np.ndarray`)
+
+---
+
+##### `lethal_distance_kpc`
+
+Get lethal distance for GRB.
+
+Returns:
+    Lethal distance in kpc
+
+```python
+def lethal_distance_kpc() -> float
+```
+---
+
+##### `metallicity_rate_modifier`
+
+Calculate GRB rate modifier based on stellar metallicity.
+
+Long-duration GRBs (collapsars) are observed to favor low-metallicity
+environments. Metal-poor stars retain more angular momentum, making
+it easier to form the jets that produce GRBs.
+
+Observational evidence:
+- Modjaz et al. (2008): GRB hosts are metal-poor
+- Levesque et al. (2010): &lt;[Fe/H]&gt; ~ -0.4 for GRB hosts
+- Wolf & Podsiadlowski (2007): Rate ∝ 10^(-0.8 * [Fe/H])
+
+Args:
+    metallicity_feh: Stellar metallicity [Fe/H] in dex
+
+Returns:
+    Rate modifier relative to solar metallicity (&gt;1 for metal-poor)
+
+```python
+def metallicity_rate_modifier(metallicity_feh: float) -> float
+```
+
+**Parameters:**
+
+- `metallicity_feh` (`float`)
+
+---
+
+##### `grb_probability_per_star`
+
+Calculate probability that a star produces a GRB during time step.
+
+GRBs are associated with massive, rapidly rotating stars at low
+metallicity. They occur at the end of the star's main sequence life.
+
+Args:
+    stellar_mass: Mass in solar masses
+    stellar_age_gyr: Current age in Gyr
+    metallicity_feh: Stellar metallicity [Fe/H]
+    dt_myr: Time step in Myr
+
+Returns:
+    Probability of GRB during this timestep
+
+```python
+def grb_probability_per_star(stellar_mass: float, stellar_age_gyr: float, metallicity_feh: float, dt_myr: float) -> float
+```
+
+**Parameters:**
+
+- `stellar_mass` (`float`)
+- `stellar_age_gyr` (`float`)
+- `metallicity_feh` (`float`)
+- `dt_myr` (`float`)
+
+---

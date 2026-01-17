@@ -1,0 +1,173 @@
+---
+title: "Personality"
+description: "API reference for great_silence.civilization.personality"
+sidebar:
+  order: 9
+---
+
+# Personality
+
+**Module:** `great_silence.civilization.personality`
+
+Civilization personality modeling with evolution support.
+
+```python
+from great_silence.civilization.personality import ...
+```
+
+## Classes
+
+
+### PersonalityState <span class="badge">dataclass</span>
+
+Dynamic personality state for a civilization.
+
+```python
+@dataclass
+class PersonalityState:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `personality_type` | `str` |
+| `friendliness` | `float` |
+| `aggression_factor` | `float` |
+| `war_trauma` | `float = 0.0` |
+| `victory_confidence` | `float = 0.5` |
+| `evolution_history` | `list = field(default_factory=list)` |
+
+## Functions
+
+
+### `sample_personality`
+
+Sample initial personality based on Kardashev scale.
+
+K-dependent distribution reflects realistic evolution:
+- K &lt; 0.85: Aggressive bias (resource scarcity, competitive)
+- K 0.85-1.5: Mixed (transition phase)
+- K &gt; 1.5: Peaceful bias (energy abundance, post-scarcity)
+
+Args:
+    kardashev_scale: Current technological level
+    rng: Random number generator
+    model: Personality assignment model ('kardashev_dependent', 'random', 'fixed')
+
+Returns:
+    PersonalityState with sampled traits
+
+```python
+def sample_personality(kardashev_scale: float, rng: np.random.Generator, model: str = 'kardashev_dependent') -> PersonalityState
+```
+
+**Parameters:**
+
+- `kardashev_scale` (`float`)
+- `rng` (`np.random.Generator`)
+- `model` (`str`) — default: `'kardashev_dependent'`
+
+
+### `get_friendliness_distribution_mean`
+
+Get mean friendliness for K-dependent distribution.
+
+Args:
+    kardashev_scale: Current technological level
+
+Returns:
+    Mean friendliness value [0.0, 1.0]
+
+```python
+def get_friendliness_distribution_mean(kardashev_scale: float) -> float
+```
+
+**Parameters:**
+
+- `kardashev_scale` (`float`)
+
+
+### `derive_personality_type`
+
+Derive personality type from friendliness.
+
+Args:
+    friendliness: Friendliness value [0.0, 1.0]
+    rng: Random number generator
+
+Returns:
+    Personality type string
+
+```python
+def derive_personality_type(friendliness: float, rng: np.random.Generator) -> str
+```
+
+**Parameters:**
+
+- `friendliness` (`float`)
+- `rng` (`np.random.Generator`)
+
+
+### `evolve_personality`
+
+Evolve personality based on war outcomes and historical trauma.
+
+Personality drift mechanisms:
+- War losses increase aggression and reduce friendliness
+- War victories increase confidence
+- Prolonged wars (war trauma) make civs more defensive
+- Xenophiles that lose wars may become isolationist
+- Expansionists that win wars become more aggressive
+
+Args:
+    personality: Current personality state
+    war_outcome: Most recent war outcome ('victory', 'defeat', 'stalemate', None)
+    num_wars_lost: Total wars lost
+    num_wars_won: Total wars won
+    rng: Random number generator
+    evolution_rate: Rate of personality change per event [0.0, 1.0]
+
+Returns:
+    Updated PersonalityState
+
+```python
+def evolve_personality(personality: PersonalityState, war_outcome: Optional[str], num_wars_lost: int, num_wars_won: int, rng: np.random.Generator, evolution_rate: float = 0.1) -> PersonalityState
+```
+
+**Parameters:**
+
+- `personality` (`PersonalityState`)
+- `war_outcome` (`Optional[str]`)
+- `num_wars_lost` (`int`)
+- `num_wars_won` (`int`)
+- `rng` (`np.random.Generator`)
+- `evolution_rate` (`float`) — default: `0.1`
+
+
+### `get_colony_personality_modifier`
+
+Get personality modifier for individual colonies.
+
+Mechanism:
+- Frontiers (young colonies) are more aggressive/expansionist
+- Core colonies (old) are more defensive/peaceful
+- Home worlds have +20% to all traits (cultural center)
+
+Args:
+    colony_age_myr: Age of colony in Myr
+    is_home_world: Whether this is the home world
+    base_personality: Civilization's base personality
+
+Returns:
+    Modifier multiplier for colony behavior [0.8, 1.2]
+
+```python
+def get_colony_personality_modifier(colony_age_myr: float, is_home_world: bool, base_personality: PersonalityState) -> float
+```
+
+**Parameters:**
+
+- `colony_age_myr` (`float`)
+- `is_home_world` (`bool`)
+- `base_personality` (`PersonalityState`)

@@ -1,0 +1,162 @@
+---
+title: Quick Start
+description: Run your first galactic civilization simulation in minutes
+sidebar:
+  order: 2
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+# Quick Start
+
+Let's run your first simulation of galactic civilizations! In this guide, you'll:
+
+1. Create a simulation with preset parameters
+2. Run it and observe civilization emergence
+3. Analyze the results
+4. Generate a visualization
+
+## Your First Simulation
+
+### Step 1: Import and Configure
+
+```python
+from great_silence import GalaxySimulation, SimulationConfig
+
+# Use the "optimistic" preset - lots of civilizations
+config = SimulationConfig.with_preset("optimistic")
+
+# Reduce star count for quick testing
+config.galaxy.total_stars = 30_000
+
+# Enable snapshots for visualization
+config.simulation.save_snapshots = True
+config.simulation.simulation_duration_gyr = 5.0
+```
+
+### Step 2: Run the Simulation
+
+```python
+# Create simulation with reproducible seed
+sim = GalaxySimulation(config, seed=42)
+
+# Run with progress output
+sim.run(verbose=True)
+```
+
+You'll see output like:
+
+```
+Initializing galaxy with 30,000 stars...
+  Habitable stars: 6,054 (20.2%)
+  Pre-scheduled disasters: 1,247 supernovae, 12 GRBs
+
+Running simulation: 0.0 → 5.0 Gyr
+[████████████████████████████████] 100% | 5.00 Gyr | 123 civs emerged
+```
+
+### Step 3: Analyze Results
+
+```python
+# Get summary statistics
+stats = sim.get_statistics()
+
+print(f"Total civilizations emerged: {stats['total_civilizations']}")
+print(f"Active at end of simulation: {stats['active_civilizations']}")
+print(f"Peak simultaneous civilizations: {stats['peak_civilizations']}")
+print(f"Total colonized systems: {stats['total_colonized_systems']}")
+print(f"Extinctions due to hazards: {stats['extinctions_by_hazard']}")
+```
+
+### Step 4: Generate Visualization
+
+```python
+from great_silence.visualization.threejs import export_html
+
+# Export interactive 3D visualization
+export_html(sim, "my_galaxy.html", animated=True)
+print("Open my_galaxy.html in your browser!")
+```
+
+<Aside type="tip" title="Open the HTML file">
+  The generated HTML file is fully self-contained. Just open it in any modern browser
+  to explore your simulated galaxy with time controls, camera presets, and more!
+</Aside>
+
+## Understanding the Output
+
+### Civilization Statistics
+
+| Statistic | Description |
+|-----------|-------------|
+| `total_civilizations` | All civilizations that emerged during simulation |
+| `active_civilizations` | Civilizations still alive at simulation end |
+| `peak_civilizations` | Maximum civilizations existing simultaneously |
+| `total_colonized_systems` | Stars with at least one colony |
+| `extinctions_by_hazard` | Deaths from supernovae/GRBs |
+| `extinctions_by_self_destruction` | Deaths from internal crises |
+
+### Typical Results by Preset
+
+| Preset | Expected Civs | Typical Active | Notes |
+|--------|---------------|----------------|-------|
+| `optimistic` | 100-500 | 50-200 | Lots of activity, visible expansion |
+| `moderate` | 20-100 | 5-30 | Fermi-consistent baseline |
+| `late_filter` | 50-200 | 1-5 | Many emerge but quickly die |
+| `early_filter` | 5-20 | 2-10 | Rare emergence, long-lived |
+| `rare_earth` | 10-50 | 5-20 | Geographic constraints |
+
+## Command Line Interface
+
+For quick experiments, use the CLI:
+
+<Tabs>
+  <TabItem label="Quick Test">
+```bash
+# Fast run with reduced parameters
+great-silence --quick --visualize
+```
+  </TabItem>
+  <TabItem label="Custom Config">
+```bash
+# Use YAML configuration file
+great-silence --config my_scenario.yaml --output results/
+```
+  </TabItem>
+  <TabItem label="Monte Carlo">
+```bash
+# Run 100 simulations for statistics
+great-silence --mode monte-carlo --realizations 100 --output mc_results/
+```
+  </TabItem>
+</Tabs>
+
+## Interactive Web Application
+
+For a full GUI experience:
+
+```bash
+great-silence-webapp --port 8080
+```
+
+Then open **http://localhost:8080** for:
+
+- Visual preset selection with scenario cards
+- Real-time simulation progress and statistics
+- Live event feed showing civilization events
+- Embedded 3D visualization
+- Configuration export/import
+
+## Next Steps
+
+Now that you've run your first simulation:
+
+- **[Configuration Guide](/getting-started/configuration/)** — Customize all parameters
+- **[Drake Equation](/concepts/drake-equation/)** — Understand emergence probability
+- **[Great Filter](/concepts/great-filter/)** — Learn about extinction models
+- **[Visualization Tutorial](/tutorials/threejs-visualization/)** — Master the 3D viewer
+
+<Aside type="note">
+  **Reproducibility**: Always set `seed=` for reproducible results. The same seed
+  with the same configuration will produce identical simulations.
+</Aside>

@@ -1,0 +1,106 @@
+---
+title: Installation
+description: How to install Great Silence and its dependencies
+sidebar:
+  order: 1
+---
+
+import { Tabs, TabItem, Aside, Steps } from '@astrojs/starlight/components';
+
+# Installation
+
+Great Silence requires Python 3.9 or later. We recommend using a virtual environment or conda/mamba for dependency management.
+
+## Quick Install
+
+<Tabs>
+  <TabItem label="pip">
+```bash
+pip install great-silence
+```
+  </TabItem>
+  <TabItem label="conda">
+```bash
+conda install -c conda-forge great-silence
+```
+  </TabItem>
+  <TabItem label="Development">
+```bash
+# Clone the repository
+git clone https://github.com/grburgess/great_silence.git
+cd great_silence
+
+# Install in development mode with all dependencies
+pip install -e ".[dev,viz,webapp,notebook]"
+```
+  </TabItem>
+</Tabs>
+
+## Optional Dependencies
+
+Great Silence has several optional dependency groups for different use cases:
+
+| Extra | Description | Install Command |
+|-------|-------------|-----------------|
+| `webapp` | NiceGUI web interface | `pip install -e ".[webapp]"` |
+| `viz` | Advanced 3D visualization (Plotly, PyVista) | `pip install -e ".[viz]"` |
+| `notebook` | Jupyter notebook support | `pip install -e ".[notebook]"` |
+| `dev` | Testing and code quality tools | `pip install -e ".[dev]"` |
+
+### Full Installation
+
+For all features:
+
+```bash
+pip install -e ".[dev,viz,webapp,notebook]"
+```
+
+## System Requirements
+
+### Minimum Requirements
+
+- **Python**: 3.9+
+- **RAM**: 4 GB (for simulations up to 100k stars)
+- **CPU**: Any modern processor
+
+### Recommended for Large Simulations
+
+- **RAM**: 16 GB+ (for 1M+ stars)
+- **CPU**: Multi-core processor (parallel Monte Carlo)
+- **GPU**: WebGL-capable browser for 3D visualization
+
+## Verify Installation
+
+After installation, verify everything works:
+
+```bash
+# Check version
+python -c "import great_silence; print(great_silence.__version__)"
+
+# Run quick test
+great-silence --quick --help
+```
+
+<Aside type="tip">
+  If you encounter import errors, ensure you're using the correct Python environment.
+  Use `which python` or `python --version` to verify.
+</Aside>
+
+## Numba JIT Compilation
+
+Great Silence uses [Numba](https://numba.pydata.org/) for performance-critical computations. On first run, Numba will compile JIT kernels which may take 10-30 seconds. Subsequent runs use cached compilations.
+
+To pre-compile all kernels:
+
+```python
+from great_silence.utils.numba_kernels import benchmark_kernel
+benchmark_kernel()  # Triggers compilation
+```
+
+## Next Steps
+
+<Steps>
+1. Follow the [Quick Start guide](/getting-started/quickstart/) to run your first simulation
+2. Learn about [Configuration options](/getting-started/configuration/)
+3. Explore the [Concepts](/concepts/fermi-paradox/) behind the simulation
+</Steps>

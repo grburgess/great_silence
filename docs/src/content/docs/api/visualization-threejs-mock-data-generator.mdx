@@ -1,0 +1,41 @@
+---
+title: "Mock Data Generator"
+description: "API reference for great_silence.visualization.threejs.mock_data_generator"
+sidebar:
+  order: 41
+---
+
+# Mock Data Generator
+
+**Module:** `great_silence.visualization.threejs.mock_data_generator`
+
+Mock data generator for Three.js visualization testing.
+
+```python
+from great_silence.visualization.threejs.mock_data_generator import ...
+```
+
+## Functions
+
+
+### `generate_mock_data`
+
+Generate mock simulation data for Three.js template testing.
+
+Args:
+    num_stars: Number of stars to generate
+    num_frames: Number of animation frames
+    seed: Random seed for reproducibility
+
+Returns:
+    Dict containing galaxy, frames, and camera_presets data
+
+```python
+def generate_mock_data(num_stars: int = 1000, num_frames: int = 50, seed: int = 42) -> Dict[str, Any]
+```
+
+**Parameters:**
+
+- `num_stars` (`int`) — default: `1000`
+- `num_frames` (`int`) — default: `50`
+- `seed` (`int`) — default: `42`

@@ -1,0 +1,288 @@
+---
+title: Astrophysical Hazards
+description: Supernovae, gamma-ray bursts, and neutron star mergers as extinction threats
+sidebar:
+  order: 3
+---
+
+import { Aside, Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# Astrophysical Hazards
+
+Beyond self-destruction, civilizations face existential threats from cosmic events.
+Great Silence models three major astrophysical hazards: supernovae, gamma-ray bursts, 
+and neutron star mergers.
+
+## Overview
+
+<CardGrid>
+  <Card title="Supernovae" icon="sun">
+    **Lethal range**: ~10-30 pc
+    
+    Massive star explosions that sterilize nearby planets through radiation and blast waves
+  </Card>
+  <Card title="Gamma-Ray Bursts" icon="warning">
+    **Lethal range**: ~1-5 kpc
+    
+    Beamed relativistic jets that can sterilize across galactic distances
+  </Card>
+  <Card title="NS Mergers" icon="star">
+    **Lethal range**: ~0.03-3 kpc
+    
+    Neutron star collisions producing short GRBs and radioactive kilonovae
+  </Card>
+</CardGrid>
+
+## Supernovae
+
+Type II supernovae occur when massive stars (M > 8 M☉) exhaust their nuclear fuel.
+
+### Physics
+
+- **Rate**: ~2 per century in Milky Way
+- **Lethal radiation**: X-rays, gamma-rays, cosmic rays
+- **Effects**: Ozone depletion, increased UV exposure, mass extinction
+
+### Lethal Range
+
+```python
+# Distance-dependent effects
+sn_lethal_range_pc = 10.0       # Immediate sterilization
+sn_sterilization_range_pc = 30.0  # Partial damage
+```
+
+Within the lethal range, civilization colonies are destroyed. Within the sterilization 
+range, stars become temporarily uninhabitable.
+
+### Pre-Scheduling
+
+Supernovae are pre-computed at initialization:
+
+```python
+# For each massive star
+if mass > 8.0:  # Solar masses
+    # Main sequence lifetime
+    t_ms_gyr = 10.0 * (mass ** -2.5)
+    
+    # Time until supernova
+    t_sn = t_ms_gyr - age_gyr
+    
+    if t_sn > 0 and t_sn < simulation_duration:
+        schedule_supernova(star_idx, t_sn)
+```
+
+<Aside type="note">
+  Supernovae are deterministic—if a star is massive enough and young enough, 
+  it will explode at a predictable time. GRBs are probabilistic subsets of SNe.
+</Aside>
+
+## Gamma-Ray Bursts
+
+Long GRBs are associated with the deaths of extremely massive, low-metallicity stars.
+
+### Physics
+
+- **Rate**: ~0.01 per century (in Milky Way)
+- **Beaming**: Narrow jets (~10° opening angle)
+- **Energy**: 10⁵¹-10⁵⁴ ergs (most energetic events in universe)
+
+### Lethal Range
+
+GRBs can sterilize across kiloparsec distances:
+
+```python
+grb_lethal_range_kpc = 5.0      # Kill distance
+grb_beaming_angle_deg = 10.0    # Jet opening angle
+```
+
+### Beam Geometry
+
+GRBs only affect civilizations within the jet cone:
+
+```python
+def is_in_grb_beam(
+    grb_position: np.ndarray,
+    jet_direction: np.ndarray,
+    target_position: np.ndarray,
+    beaming_angle_deg: float,
+) -> bool:
+    """Check if target is within GRB jet cone."""
+    
+    to_target = target_position - grb_position
+    to_target /= np.linalg.norm(to_target)
+    
+    cos_angle = np.dot(jet_direction, to_target)
+    angle_deg = np.degrees(np.arccos(cos_angle))
+    
+    return angle_deg <= beaming_angle_deg
+```
+
+### Metallicity Dependence
+
+GRB probability decreases with metallicity:
+
+```python
+# GRB probability scales with metallicity
+if metallicity_feh < -0.5:
+    grb_probability = base_probability * 2.0  # Metal-poor = more GRBs
+elif metallicity_feh > 0.0:
+    grb_probability = base_probability * 0.5  # Metal-rich = fewer GRBs
+```
+
+## Neutron Star Mergers
+
+Binary neutron star systems spiral together and collide, producing:
+
+1. **Short GRB**: Beamed gamma-ray emission (kpc lethal range)
+2. **Kilonova**: Isotropic radioactive decay (pc lethal range)
+
+### Configuration
+
+```python
+config.astrophysics.ns_merger_rate_per_myr = 50.0        # Galactic rate
+config.astrophysics.ns_sgrb_beaming_angle_deg = 5.0      # Narrow jets
+config.astrophysics.ns_sgrb_lethal_range_kpc = 3.0       # sGRB kill distance
+config.astrophysics.ns_kilonova_lethal_range_pc = 30.0   # Kilonova kill distance
+```
+
+### Delay Time Distribution
+
+NS mergers occur with a delay after star formation:
+
+```python
+# Delay time: inspiral from NS-NS formation to merger
+delay_time_gyr = sample_delay_time(
+    min_delay=0.01,  # 10 Myr minimum
+    max_delay=10.0,  # Up to 10 Gyr
+)
+```
+
+## Unified Disaster Scheduler
+
+All hazards are pre-computed for efficiency:
+
+```python
+from great_silence.simulation.disasters import UnifiedDisasterScheduler
+
+scheduler = UnifiedDisasterScheduler(galaxy, config, seed)
+
+# Pre-computes:
+# - All supernovae from massive stars
+# - GRBs as probabilistic subset of SNe
+# - NS mergers at galactic rate
+
+# Efficient retrieval
+disasters = scheduler.get_disasters_in_window(t_start, t_end)
+```
+
+### Event Types
+
+```python
+@dataclass
+class ScheduledDisaster:
+    time_myr: float
+    disaster_type: str       # "supernova", "grb", "ns_merger"
+    position: np.ndarray     # (3,) xyz in kpc
+    parent_star_idx: int     # Source star (or -1 for NS merger)
+    lethal_range_kpc: float
+    
+    # GRB-specific
+    jet_direction: np.ndarray
+    beaming_angle_deg: float
+```
+
+## Hazard Application
+
+Each timestep, disasters are applied:
+
+```python
+def _apply_hazards(self, dt_myr: float):
+    # Get disasters in this window
+    disasters = self.disaster_scheduler.get_disasters_in_window(
+        self.current_time_myr,
+        self.current_time_myr + dt_myr
+    )
+    
+    for disaster in disasters:
+        # Record event (for visualization)
+        self._record_hazard_event(disaster)
+        
+        # Check each active civilization
+        for civ in self.active_civilizations:
+            affected_colonies = self._check_disaster_effect(
+                disaster, civ.colonized_stars
+            )
+            
+            for colony_idx in affected_colonies:
+                self._destroy_colony(civ, colony_idx, disaster)
+```
+
+## Distributed Resilience
+
+Multi-colony civilizations are more resilient:
+
+```
+P(civ_death) = P(colony_death)^N_colonies
+```
+
+| Colonies | Survival after 1 hazard | After 10 hazards |
+|----------|-------------------------|------------------|
+| 1 | 0% (if hit) | 0% |
+| 10 | 90% | 35% |
+| 100 | 99% | 90% |
+| 1000 | 99.9% | 99% |
+
+<Aside type="tip">
+  Rapid expansion is the key to hazard survival. Civilizations that reach 
+  100+ colonies are nearly immune to localized disasters.
+</Aside>
+
+## Visualization
+
+Disasters are rendered in the Three.js visualization:
+
+- **Supernovae**: Red expanding shockwaves
+- **GRBs**: Cyan bipolar jet cones
+- **NS Mergers**: Magenta spherical shells
+
+```python
+export_html(sim, "output.html", show_hazards=True)
+```
+
+Enable disaster history mode to see all past events, or use filters to show
+specific disaster types.
+
+## Configuration Reference
+
+<Tabs>
+  <TabItem label="Supernovae">
+```python
+config.astrophysics.sn_rate_per_century = 2.0
+config.astrophysics.sn_lethal_range_pc = 10.0
+config.astrophysics.sn_sterilization_range_pc = 30.0
+```
+  </TabItem>
+  <TabItem label="GRBs">
+```python
+config.astrophysics.grb_rate_per_century = 0.01
+config.astrophysics.grb_lethal_range_kpc = 5.0
+config.astrophysics.grb_beaming_angle_deg = 10.0
+config.astrophysics.grb_fraction_of_sne = 0.01
+config.astrophysics.grb_min_progenitor_mass = 20.0
+```
+  </TabItem>
+  <TabItem label="NS Mergers">
+```python
+config.astrophysics.ns_merger_rate_per_myr = 50.0
+config.astrophysics.ns_sgrb_beaming_angle_deg = 5.0
+config.astrophysics.ns_sgrb_lethal_range_kpc = 3.0
+config.astrophysics.ns_kilonova_lethal_range_pc = 30.0
+```
+  </TabItem>
+</Tabs>
+
+## Further Reading
+
+- [The Great Filter](/concepts/great-filter/) — How hazards fit into extinction models
+- [Simulation Flow](/guides/simulation-flow/) — When hazards are applied
+- [API: astrophysics](/api/astrophysics-hazards/) — Hazard evaluator reference

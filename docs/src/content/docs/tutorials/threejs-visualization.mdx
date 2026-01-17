@@ -1,0 +1,343 @@
+---
+title: Three.js Visualization
+description: Creating stunning interactive 3D visualizations of your simulations
+sidebar:
+  order: 3
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# Three.js Visualization Tutorial
+
+Great Silence includes a powerful Three.js-based visualization system that renders 
+your simulations as interactive 3D WebGL experiences.
+
+## Quick Start
+
+**Step 1: Run a Simulation with Snapshots**
+
+```python
+from great_silence import GalaxySimulation, SimulationConfig
+
+config = SimulationConfig.with_preset("optimistic")
+config.galaxy.total_stars = 30_000
+config.simulation.save_snapshots = True
+config.simulation.snapshot_interval_myr = 25.0
+config.simulation.simulation_duration_gyr = 3.0
+
+sim = GalaxySimulation(config, seed=42)
+sim.run(verbose=True)
+```
+
+**Step 2: Export to HTML**
+
+```python
+from great_silence.visualization.threejs import export_html
+
+export_html(sim, "galaxy.html", animated=True)
+```
+
+**Step 3: Open in Browser**
+
+```bash
+open galaxy.html  # macOS
+xdg-open galaxy.html  # Linux
+start galaxy.html  # Windows
+```
+
+## Understanding the Visualization
+
+### Elements Rendered
+
+| Element | Description | Color Scheme |
+|---------|-------------|--------------|
+| **Stars** | Point particles for each star | White to yellow based on mass |
+| **Civilizations** | Sprite markers at home worlds | Color by Kardashev level |
+| **Colonies** | Smaller markers at colonized stars | Inherit civ color |
+| **Probes** | Moving dots along trajectories | Civ color with trails |
+| **Disasters** | Animated effects at event locations | Type-specific colors |
+
+### Kardashev Color Scale
+
+```
+K < 0.8:   Green      (#22c55e) - Pre-expansion
+K 0.8-1.0: Cyan       (#00ffff) - Early expansion
+K 1.0-1.5: Purple     (#8B5CF6) - Stellar
+K 1.5-2.0: Gold       (#fbbf24) - Multi-stellar
+K > 2.0:   White      (#ffffff) - Advanced
+```
+
+## Configuration
+
+### ThreeJSConfig Options
+
+```python
+from great_silence.visualization.threejs import ThreeJSConfig, export_html
+
+viz_config = ThreeJSConfig()
+
+# Star rendering
+viz_config.star_size = 0.5                 # Base star size
+viz_config.star_opacity = 0.8              # Star transparency
+viz_config.use_star_colors = True          # Color by mass
+
+# Civilization markers
+viz_config.civilization_size = 2.0         # Marker size
+viz_config.show_colonies = True            # Show colony markers
+viz_config.colony_size = 1.0               # Colony marker size
+
+# Probe trajectories
+viz_config.show_trajectories = True        # Show probe paths
+viz_config.trajectory_opacity = 0.6        # Trail transparency
+viz_config.max_trajectory_points = 500     # Points per trail
+
+# Camera
+viz_config.camera_distance = 35            # Initial distance
+viz_config.auto_rotate = True              # Spin on load
+viz_config.auto_rotate_speed = 0.5         # Rotation speed
+
+# Post-processing
+viz_config.enable_bloom = True             # Glow effect
+viz_config.bloom_strength = 0.5            # Glow intensity
+viz_config.enable_vignette = True          # Edge darkening
+
+export_html(sim, "galaxy.html", config=viz_config, animated=True)
+```
+
+### Camera Presets
+
+```python
+viz_config.camera_presets = [
+    {
+        "name": "Top View",
+        "position": [0, 0, 40],
+        "target": [0, 0, 0],
+    },
+    {
+        "name": "Edge View", 
+        "position": [35, 0, 0],
+        "target": [0, 0, 0],
+    },
+    {
+        "name": "Angled",
+        "position": [20, 15, 20],
+        "target": [0, 0, 0],
+    },
+    {
+        "name": "Close-up",
+        "position": [5, 5, 10],
+        "target": [0, 0, 0],
+    },
+]
+```
+
+## Animation Controls
+
+### Timeline Interface
+
+The visualization includes a timeline bar with:
+
+- **Time display**: Current simulation time in Myr
+- **Play/Pause button**: Start/stop animation
+- **Progress bar**: Click/drag to scrub through time
+- **Speed control**: 0.1x to 10x playback speed
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Space` | Play/Pause |
+| `←` | Step back 1 frame |
+| `→` | Step forward 1 frame |
+| `Shift+←` | Step back 10 frames |
+| `Shift+→` | Step forward 10 frames |
+| `+` / `=` | Speed up |
+| `-` | Slow down |
+| `R` | Reset camera |
+| `T` | Toggle auto-rotate |
+| `1-5` | Camera presets |
+| `H` | Toggle hazards |
+| `P` | Toggle probes |
+
+## Disaster Visualization
+
+### Enabling Hazard Display
+
+```python
+export_html(
+    sim, 
+    "galaxy.html", 
+    animated=True,
+    show_hazards=True,  # Enable disaster effects
+)
+```
+
+### Disaster Types
+
+| Type | Color | Effects | Duration |
+|------|-------|---------|----------|
+| **Supernovae** | Red (#ff4400) | Expanding shockwave ring, semi-transparent sterilization sphere, marker at explosion | ~10 Myr |
+| **GRBs** | Cyan (#00ffff) | Bipolar jet cones (25°), kill zone projection, beam direction indicator | ~5 Myr fade |
+| **NS Mergers** | Magenta (#ff00ff) | sGRB jet (if aligned), kilonova spherical shell, combined effect zone | ~5 Myr fade |
+
+### Disaster Timeline
+
+The interface includes a disaster timeline with:
+
+- Clickable markers for each event
+- Filter by disaster type
+- History mode (show all past events)
+- Death markers where civilizations were destroyed
+
+## Stellar Motion
+
+When stellar motion is enabled, stars move during playback:
+
+```python
+config.galaxy.enable_stellar_motion = True
+config.galaxy.velocity_init_mode = "simple"  # or "jeans"
+```
+
+The visualization uses GPU-accelerated interpolation:
+
+```javascript
+// Vertex shader excerpt
+vec3 interpolatedPos = initialPosition + velocity * dt * 0.001022;
+```
+
+<Aside type="tip">
+  Stars also move when scrubbing the timeline manually, not just during playback.
+  This is achieved through the `updateStellarPositions()` function.
+</Aside>
+
+## Performance Optimization
+
+### For Large Simulations
+
+```python
+viz_config = ThreeJSConfig()
+
+# Reduce quality for performance
+viz_config.enable_bloom = False            # Disable post-processing
+viz_config.max_trajectory_points = 200     # Fewer trail points
+viz_config.star_size = 0.3                 # Smaller stars
+
+# Aggressive LOD
+viz_config.lod_distances = [5, 15, 30]     # Close, mid, far
+viz_config.lod_detail_levels = [1.0, 0.5, 0.2]  # Full, half, 20%
+```
+
+### Recommended Settings by Star Count
+
+| Stars | Bloom | Trajectories | LOD |
+|-------|-------|--------------|-----|
+| < 30k | Full | 500 points | Standard |
+| 30k-100k | Half | 200 points | Aggressive |
+| > 100k | Off | 100 points | Very aggressive |
+
+## Embedding in Websites
+
+### IFrame Embed
+
+```html
+<iframe 
+  src="galaxy.html" 
+  width="100%" 
+  height="600"
+  frameborder="0"
+></iframe>
+```
+
+### Responsive Container
+
+```html
+<div style="position: relative; width: 100%; padding-bottom: 56.25%;">
+  <iframe 
+    src="galaxy.html"
+    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"
+    frameborder="0"
+  ></iframe>
+</div>
+```
+
+## Custom Styling
+
+The exported HTML uses CSS variables for theming:
+
+```css
+:root {
+  --bg-color: #0a0a0f;
+  --text-color: #e0e0e8;
+  --accent-color: #8B5CF6;
+  --panel-bg: rgba(26, 26, 36, 0.9);
+}
+```
+
+To customize, edit the HTML or provide custom CSS:
+
+```python
+export_html(
+    sim,
+    "galaxy.html",
+    animated=True,
+    custom_css="""
+        :root {
+            --accent-color: #00ffff;
+        }
+    """
+)
+```
+
+## Advanced: Accessing Three.js Objects
+
+The visualization exposes global JavaScript objects for customization:
+
+```javascript
+// In browser console or custom script
+
+// Access scene
+const scene = window.galaxyScene;
+
+// Access camera
+const camera = window.galaxyCamera;
+
+// Access star points
+const stars = window.starPoints;
+
+// Update star positions programmatically
+window.updateStellarPositions(newPositions);
+
+// Jump to specific frame
+window.setFrame(50);
+```
+
+## Troubleshooting
+
+### Black Screen
+
+1. Check browser WebGL support: visit `chrome://gpu`
+2. Try reducing star count
+3. Disable post-processing effects
+
+### Performance Issues
+
+1. Close other GPU-intensive applications
+2. Reduce star count
+3. Disable bloom and vignette
+4. Use aggressive LOD settings
+
+### Timeline Not Moving
+
+1. Ensure snapshots were saved: `config.simulation.save_snapshots = True`
+2. Check snapshot count: need at least 2 for animation
+
+<Aside type="note">
+  The visualization requires a WebGL-capable browser. Modern Chrome, Firefox, 
+  Safari, and Edge all support WebGL 2.0.
+</Aside>
+
+## Next Steps
+
+- **[Web Application](/tutorials/webapp/)** — Interactive GUI with embedded visualization
+- **[Visualization Guide](/guides/visualization/)** — All visualization options
+- **[API: ThreeJSConfig](/api/visualization-threejs-config/)** — Full configuration reference

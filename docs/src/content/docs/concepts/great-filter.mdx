@@ -1,0 +1,285 @@
+---
+title: The Great Filter
+description: Understanding the barriers to becoming a spacefaring civilization
+sidebar:
+  order: 4
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+# The Great Filter
+
+The Great Filter is a hypothetical barrier (or series of barriers) that prevents 
+dead matter from eventually producing galaxy-spanning civilizations. First proposed 
+by economist Robin Hanson in 1998, it attempts to explain the Fermi Paradox.
+
+## The Core Idea
+
+Between the formation of habitable planets and the emergence of galaxy-spanning 
+civilizations, there must be one or more extremely difficult steps. These "filters" 
+have an extremely low probability of being passed.
+
+<div class="filter-diagram">
+  <div class="filter-step">
+    <span class="step-label">Dead Matter</span>
+  </div>
+  <div class="filter-arrow">→</div>
+  <div class="filter-step">
+    <span class="step-label">Simple Life</span>
+  </div>
+  <div class="filter-arrow">→</div>
+  <div class="filter-step">
+    <span class="step-label">Complex Life</span>
+  </div>
+  <div class="filter-arrow">→</div>
+  <div class="filter-step">
+    <span class="step-label">Intelligence</span>
+  </div>
+  <div class="filter-arrow">→</div>
+  <div class="filter-step filter-danger">
+    <span class="step-label">Technology</span>
+    <span class="step-note">⚠️ Crisis Zone</span>
+  </div>
+  <div class="filter-arrow">→</div>
+  <div class="filter-step">
+    <span class="step-label">Expansion</span>
+  </div>
+  <div class="filter-arrow">→</div>
+  <div class="filter-step">
+    <span class="step-label">Galaxy-Wide</span>
+  </div>
+</div>
+
+## Where Is the Filter?
+
+The location of the Great Filter has profound implications:
+
+<CardGrid>
+  <Card title="Behind Us (Good News)" icon="sun">
+    If the filter is in our past, we've already passed the hardest step. 
+    Life or intelligence may be extraordinarily rare, but we made it.
+  </Card>
+  <Card title="Ahead of Us (Bad News)" icon="warning">
+    If the filter is in our future, technological civilizations may be 
+    common but inevitably destroy themselves.
+  </Card>
+</CardGrid>
+
+<Aside type="caution">
+  Finding evidence of extinct alien civilizations would be bad news—it would 
+  suggest the filter is ahead of us. Finding no evidence of life at all would 
+  be good news.
+</Aside>
+
+## Implementation in Great Silence
+
+Great Silence models the Great Filter through Kardashev-dependent extinction rates:
+
+### Crisis Peaks
+
+Specific technological transitions have elevated extinction risk:
+
+| K-Level | Crisis Name | Amplitude | Description |
+|---------|------------|-----------|-------------|
+| 0.72 | Industrial Crisis | 0.3 | Resource depletion, climate |
+| 0.85 | Space Emergence | 0.5 | Nuclear, AI, biotech risks |
+| 1.0 | Planetary Mastery | 0.2 | Unknown Type I risks |
+| 1.5 | Stellar Engineering | 0.1 | Megastructure instabilities |
+| 2.0 | Post-Stellar | 0.05 | Theoretical risks |
+
+### The Hazard Function
+
+The extinction probability follows a Gaussian crisis peak model:
+
+```python
+from great_silence.civilization.extinction import ExtinctionModel
+
+model = ExtinctionModel(config.civilization)
+
+# Get hazard rate at a specific K-level
+hazard_rate = model.calculate_kardashev_hazard_rate(kardashev_level=0.85)
+# Returns elevated rate at K=0.85 due to Space Emergence crisis
+
+# Check survival
+survived = model.check_self_destruction(
+    kardashev_level=0.85,
+    dt_myr=1.0,
+    rng=rng
+)
+```
+
+### Crisis Peak Structure
+
+Each crisis is a Gaussian centered on a K-level:
+
+```python
+@dataclass
+class CrisisPeak:
+    kardashev_level: float  # Center of crisis
+    amplitude: float        # Height of peak (higher = more deadly)
+    width: float           # Spread of crisis (σ in K-units)
+    name: str              # Description
+```
+
+The total hazard rate is:
+
+```
+h(K) = base_rate + Σ amplitude_i × exp(-(K - K_i)² / (2 × width_i²))
+```
+
+## Configuring the Filter
+
+### Adjust Crisis Severity
+
+```python
+from great_silence import SimulationConfig
+
+config = SimulationConfig()
+
+# Make the K=0.85 crisis more severe
+config.civilization.crisis_amplitude_085 = 0.8  # Doubled!
+
+# Or use presets
+config = SimulationConfig.with_preset("late_filter")  # High crisis amplitudes
+```
+
+### Custom Crisis Peaks
+
+```python
+from great_silence.civilization.extinction import CrisisPeak, ExtinctionModel
+
+model = ExtinctionModel(config.civilization)
+
+# Add a new crisis at K=1.2
+model.add_crisis_peak(CrisisPeak(
+    kardashev_level=1.2,
+    amplitude=0.3,
+    width=0.1,
+    name="Stellarization Crisis"
+))
+```
+
+### Visualize the Hazard Function
+
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+
+model = ExtinctionModel(config.civilization)
+
+k_levels = np.linspace(0.6, 2.5, 100)
+hazards = [model.calculate_kardashev_hazard_rate(k) for k in k_levels]
+
+plt.figure(figsize=(10, 5))
+plt.plot(k_levels, hazards, 'r-', linewidth=2)
+plt.xlabel('Kardashev Level')
+plt.ylabel('Extinction Hazard Rate (per Myr)')
+plt.title('The Great Filter: Crisis Peaks')
+plt.grid(alpha=0.3)
+plt.show()
+```
+
+## Filter Hypotheses as Presets
+
+### Early Filter (Life is Rare)
+
+```python
+config = SimulationConfig.with_preset("early_filter")
+# fraction_develop_life = 0.001
+# Most stars never develop life, but survivors thrive
+```
+
+### Late Filter (Technology Kills)
+
+```python
+config = SimulationConfig.with_preset("late_filter")
+# mean_civilization_lifetime_myr = 0.1 (100,000 years)
+# crisis_amplitude_085 = high
+# Many civilizations emerge but quickly destroy themselves
+```
+
+### No Filter (Optimistic)
+
+```python
+config = SimulationConfig.with_preset("optimistic")
+# Low crisis amplitudes
+# Long lifetimes
+# The galaxy fills with civilizations
+```
+
+## Distributed Resilience
+
+One key insight: civilizations with multiple colonies are more resilient:
+
+```
+P(extinction) = P(single_colony_death)^N_colonies
+```
+
+A civilization with 100 colonies is nearly immune to localized catastrophes. 
+This creates a U-shaped survival curve:
+
+1. **Pre-expansion** (N=1): Maximum vulnerability
+2. **Mid-expansion** (N=10-100): Rapidly increasing resilience
+3. **Post-expansion** (N=1000+): Nearly invulnerable
+
+<Aside type="tip">
+  The race to achieve interstellar expansion before self-destruction is a 
+  key dynamic in Great Silence simulations. Early expansion dramatically 
+  improves survival odds.
+</Aside>
+
+## Further Reading
+
+- [Fermi Paradox](/concepts/fermi-paradox/) — The context for the Filter
+- [Kardashev Scale](/concepts/kardashev-scale/) — Understanding K-levels
+- [Astrophysical Hazards](/guides/astrophysical-hazards/) — External threats
+
+<style>
+{`
+  .filter-diagram {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 2rem 1rem;
+    background: linear-gradient(135deg, rgba(26, 26, 36, 0.8) 0%, rgba(13, 13, 20, 0.9) 100%);
+    border-radius: 0.75rem;
+    margin: 2rem 0;
+  }
+  
+  .filter-step {
+    padding: 0.75rem 1rem;
+    background: rgba(139, 92, 246, 0.2);
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    border-radius: 0.5rem;
+    text-align: center;
+    min-width: 100px;
+  }
+  
+  .filter-step.filter-danger {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.6);
+  }
+  
+  .step-label {
+    display: block;
+    font-weight: 600;
+    color: #e0e0e8;
+    font-size: 0.9rem;
+  }
+  
+  .step-note {
+    display: block;
+    font-size: 0.75rem;
+    color: #ef4444;
+    margin-top: 0.25rem;
+  }
+  
+  .filter-arrow {
+    color: #8B5CF6;
+    font-size: 1.5rem;
+    font-weight: bold;
+  }
+`}
+</style>

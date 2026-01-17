@@ -321,8 +321,21 @@ class ConfigPanels:
                              "Enable probe-based expansion")
                 create_slider("Min K for Expansion", "min_kardashev_for_expansion", cfg, 0.5, 1.5, 0.05, "",
                              "Minimum Kardashev level for interstellar probes")
-                create_number_input("Max Colonies", "max_colonies_per_civilization", cfg, 10, 10000, 100, "",
-                                   "Maximum colonies per civilization")
+                create_number_input("Max Probe Generation", "max_probe_generation", cfg, 1, 50, 1, "",
+                                   "Maximum replication depth (Hayflick limit)")
+                
+                ui.label("Expansion Limits").classes("text-sm text-gray-400 mt-2")
+                create_toggle("Scale Limits by Star Count", "use_scaled_probe_limits", cfg,
+                             "Scale limits as fraction of stars (recommended)")
+                create_slider("Max Colonies Fraction", "max_colonies_fraction", cfg, 0.1, 1.0, 0.05, "",
+                             "Max colonies as fraction of habitable stars")
+                create_slider("Max Active Probes Fraction", "max_active_probes_fraction", cfg, 0.01, 0.2, 0.01, "",
+                             "Max in-flight probes as fraction of total stars")
+                ui.label("Fixed limits (when scaling disabled):").classes("text-xs text-gray-500 mt-1")
+                create_number_input("Max Colonies (fixed)", "max_colonies_per_civilization", cfg, 10, 10000, 100, "",
+                                   "Fixed max colonies per civilization")
+                create_number_input("Max Active Probes (fixed)", "max_active_probes_per_civilization", cfg, 10, 5000, 50, "",
+                                   "Fixed max in-flight probes per civilization")
 
             with ui.expansion("Metallicity Thresholds", value=False).classes("w-full bg-gray-800/50"):
                 ui.label("Probes need metal-rich systems for replication").classes("text-xs text-gray-500 mb-2")

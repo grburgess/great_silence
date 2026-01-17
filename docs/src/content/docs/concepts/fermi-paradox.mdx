@@ -1,0 +1,154 @@
+---
+title: The Fermi Paradox
+description: Understanding the great cosmic silence and why we haven't found extraterrestrial intelligence
+sidebar:
+  order: 1
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+# The Fermi Paradox
+
+> "Where is everybody?" — Enrico Fermi, 1950
+
+The Fermi Paradox is the apparent contradiction between the lack of evidence for extraterrestrial 
+civilizations and the high probability estimates for their existence. Given the age and size of 
+the universe, why haven't we detected any signs of intelligent life?
+
+## The Numbers
+
+Consider the scale of the cosmos:
+
+<div class="stats-grid">
+  <div class="stat-item">
+    <span class="stat-value">100-400B</span>
+    <span class="stat-label">Stars in Milky Way</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-value">13.6B</span>
+    <span class="stat-label">Years since Big Bang</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-value">~4B</span>
+    <span class="stat-label">Years for Earth life</span>
+  </div>
+</div>
+
+The Milky Way is approximately 13.6 billion years old. Earth-like planets have existed for 
+billions of years. If intelligent civilizations arise at even modest rates, the galaxy should 
+be filled with them. Yet we observe... nothing.
+
+## Why It Matters
+
+The Fermi Paradox isn't just a curiosity—it has profound implications:
+
+<CardGrid>
+  <Card title="We Are Rare" icon="star">
+    Intelligence may be extraordinarily rare, making us potentially unique in the galaxy
+  </Card>
+  <Card title="We Are Early" icon="rocket">
+    We might be among the first technological civilizations to emerge
+  </Card>
+  <Card title="They Are Silent" icon="warning">
+    Advanced civilizations may exist but choose not to communicate
+  </Card>
+  <Card title="They Are Dead" icon="error">
+    Technology may inevitably lead to self-destruction
+  </Card>
+</CardGrid>
+
+## Proposed Solutions
+
+Over decades, scientists have proposed numerous solutions to the paradox:
+
+### Rare Earth Hypotheses
+
+- **Rare Planets**: Truly habitable planets may be far rarer than expected
+- **Rare Life**: Abiogenesis (life from non-life) may be extremely improbable
+- **Rare Intelligence**: Evolution may rarely produce intelligence
+
+### Temporal Solutions
+
+- **We Are First**: Conditions for life only recently became favorable
+- **They Are Gone**: Civilizations don't last long enough to overlap
+- **Timing Mismatch**: Communication windows don't align
+
+### Detection Limits
+
+- **Zoo Hypothesis**: They're watching but not interfering
+- **Dark Forest**: Civilizations hide to avoid predators
+- **Different Communication**: They use methods we can't detect
+
+### The Great Filter
+
+Perhaps the most sobering hypothesis: somewhere in the path from dead matter to 
+galaxy-spanning civilization lies a nearly impassable barrier—**the Great Filter**.
+
+<Aside type="caution" title="The Great Filter">
+  If the Filter is behind us, we're lucky survivors. If it's ahead... we should be worried.
+  Understanding where the Filter lies is crucial for estimating humanity's future.
+</Aside>
+
+## How Great Silence Explores This
+
+Great Silence simulates the paradox computationally:
+
+1. **Generate a realistic galaxy** with billions of potential habitable stars
+2. **Apply Drake equation parameters** to model civilization emergence
+3. **Simulate expansion** via self-replicating probes
+4. **Apply hazards** (supernovae, GRBs) and extinction models
+5. **Run Monte Carlo ensembles** to explore parameter space
+
+By varying parameters, you can test different hypotheses:
+
+```python
+from great_silence import SimulationConfig
+
+# Test "Rare Life" hypothesis
+config = SimulationConfig.with_preset("early_filter")
+config.civilization.fraction_develop_life = 0.0001  # Very rare
+
+# Test "Technology Kills" hypothesis
+config = SimulationConfig.with_preset("late_filter")
+config.civilization.mean_civilization_lifetime_myr = 0.1  # 100,000 years
+```
+
+## Further Reading
+
+- [Drake Equation](/concepts/drake-equation/) — Quantifying the probability
+- [Kardashev Scale](/concepts/kardashev-scale/) — Measuring civilization advancement
+- [The Great Filter](/concepts/great-filter/) — Understanding extinction barriers
+
+<style>
+{`
+  .stats-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+    justify-content: center;
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(0, 255, 255, 0.05) 100%);
+    border-radius: 0.75rem;
+  }
+  
+  .stat-item {
+    text-align: center;
+  }
+  
+  .stat-value {
+    display: block;
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #a78bfa;
+    font-family: 'Space Mono', monospace;
+  }
+  
+  .stat-label {
+    color: #a0a0b0;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+`}
+</style>

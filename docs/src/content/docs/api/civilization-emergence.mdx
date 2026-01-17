@@ -1,0 +1,88 @@
+---
+title: "Emergence"
+description: "API reference for great_silence.civilization.emergence"
+sidebar:
+  order: 6
+---
+
+# Emergence
+
+**Module:** `great_silence.civilization.emergence`
+
+Civilization emergence modeling based on Drake equation.
+
+```python
+from great_silence.civilization.emergence import ...
+```
+
+## Classes
+
+
+### CivilizationEmergence 
+
+Model emergence of civilizations using Drake equation framework.
+
+```python
+class CivilizationEmergence:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize emergence model.
+
+Args:
+    params: Civilization configuration parameters
+
+```python
+def __init__(params: CivilizationParameters)
+```
+
+**Parameters:**
+
+- `params` (`CivilizationParameters`)
+
+---
+
+##### `emergence_probability`
+
+Calculate probability of civilization emerging during time step.
+
+Args:
+    stellar_age_gyr: Age of the host star (Gyr)
+    dt_gyr: Time step duration (Gyr)
+
+Returns:
+    Probability of emergence
+
+```python
+def emergence_probability(stellar_age_gyr: float, dt_gyr: float) -> float
+```
+
+**Parameters:**
+
+- `stellar_age_gyr` (`float`)
+- `dt_gyr` (`float`)
+
+---
+
+##### `sample_civilization_lifetime`
+
+Sample civilization lifetime from distribution.
+
+Args:
+    rng: Random number generator
+
+Returns:
+    Lifetime in Myr
+
+```python
+def sample_civilization_lifetime(rng: np.random.Generator) -> float
+```
+
+**Parameters:**
+
+- `rng` (`np.random.Generator`)
+
+---

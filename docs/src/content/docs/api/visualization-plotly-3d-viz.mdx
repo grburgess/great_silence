@@ -1,0 +1,439 @@
+---
+title: "Plotly 3D Viz"
+description: "API reference for great_silence.visualization.plotly_3d_viz"
+sidebar:
+  order: 36
+---
+
+# Plotly 3D Viz
+
+**Module:** `great_silence.visualization.plotly_3d_viz`
+
+Advanced 3D Plotly visualization system for galactic civilization simulations.
+
+Provides clean, high-performance 3D scatter plots with multiple toggleable layers,
+animation support, and hover tooltips. Built for 100k+ point performance using
+WebGL rendering (Scattergl).
+
+```python
+from great_silence.visualization.plotly_3d_viz import ...
+```
+
+## Classes
+
+
+### VisualizationConfig <span class="badge">dataclass</span>
+
+Central configuration for all visualization parameters.
+
+```python
+@dataclass
+class VisualizationConfig:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `camera_eye` | `Tuple[float, float, float] = (1.5, 1.5, 1.3)` |
+| `camera_center` | `Tuple[float, float, float] = (0, 0, 0)` |
+| `camera_up` | `Tuple[float, float, float] = (0, 0, 1)` |
+| `background_color` | `str = 'rgb(0, 0, 0)'` |
+| `paper_bgcolor` | `str = 'rgb(0, 0, 0)'` |
+| `plot_bgcolor` | `str = 'rgb(0, 0, 0)'` |
+| `star_size` | `float = 1.5` |
+| `star_opacity` | `float = 0.35` |
+| `star_color` | `str = 'rgb(220, 220, 220)'` |
+| `civ_active_size` | `float = 6.0` |
+| `civ_active_opacity` | `float = 0.9` |
+| `civ_extinct_size` | `float = 4.0` |
+| `civ_extinct_opacity` | `float = 0.5` |
+| `civ_extinct_marker` | `str = 'circle'` |
+| `kardashev_colorscale` | `str = 'Plasma'` |
+| `kardashev_min` | `float = 0.7` |
+| `kardashev_max` | `float = 3.0` |
+| `root_palette` | `str = 'tab20_r'` |
+| `sphere_color` | `str = 'rgba(100, 150, 255, 0.1)'` |
+| `sphere_edge_color` | `str = 'rgba(100, 150, 255, 0.3)'` |
+| `sphere_line_width` | `float = 1.0` |
+| `width` | `int = 1400` |
+| `height` | `int = 900` |
+| `animation_frame_duration` | `int = 50` |
+| `transition_duration` | `int = 50` |
+
+
+### ColorMapper 
+
+Robust color assignment for civilization IDs and Kardashev scales.
+
+```python
+class ColorMapper:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize color mapper with a specific palette.
+
+Args:
+    palette_name: colorcet palette name (e.g., "tab20_r", "rainbow_bgyr_35-85_s25")
+    n_colors: Maximum number of unique colors needed
+
+```python
+def __init__(palette_name: str = 'tab20_r', n_colors: int = 100)
+```
+
+**Parameters:**
+
+- `palette_name` (`str`) — default: `'tab20_r'`
+- `n_colors` (`int`) — default: `100`
+
+---
+
+##### `civ_id_to_rgba`
+
+Map civilization ID to RGBA color string.
+
+Cycles through palette gracefully. Each root civilization gets
+a unique color based on its ID.
+
+Args:
+    civ_id: Civilization ID (any integer)
+    opacity: Alpha value (0-1)
+
+Returns:
+    RGBA color string like "rgba(255, 100, 50, 0.8)"
+
+```python
+def civ_id_to_rgba(civ_id: int, opacity: float = 1.0) -> str
+```
+
+**Parameters:**
+
+- `civ_id` (`int`)
+- `opacity` (`float`) — default: `1.0`
+
+---
+
+##### `kardashev_to_rgba`
+
+Map Kardashev level to color using a continuous colorscale.
+
+Args:
+    kardashev_level: Kardashev scale value (typically 0.7-3.0)
+    colorscale: Plotly colorscale name
+
+Returns:
+    RGBA color string
+
+```python
+def kardashev_to_rgba(kardashev_level: float, colorscale: str = 'Plasma') -> str
+```
+
+**Parameters:**
+
+- `kardashev_level` (`float`)
+- `colorscale` (`str`) — default: `'Plasma'`
+
+---
+
+
+### Plotly3DGalaxyViz 
+
+High-performance 3D galaxy visualization using Plotly with WebGL.
+
+Features:
+- Black background with no visible axes/grids
+- Multiple toggleable trace layers
+- Scattergl for 100k+ point performance
+- HTML hover tooltips with multi-line info
+- Animation support with time frames
+- Expanding spheres for influence zones
+
+```python
+class Plotly3DGalaxyViz:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize visualizer.
+
+Args:
+    config: VisualizationConfig instance (uses defaults if None)
+
+```python
+def __init__(config: Optional[VisualizationConfig] = None)
+```
+
+**Parameters:**
+
+- `config` (`Optional[VisualizationConfig]`) — default: `None`
+
+---
+
+##### `create_star_field_trace`
+
+Create background star field trace using Scattergl (WebGL).
+
+Args:
+    stellar_positions: Array of shape (N, 3) with star positions in kpc
+    name: Legend name
+    visible: Whether trace is initially visible
+
+Returns:
+    go.Scattergl trace object
+
+```python
+def create_star_field_trace(stellar_positions: np.ndarray, name: str = 'Stars', visible: bool = True) -> go.Scattergl
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `name` (`str`) — default: `'Stars'`
+- `visible` (`bool`) — default: `True`
+
+---
+
+##### `create_active_civ_trace`
+
+Create active civilization trace, colored by Kardashev level or root ID.
+
+Args:
+    civ_positions: Array of shape (N, 3) with civilization positions
+    civ_ids: Array of civilization IDs (for root color assignment)
+    kardashev_levels: Array of Kardashev scale values (0.7-3.0)
+    parent_star_names: Optional list of parent star names for tooltips
+    use_root_colors: If True, color by root civilization ID. If False, by Kardashev.
+    name: Legend name
+    visible: Whether trace is initially visible
+
+Returns:
+    go.Scattergl trace object
+
+```python
+def create_active_civ_trace(civ_positions: np.ndarray, civ_ids: np.ndarray, kardashev_levels: np.ndarray, parent_star_names: Optional[List[str]] = None, use_root_colors: bool = False, name: str = 'Active Civilizations', visible: bool = True) -> go.Scattergl
+```
+
+**Parameters:**
+
+- `civ_positions` (`np.ndarray`)
+- `civ_ids` (`np.ndarray`)
+- `kardashev_levels` (`np.ndarray`)
+- `parent_star_names` (`Optional[List[str]]`) — default: `None`
+- `use_root_colors` (`bool`) — default: `False`
+- `name` (`str`) — default: `'Active Civilizations'`
+- `visible` (`bool`) — default: `True`
+
+---
+
+##### `create_extinct_civ_trace`
+
+Create extinct civilization trace (shown as X markers).
+
+Args:
+    extinct_positions: Array of shape (N, 3)
+    extinct_ids: Array of extinct civilization IDs
+    parent_star_names: Optional list of parent star names
+    name: Legend name
+    visible: Whether trace is initially visible
+
+Returns:
+    go.Scattergl trace object
+
+```python
+def create_extinct_civ_trace(extinct_positions: np.ndarray, extinct_ids: np.ndarray, parent_star_names: Optional[List[str]] = None, name: str = 'Extinct Civilizations', visible: bool = True) -> go.Scattergl
+```
+
+**Parameters:**
+
+- `extinct_positions` (`np.ndarray`)
+- `extinct_ids` (`np.ndarray`)
+- `parent_star_names` (`Optional[List[str]]`) — default: `None`
+- `name` (`str`) — default: `'Extinct Civilizations'`
+- `visible` (`bool`) — default: `True`
+
+---
+
+##### `create_expansion_lines_trace`
+
+Create lines showing expansion from parent star to colonies.
+
+Args:
+    civ_positions: Dict mapping civ_id -&gt; parent position array
+    colonized_positions: Dict mapping civ_id -&gt; list of colony positions
+    civ_ids: Array of civilization IDs
+    name: Legend name
+    visible: Whether trace is initially visible
+
+Returns:
+    go.Scatter3d trace object with line mode
+
+```python
+def create_expansion_lines_trace(civ_positions: Dict[int, np.ndarray], colonized_positions: Dict[int, List[np.ndarray]], civ_ids: np.ndarray, name: str = 'Expansion', visible: bool = True) -> go.Scatter3d
+```
+
+**Parameters:**
+
+- `civ_positions` (`Dict[int, np.ndarray]`)
+- `colonized_positions` (`Dict[int, List[np.ndarray]]`)
+- `civ_ids` (`np.ndarray`)
+- `name` (`str`) — default: `'Expansion'`
+- `visible` (`bool`) — default: `True`
+
+---
+
+##### `create_influence_sphere_trace`
+
+Create translucent spheres representing civilization influence zones.
+
+PERFORMANCE NOTE: For 10-100 spheres, this works well. For more,
+consider sampling or simplifying sphere resolution.
+
+Args:
+    center_positions: Array of shape (N, 3) sphere centers
+    radii: Array of shape (N,) sphere radii in kpc
+    civ_ids: Array of civilization IDs (for coloring)
+    name: Legend name
+    visible: Whether trace is initially visible
+
+Returns:
+    go.Mesh3d trace object
+
+```python
+def create_influence_sphere_trace(center_positions: np.ndarray, radii: np.ndarray, civ_ids: np.ndarray, name: str = 'Influence Zones', visible: bool = True) -> go.Mesh3d
+```
+
+**Parameters:**
+
+- `center_positions` (`np.ndarray`)
+- `radii` (`np.ndarray`)
+- `civ_ids` (`np.ndarray`)
+- `name` (`str`) — default: `'Influence Zones'`
+- `visible` (`bool`) — default: `True`
+
+---
+
+##### `create_probe_trail_trace`
+
+Create animated trails showing in-flight probes.
+
+Renders gradient lines from launch position to current probe position,
+creating expanding wavefront effect as civilizations colonize.
+
+Args:
+    probe_snapshots: List of ProbeSnapshot objects from simulation
+    stellar_positions: Galaxy stellar positions for lookups
+    name: Legend name
+    visible: Whether trace is initially visible
+
+Returns:
+    go.Scatter3d trace with probe trails
+
+```python
+def create_probe_trail_trace(probe_snapshots: List, stellar_positions: np.ndarray, name: str = 'Active Probes', visible: bool = True) -> go.Scatter3d
+```
+
+**Parameters:**
+
+- `probe_snapshots` (`List`)
+- `stellar_positions` (`np.ndarray`)
+- `name` (`str`) — default: `'Active Probes'`
+- `visible` (`bool`) — default: `True`
+
+---
+
+##### `create_figure`
+
+Create complete 3D figure with all layers and proper layout.
+
+Args:
+    stellar_positions: Background star positions (N, 3)
+    active_civs: List of active CivilizationState objects
+    extinct_civs: Optional list of extinct CivilizationState objects
+    title: Figure title
+
+Returns:
+    Plotly Figure object ready to display/save
+
+```python
+def create_figure(stellar_positions: np.ndarray, active_civs: List, extinct_civs: Optional[List] = None, title: str = 'Galactic Civilization Simulation') -> go.Figure
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `active_civs` (`List`)
+- `extinct_civs` (`Optional[List]`) — default: `None`
+- `title` (`str`) — default: `'Galactic Civilization Simulation'`
+
+---
+
+##### `add_time_slider_and_animation`
+
+Convert figure to animated with time slider.
+
+Args:
+    snapshots: List of visualization data at different times
+    time_labels: Optional list of time labels (e.g., "0.5 Gyr")
+
+```python
+def add_time_slider_and_animation(snapshots: List, time_labels: Optional[List[str]] = None) -> None
+```
+
+**Parameters:**
+
+- `snapshots` (`List`)
+- `time_labels` (`Optional[List[str]]`) — default: `None`
+
+---
+
+##### `show`
+
+Display figure in Jupyter notebook.
+
+```python
+def show() -> None
+```
+---
+
+##### `save_html`
+
+Save figure as standalone HTML file.
+
+Args:
+    filepath: Path to save HTML (e.g., "viz.html")
+
+```python
+def save_html(filepath: str) -> None
+```
+
+**Parameters:**
+
+- `filepath` (`str`)
+
+---
+
+##### `save_png`
+
+Save figure as PNG (requires kaleido).
+
+Args:
+    filepath: Path to save PNG
+    width: Image width
+    height: Image height
+
+```python
+def save_png(filepath: str, width: int = 1400, height: int = 900) -> None
+```
+
+**Parameters:**
+
+- `filepath` (`str`)
+- `width` (`int`) — default: `1400`
+- `height` (`int`) — default: `900`
+
+---

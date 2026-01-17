@@ -1,0 +1,358 @@
+{# recorder.js.j2 - Video recording module for Three.js visualization #}
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, radii) {
+        if (!Array.isArray(radii)) {
+            radii = [radii, radii, radii, radii];
+        }
+        const [tl, tr, br, bl] = radii;
+        this.moveTo(x + tl, y);
+        this.lineTo(x + w - tr, y);
+        this.quadraticCurveTo(x + w, y, x + w, y + tr);
+        this.lineTo(x + w, y + h - br);
+        this.quadraticCurveTo(x + w, y + h, x + w - br, y + h);
+        this.lineTo(x + bl, y + h);
+        this.quadraticCurveTo(x, y + h, x, y + h - bl);
+        this.lineTo(x, y + tl);
+        this.quadraticCurveTo(x, y, x + tl, y);
+        this.closePath();
+    };
+}
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecording = false;
+let loopsCompleted = 0;
+const TOTAL_LOOPS = 3;
+
+let compositeCanvas = null;
+let compositeCtx = null;
+let compositeAnimationId = null;
+
+let savedState = {
+    loopMode: 'repeat',
+    currentFrame: 0,
+    isPlaying: false
+};
+
+function initRecorder() {
+    const recordBtn = document.getElementById('btn-record');
+    if (recordBtn) {
+        recordBtn.addEventListener('click', toggleRecording);
+    }
+}
+
+function toggleRecording() {
+    if (isRecording) {
+        stopRecording();
+    } else {
+        startRecording();
+    }
+}
+
+function createCompositeCanvas(sourceCanvas) {
+    compositeCanvas = document.createElement('canvas');
+    compositeCanvas.width = sourceCanvas.width;
+    compositeCanvas.height = sourceCanvas.height;
+    compositeCtx = compositeCanvas.getContext('2d');
+    return compositeCanvas;
+}
+
+function getVisibleChartPanels() {
+    const panels = [];
+    const panelIds = ['panel-hr', 'panel-kardashev', 'panel-timeline', 'panel-colony', 'panel-lifespan'];
+    
+    panelIds.forEach(id => {
+        const panel = document.getElementById(id);
+        if (panel && panel.classList.contains('visible')) {
+            const canvas = panel.querySelector('canvas');
+            if (canvas) {
+                const rect = panel.getBoundingClientRect();
+                panels.push({
+                    canvas: canvas,
+                    x: rect.left,
+                    y: rect.top,
+                    width: rect.width,
+                    height: rect.height,
+                    panel: panel
+                });
+            }
+        }
+    });
+    
+    return panels;
+}
+
+function compositeFrame() {
+    if (!isRecording || !compositeCtx) return;
+    
+    const sourceCanvas = renderer.domElement;
+    
+    compositeCtx.drawImage(sourceCanvas, 0, 0);
+    
+    const scaleX = compositeCanvas.width / window.innerWidth;
+    const scaleY = compositeCanvas.height / window.innerHeight;
+    
+    const visiblePanels = getVisibleChartPanels();
+    visiblePanels.forEach(panelInfo => {
+        const panel = panelInfo.panel;
+        const panelRect = panel.getBoundingClientRect();
+        
+        const x = panelRect.left * scaleX;
+        const y = panelRect.top * scaleY;
+        const width = panelRect.width * scaleX;
+        const height = panelRect.height * scaleY;
+        
+        compositeCtx.fillStyle = 'rgba(10, 10, 20, 0.92)';
+        compositeCtx.strokeStyle = '#2a4a6a';
+        compositeCtx.lineWidth = 1;
+        compositeCtx.beginPath();
+        compositeCtx.roundRect(x, y, width, height, 8 * scaleX);
+        compositeCtx.fill();
+        compositeCtx.stroke();
+        
+        const header = panel.querySelector('.chart-panel-header');
+        if (header) {
+            const headerHeight = 32 * scaleY;
+            compositeCtx.fillStyle = 'rgba(40, 60, 90, 0.8)';
+            compositeCtx.beginPath();
+            compositeCtx.roundRect(x, y, width, headerHeight, [8 * scaleX, 8 * scaleX, 0, 0]);
+            compositeCtx.fill();
+            
+            const title = header.querySelector('.chart-panel-title');
+            if (title) {
+                compositeCtx.fillStyle = '#8ac4ff';
+                compositeCtx.font = `bold ${11 * scaleY}px sans-serif`;
+                compositeCtx.fillText(title.textContent, x + 12 * scaleX, y + 20 * scaleY);
+            }
+        }
+        
+        const chartCanvas = panelInfo.canvas;
+        if (chartCanvas) {
+            const contentPadding = 12 * scaleX;
+            const headerOffset = 40 * scaleY;
+            const chartX = x + contentPadding;
+            const chartY = y + headerOffset;
+            const chartWidth = width - contentPadding * 2;
+            const chartHeight = (chartCanvas.height / chartCanvas.width) * chartWidth;
+            
+            compositeCtx.drawImage(chartCanvas, chartX, chartY, chartWidth, chartHeight);
+        }
+    });
+    
+    const topBar = document.getElementById('top-bar');
+    if (topBar) {
+        const rect = topBar.getBoundingClientRect();
+        const x = rect.left * scaleX;
+        const y = rect.top * scaleY;
+        const width = rect.width * scaleX;
+        const height = rect.height * scaleY;
+        
+        compositeCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        compositeCtx.beginPath();
+        compositeCtx.roundRect(x, y, width, height, 5 * scaleX);
+        compositeCtx.fill();
+        
+        const timeStats = document.getElementById('time-stats');
+        const civStats = document.getElementById('civ-stats');
+        
+        compositeCtx.fillStyle = '#00ffff';
+        compositeCtx.font = `bold ${14 * scaleY}px sans-serif`;
+        compositeCtx.fillText('Galactic Civilization', x + 10 * scaleX, y + 22 * scaleY);
+        
+        if (timeStats) {
+            compositeCtx.fillStyle = '#aaaaaa';
+            compositeCtx.font = `${12 * scaleY}px sans-serif`;
+            compositeCtx.fillText(timeStats.textContent, x + width / 2 - 80 * scaleX, y + 22 * scaleY);
+        }
+        
+        if (civStats) {
+            compositeCtx.fillText(civStats.textContent, x + width / 2 + 20 * scaleX, y + 22 * scaleY);
+        }
+    }
+    
+    compositeAnimationId = requestAnimationFrame(compositeFrame);
+}
+
+function startRecording() {
+    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
+        alert('No animation data available to record.');
+        return;
+    }
+
+    const sourceCanvas = renderer.domElement;
+    if (!sourceCanvas) {
+        alert('Canvas not found.');
+        return;
+    }
+
+    savedState.loopMode = window.getLoopMode ? window.getLoopMode() : 'repeat';
+    savedState.currentFrame = window.currentFrame || 0;
+    savedState.isPlaying = window.isPlaying || false;
+
+    isRecording = true;
+    loopsCompleted = 0;
+    recordedChunks = [];
+
+    updateRecordingUI();
+
+    createCompositeCanvas(sourceCanvas);
+    
+    compositeFrame();
+    
+    const stream = compositeCanvas.captureStream(30);
+
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : 'video/webm';
+
+    const options = {
+        mimeType: mimeType,
+        videoBitsPerSecond: 8000000
+    };
+
+    try {
+        mediaRecorder = new MediaRecorder(stream, options);
+    } catch (e) {
+        console.error('MediaRecorder error:', e);
+        alert('Video recording is not supported in this browser.');
+        isRecording = false;
+        updateRecordingUI();
+        return;
+    }
+
+    mediaRecorder.ondataavailable = function(event) {
+        if (event.data && event.data.size > 0) {
+            recordedChunks.push(event.data);
+        }
+    };
+
+    mediaRecorder.onstop = function() {
+        finishRecording();
+    };
+
+    mediaRecorder.onerror = function(event) {
+        console.error('MediaRecorder error:', event.error);
+        stopRecording();
+    };
+
+    window.currentFrame = 0;
+    if (window.jumpToStart) {
+        window.jumpToStart();
+    }
+
+    mediaRecorder.start(100);
+
+    setTimeout(() => {
+        if (!window.isPlaying && window.togglePlayPause) {
+            window.togglePlayPause();
+        }
+    }, 100);
+}
+
+function stopRecording() {
+    if (!isRecording) return;
+
+    isRecording = false;
+
+    if (compositeAnimationId) {
+        cancelAnimationFrame(compositeAnimationId);
+        compositeAnimationId = null;
+    }
+
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+
+    if (window.isPlaying && window.togglePlayPause) {
+        window.togglePlayPause();
+    }
+
+    if (window.setLoopMode) {
+        window.setLoopMode(savedState.loopMode);
+    }
+
+    compositeCanvas = null;
+    compositeCtx = null;
+
+    updateRecordingUI();
+}
+
+function finishRecording() {
+    if (recordedChunks.length === 0) {
+        console.warn('No recorded data available.');
+        return;
+    }
+
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    link.download = `galaxy_animation_${timestamp}.webm`;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    recordedChunks = [];
+    mediaRecorder = null;
+}
+
+function onAnimationLoopComplete() {
+    if (!isRecording) return;
+
+    loopsCompleted++;
+    updateRecordingStatus();
+
+    if (loopsCompleted >= TOTAL_LOOPS) {
+        stopRecording();
+    }
+}
+
+function updateRecordingUI() {
+    const recordBtn = document.getElementById('btn-record');
+    const indicator = document.getElementById('recording-indicator');
+
+    if (recordBtn) {
+        if (isRecording) {
+            recordBtn.classList.add('recording');
+            recordBtn.textContent = '⏹ Stop';
+        } else {
+            recordBtn.classList.remove('recording');
+            recordBtn.textContent = '🎬 Record Video';
+        }
+    }
+
+    if (indicator) {
+        if (isRecording) {
+            indicator.classList.add('active');
+        } else {
+            indicator.classList.remove('active');
+        }
+    }
+
+    updateRecordingStatus();
+}
+
+function updateRecordingStatus() {
+    const statusEl = document.getElementById('recording-status');
+    if (statusEl && isRecording) {
+        statusEl.textContent = `Recording... Loop ${loopsCompleted + 1}/${TOTAL_LOOPS}`;
+    }
+}
+
+function checkLoopBoundary(oldFrame, newFrame, maxFrame) {
+    if (!isRecording) return;
+
+    onAnimationLoopComplete();
+}
+
+window.initRecorder = initRecorder;
+window.isRecording = function() { return isRecording; };
+window.onAnimationLoopComplete = onAnimationLoopComplete;
+window.checkLoopBoundary = checkLoopBoundary;

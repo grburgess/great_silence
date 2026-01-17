@@ -1,0 +1,194 @@
+---
+title: "Supernovae"
+description: "API reference for great_silence.astrophysics.supernovae"
+sidebar:
+  order: 5
+---
+
+# Supernovae
+
+**Module:** `great_silence.astrophysics.supernovae`
+
+Supernova modeling and hazard assessment.
+
+```python
+from great_silence.astrophysics.supernovae import ...
+```
+
+## Classes
+
+
+### SupernovaModel 
+
+Model supernova rates and their effects on nearby civilizations.
+
+```python
+class SupernovaModel:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize supernova model.
+
+Args:
+    params: Astrophysics configuration parameters
+
+```python
+def __init__(params: AstrophysicsParameters)
+```
+
+**Parameters:**
+
+- `params` (`AstrophysicsParameters`)
+
+---
+
+##### `will_go_supernova`
+
+Check if star will go supernova during this time step (discrete event).
+
+A star goes supernova when it reaches the end of its main sequence
+lifetime, which depends on its mass.
+
+Args:
+    stellar_mass: Mass in solar masses
+    stellar_age_gyr: Current age in Gyr
+    dt_myr: Time step in Myr
+
+Returns:
+    True if star goes supernova during this timestep
+
+```python
+def will_go_supernova(stellar_mass: float, stellar_age_gyr: float, dt_myr: float) -> bool
+```
+
+**Parameters:**
+
+- `stellar_mass` (`float`)
+- `stellar_age_gyr` (`float`)
+- `dt_myr` (`float`)
+
+---
+
+##### `supernova_rate_per_star`
+
+Calculate supernova probability for a star (DEPRECATED - use will_go_supernova).
+
+This method is kept for backwards compatibility but should not be used
+for new code. Use will_go_supernova() instead for discrete event modeling.
+
+Args:
+    stellar_mass: Mass in solar masses
+    stellar_age_gyr: Age in Gyr
+
+Returns:
+    Probability per year
+
+```python
+def supernova_rate_per_star(stellar_mass: float, stellar_age_gyr: float) -> float
+```
+
+**Parameters:**
+
+- `stellar_mass` (`float`)
+- `stellar_age_gyr` (`float`)
+
+---
+
+##### `is_lethal`
+
+Check if supernova is lethal at given distance.
+
+Args:
+    distance_pc: Distance in parsecs
+
+Returns:
+    True if lethal
+
+```python
+def is_lethal(distance_pc: float) -> bool
+```
+
+**Parameters:**
+
+- `distance_pc` (`float`)
+
+---
+
+##### `sterilization_probability`
+
+Probability of sterilizing a planet at given distance.
+
+Args:
+    distance_pc: Distance in parsecs
+
+Returns:
+    Sterilization probability [0, 1]
+
+```python
+def sterilization_probability(distance_pc: float) -> float
+```
+
+**Parameters:**
+
+- `distance_pc` (`float`)
+
+---
+
+##### `local_supernova_rate`
+
+Calculate local supernova rate based on stellar population.
+
+The supernova rate depends on:
+1. Number of massive stars (M &gt; 8 solar masses)
+2. Age distribution (older populations have more evolved stars)
+3. Component type (bulge vs disk have different histories)
+4. Local stellar density (more stars → more supernovae)
+
+Args:
+    stellar_masses: Array of stellar masses in solar masses
+    stellar_ages: Array of stellar ages in Gyr
+    component_types: Array of component types (0=bulge, 1=disk)
+    local_density_stars_per_pc3: Local stellar density
+
+Returns:
+    Supernova rate in events per Myr within local region
+
+```python
+def local_supernova_rate(stellar_masses: np.ndarray, stellar_ages: np.ndarray, component_types: np.ndarray, local_density_stars_per_pc3: float) -> float
+```
+
+**Parameters:**
+
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `component_types` (`np.ndarray`)
+- `local_density_stars_per_pc3` (`float`)
+
+---
+
+##### `metallicity_type_ratio`
+
+Calculate relative rates of different supernova types by metallicity.
+
+Type Ia SN (white dwarf): Slightly favor metal-rich environments
+Type II SN (core collapse): Metallicity-independent
+Pair-instability SN: Only at very low metallicity (Z &lt; 0.01 Z_sun)
+
+Args:
+    metallicity_feh: Stellar metallicity [Fe/H]
+
+Returns:
+    Dictionary with relative rates: \{'Ia': float, 'II': float, 'PI': float\}
+
+```python
+def metallicity_type_ratio(metallicity_feh: float) -> dict
+```
+
+**Parameters:**
+
+- `metallicity_feh` (`float`)
+
+---

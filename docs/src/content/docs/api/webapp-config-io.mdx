@@ -1,0 +1,62 @@
+---
+title: "Config Io"
+description: "API reference for great_silence.webapp.config_io"
+sidebar:
+  order: 51
+---
+
+# Config Io
+
+**Module:** `great_silence.webapp.config_io`
+
+Configuration file I/O for the webapp.
+
+```python
+from great_silence.webapp.config_io import ...
+```
+
+## Functions
+
+
+### `create_load_config_dialog`
+
+Create a dialog for loading configuration from YAML file.
+
+```python
+def create_load_config_dialog(on_load_callback = None)
+```
+
+**Parameters:**
+
+- `on_load_callback` — default: `None`
+
+
+### `create_save_config_dialog`
+
+Create a dialog for saving configuration to YAML file.
+
+```python
+def create_save_config_dialog()
+```
+
+
+### `create_save_preset_dialog`
+
+Create a dialog for saving current config as a custom preset.
+
+```python
+def create_save_preset_dialog(on_save_callback = None)
+```
+
+**Parameters:**
+
+- `on_save_callback` — default: `None`
+
+
+### `get_custom_presets`
+
+Get list of custom presets from user directory.
+
+```python
+def get_custom_presets() -> list
+```

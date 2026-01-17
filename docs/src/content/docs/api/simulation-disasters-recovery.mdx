@@ -1,0 +1,147 @@
+---
+title: "Recovery"
+description: "API reference for great_silence.simulation.disasters.recovery"
+sidebar:
+  order: 21
+---
+
+# Recovery
+
+**Module:** `great_silence.simulation.disasters.recovery`
+
+Recovery queue for star sterilization tracking.
+
+```python
+from great_silence.simulation.disasters.recovery import ...
+```
+
+## Classes
+
+
+### SterilizationStatus 
+
+Enumeration-like class for star sterilization status.
+
+```python
+class SterilizationStatus:
+```
+
+
+### RecoveryQueue 
+
+Priority queue for star recovery. O(log N) operations.
+
+```python
+class RecoveryQueue:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize recovery tracking arrays.
+
+Args:
+    n_stars: Number of stars in galaxy
+
+```python
+def __init__(n_stars: int)
+```
+
+**Parameters:**
+
+- `n_stars` (`int`)
+
+---
+
+##### `sterilize_star`
+
+Mark star as sterilized, schedule recovery if temporary.
+
+Args:
+    star_idx: Index of star
+    current_time_myr: Current simulation time (Myr)
+    recovery_time_myr: Recovery duration (Myr)
+    permanent: If True, star never recovers
+
+```python
+def sterilize_star(star_idx: int, current_time_myr: float, recovery_time_myr: float, permanent: bool = False)
+```
+
+**Parameters:**
+
+- `star_idx` (`int`)
+- `current_time_myr` (`float`)
+- `recovery_time_myr` (`float`)
+- `permanent` (`bool`) — default: `False`
+
+---
+
+##### `sterilize_batch`
+
+Batch sterilization for efficiency.
+
+Args:
+    star_indices: (K,) indices of affected stars
+    current_time_myr: Current simulation time (Myr)
+    recovery_times_myr: (K,) recovery durations (Myr)
+    permanent_mask: (K,) boolean mask for permanent sterilization
+
+```python
+def sterilize_batch(star_indices: np.ndarray, current_time_myr: float, recovery_times_myr: np.ndarray, permanent_mask: np.ndarray)
+```
+
+**Parameters:**
+
+- `star_indices` (`np.ndarray`)
+- `current_time_myr` (`float`)
+- `recovery_times_myr` (`np.ndarray`)
+- `permanent_mask` (`np.ndarray`)
+
+---
+
+##### `process_recoveries`
+
+Process all stars that have recovered.
+
+Complexity: O(k log N) where k = recovered stars
+
+Args:
+    current_time_myr: Current simulation time (Myr)
+
+Returns:
+    List of recovered star indices
+
+```python
+def process_recoveries(current_time_myr: float) -> List[int]
+```
+
+**Parameters:**
+
+- `current_time_myr` (`float`)
+
+---
+
+##### `get_habitable_mask`
+
+Return boolean mask of habitable stars.
+
+Returns:
+    Boolean array where True = habitable
+
+```python
+def get_habitable_mask() -> np.ndarray
+```
+---
+
+##### `get_statistics`
+
+Return sterilization statistics.
+
+Returns:
+    Dict with counts and percentages
+
+```python
+def get_statistics() -> dict
+```
+---

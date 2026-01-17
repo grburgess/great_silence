@@ -1,0 +1,119 @@
+---
+title: "Archiver"
+description: "API reference for great_silence.simulation.disasters.archiver"
+sidebar:
+  order: 19
+---
+
+# Archiver
+
+**Module:** `great_silence.simulation.disasters.archiver`
+
+Tiered disaster storage archiver with HDF5 backend.
+
+```python
+from great_silence.simulation.disasters.archiver import ...
+```
+
+## Classes
+
+
+### DisasterArchiver 
+
+Tiered disaster storage with HDF5 backend.
+
+Tier 1: Recent events (in-memory, full objects)
+Tier 2: Binary buffer (in-memory, compact)
+Tier 3: HDF5 file (on-disk, compressed)
+
+```python
+class DisasterArchiver:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize archiver.
+
+Args:
+    archive_path: Path to HDF5 file (None = memory only)
+    recent_window_myr: Time window for tier 1 storage (Myr)
+    buffer_size: Buffer size before flush to disk
+
+```python
+def __init__(archive_path: Optional[Path] = None, recent_window_myr: float = 10.0, buffer_size: int = 1000)
+```
+
+**Parameters:**
+
+- `archive_path` (`Optional[Path]`) — default: `None`
+- `recent_window_myr` (`float`) — default: `10.0`
+- `buffer_size` (`int`) — default: `1000`
+
+---
+
+##### `archive_disaster`
+
+Archive disaster with tiered storage.
+
+Args:
+    disaster: HazardEvent to archive
+    current_time_myr: Current simulation time (Myr)
+
+```python
+def archive_disaster(disaster, current_time_myr: float)
+```
+
+**Parameters:**
+
+- `disaster`
+- `current_time_myr` (`float`)
+
+---
+
+##### `get_disasters_in_window`
+
+Get disasters in time window.
+
+Returns HazardEvent objects from recent buffer if available,
+otherwise decodes from binary storage.
+
+Args:
+    start_myr: Window start (Myr)
+    end_myr: Window end (Myr)
+
+Returns:
+    List of HazardEvent objects
+
+```python
+def get_disasters_in_window(start_myr: float, end_myr: float) -> List
+```
+
+**Parameters:**
+
+- `start_myr` (`float`)
+- `end_myr` (`float`)
+
+---
+
+##### `get_all_disasters`
+
+Get all archived disasters (for analysis).
+
+Returns:
+    List of all disasters as (time, HazardEvent) tuples
+
+```python
+def get_all_disasters() -> List
+```
+---
+
+##### `finalize`
+
+Flush remaining buffer and close HDF5.
+
+```python
+def finalize()
+```
+---

@@ -1,0 +1,256 @@
+---
+title: "Civ Spatial Index"
+description: "API reference for great_silence.utils.civ_spatial_index"
+sidebar:
+  order: 28
+---
+
+# Civ Spatial Index
+
+**Module:** `great_silence.utils.civ_spatial_index`
+
+Spatial indexing for civilization territory overlap detection.
+
+```python
+from great_silence.utils.civ_spatial_index import ...
+```
+
+## Classes
+
+
+### ColonyInfo <span class="badge">dataclass</span>
+
+Information about a colony for spatial indexing.
+
+```python
+@dataclass
+class ColonyInfo:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `star_idx` | `int` |
+| `civ_id` | `int` |
+| `position` | `np.ndarray` |
+| `strength` | `float` |
+| `arrival_time_myr` | `float` |
+| `is_home_world` | `bool = False` |
+
+
+### CivilizationSpatialIndex 
+
+Efficient spatial index for detecting territory overlaps between civilizations.
+
+Uses KD-tree for O(log N) queries instead of O(N²) scans.
+Maintains per-civilization colony maps for quick overlap detection.
+
+```python
+class CivilizationSpatialIndex:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize spatial index with stellar positions.
+
+Args:
+    positions: Array of shape (N_stars, 3) with stellar positions in kpc
+
+```python
+def __init__(positions: np.ndarray)
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+
+---
+
+##### `add_colony`
+
+Add a colony to the spatial index.
+
+Args:
+    civ_id: Civilization ID
+    star_idx: Star index
+    strength: Colony strength multiplier
+    arrival_time_myr: Time colony was established
+    is_home_world: Whether this is the home world
+
+```python
+def add_colony(civ_id: int, star_idx: int, strength: float = 1.0, arrival_time_myr: float = 0.0, is_home_world: bool = False) -> None
+```
+
+**Parameters:**
+
+- `civ_id` (`int`)
+- `star_idx` (`int`)
+- `strength` (`float`) — default: `1.0`
+- `arrival_time_myr` (`float`) — default: `0.0`
+- `is_home_world` (`bool`) — default: `False`
+
+---
+
+##### `remove_colony`
+
+Remove a colony from the spatial index.
+
+Args:
+    civ_id: Civilization ID
+    star_idx: Star index
+
+```python
+def remove_colony(civ_id: int, star_idx: int) -> None
+```
+
+**Parameters:**
+
+- `civ_id` (`int`)
+- `star_idx` (`int`)
+
+---
+
+##### `get_colony_info`
+
+Get colony information.
+
+Args:
+    civ_id: Civilization ID
+    star_idx: Star index
+
+Returns:
+    ColonyInfo or None if not found
+
+```python
+def get_colony_info(civ_id: int, star_idx: int) -> Optional[ColonyInfo]
+```
+
+**Parameters:**
+
+- `civ_id` (`int`)
+- `star_idx` (`int`)
+
+---
+
+##### `find_civilizations_in_range`
+
+Find all civilizations with colonies within range of a star.
+
+Args:
+    center_star_idx: Center star index
+    radius_pc: Search radius in parsecs
+
+Returns:
+    Set of civilization IDs with colonies in range
+
+```python
+def find_civilizations_in_range(center_star_idx: int, radius_pc: float) -> Set[int]
+```
+
+**Parameters:**
+
+- `center_star_idx` (`int`)
+- `radius_pc` (`float`)
+
+---
+
+##### `find_territory_overlaps`
+
+Find all territory overlaps between civilizations.
+
+Returns pairs of civ IDs that share stars, along with overlapping star indices.
+
+Args:
+    civ_ids: List of civ IDs to check (None = check all)
+
+Returns:
+    List of (civ_a_id, civ_b_id, overlapping_star_indices) tuples
+
+```python
+def find_territory_overlaps(civ_ids: Optional[List[int]] = None) -> List[Tuple[int, int, Set[int]]]
+```
+
+**Parameters:**
+
+- `civ_ids` (`Optional[List[int]]`) — default: `None`
+
+---
+
+##### `find_nearby_enemy_colonies`
+
+Find enemy colonies near this civilization's territory.
+
+Args:
+    civ_id: Our civilization ID
+    enemy_civ_ids: Set of enemy civilization IDs
+    radius_pc: Search radius in parsecs
+    min_stars: Minimum stars before considering this an area of interest
+
+Returns:
+    List of (star_idx, distance_pc, strength) tuples
+
+```python
+def find_nearby_enemy_colonies(civ_id: int, enemy_civ_ids: Set[int], radius_pc: float, min_stars: int = 1) -> List[Tuple[int, float, float]]
+```
+
+**Parameters:**
+
+- `civ_id` (`int`)
+- `enemy_civ_ids` (`Set[int]`)
+- `radius_pc` (`float`)
+- `min_stars` (`int`) — default: `1`
+
+---
+
+##### `get_frontier_colonies`
+
+Identify frontier colonies (colonies near other civs).
+
+Args:
+    civ_id: Civilization ID
+    radius_pc: Frontier detection radius in parsecs
+
+Returns:
+    List of (star_idx, num_nearby_enemies) tuples
+
+```python
+def get_frontier_colonies(civ_id: int, radius_pc: float) -> List[Tuple[int, int]]
+```
+
+**Parameters:**
+
+- `civ_id` (`int`)
+- `radius_pc` (`float`)
+
+---
+
+##### `find_path_between_colonies`
+
+Find path through this civilization's colonies.
+
+Uses BFS to find shortest path.
+
+Args:
+    civ_id: Civilization ID
+    start_star_idx: Start star index
+    end_star_idx: End star index
+    max_hops: Maximum number of hops to search
+
+Returns:
+    List of star indices forming path, or None if no path found
+
+```python
+def find_path_between_colonies(civ_id: int, start_star_idx: int, end_star_idx: int, max_hops: int = 10) -> Optional[List[int]]
+```
+
+**Parameters:**
+
+- `civ_id` (`int`)
+- `start_star_idx` (`int`)
+- `end_star_idx` (`int`)
+- `max_hops` (`int`) — default: `10`
+
+---

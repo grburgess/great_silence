@@ -1,0 +1,139 @@
+---
+title: "Html Exporter"
+description: "API reference for great_silence.visualization.threejs.html_exporter"
+sidebar:
+  order: 40
+---
+
+# Html Exporter
+
+**Module:** `great_silence.visualization.threejs.html_exporter`
+
+HTML export for Three.js visualization.
+
+```python
+from great_silence.visualization.threejs.html_exporter import ...
+```
+
+## Classes
+
+
+### ThreeJSRenderer 
+
+Render Three.js visualization as self-contained HTML.
+
+```python
+class ThreeJSRenderer:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize renderer.
+
+Args:
+    source: HDF5 file path or simulation object
+    config: Visualization configuration
+    template_dir: Optional path to template directory
+
+```python
+def __init__(source: Union[str, Path, Any], config: Optional[ThreeJSConfig] = None, template_dir: Optional[str] = None)
+```
+
+**Parameters:**
+
+- `source` (`Union[str, Path, Any]`)
+- `config` (`Optional[ThreeJSConfig]`) — default: `None`
+- `template_dir` (`Optional[str]`) — default: `None`
+
+---
+
+##### `render`
+
+Render visualization to HTML string.
+
+Args:
+    animated: Include animation support
+    show_trajectories: Show civilization trajectories
+    show_spheres: Show expansion spheres
+    show_hazards: Show disaster markers
+    animation_data_url: External URL for animation data
+
+Returns:
+    HTML string
+
+```python
+def render(animated: bool = False, show_trajectories: bool = True, show_spheres: bool = True, show_hazards: bool = True, animation_data_url: Optional[str] = None) -> str
+```
+
+**Parameters:**
+
+- `animated` (`bool`) — default: `False`
+- `show_trajectories` (`bool`) — default: `True`
+- `show_spheres` (`bool`) — default: `True`
+- `show_hazards` (`bool`) — default: `True`
+- `animation_data_url` (`Optional[str]`) — default: `None`
+
+---
+
+##### `export`
+
+Export visualization to HTML file.
+
+Args:
+    filepath: Output HTML file path
+    animated: Include animation support
+    show_trajectories: Show civilization trajectories
+    show_spheres: Show expansion spheres
+    show_hazards: Show disaster markers
+    compress: Compress output with gzip
+
+```python
+def export(filepath: Union[str, Path], animated: bool = False, show_trajectories: bool = True, show_spheres: bool = True, show_hazards: bool = True, compress: bool = False)
+```
+
+**Parameters:**
+
+- `filepath` (`Union[str, Path]`)
+- `animated` (`bool`) — default: `False`
+- `show_trajectories` (`bool`) — default: `True`
+- `show_spheres` (`bool`) — default: `True`
+- `show_hazards` (`bool`) — default: `True`
+- `compress` (`bool`) — default: `False`
+
+---
+
+## Functions
+
+
+### `export_html`
+
+Convenience function to export HTML.
+
+Args:
+    source: HDF5 file path or simulation object
+    output_path: Output HTML file path
+    config: Visualization configuration
+    animated: Include animation support
+    show_trajectories: Show civilization trajectories
+    show_spheres: Show expansion spheres
+    show_hazards: Show disaster markers
+    compress: Compress output with gzip
+    template_dir: Optional template directory path
+
+```python
+def export_html(source, output_path, config = None, animated = False, show_trajectories = True, show_spheres = True, show_hazards = True, compress = False, template_dir = None)
+```
+
+**Parameters:**
+
+- `source`
+- `output_path`
+- `config` — default: `None`
+- `animated` — default: `False`
+- `show_trajectories` — default: `True`
+- `show_spheres` — default: `True`
+- `show_hazards` — default: `True`
+- `compress` — default: `False`
+- `template_dir` — default: `None`

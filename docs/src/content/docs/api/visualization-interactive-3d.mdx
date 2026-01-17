@@ -1,0 +1,165 @@
+---
+title: "Interactive 3D"
+description: "API reference for great_silence.visualization.interactive_3d"
+sidebar:
+  order: 35
+---
+
+# Interactive 3D
+
+**Module:** `great_silence.visualization.interactive_3d`
+
+High-level interactive 3D visualization for GalaticBot simulations.
+
+```python
+from great_silence.visualization.interactive_3d import ...
+```
+
+## Classes
+
+
+### TimelineData 
+
+Pre-computed timeline data for animation frames.
+
+Builds frame-by-frame visualization data from simulation snapshots,
+filtering civilizations and hazard events by time.
+
+```python
+class TimelineData:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize timeline data from simulation.
+
+Args:
+    simulation: GalaxySimulation instance with snapshots
+    interpolation_factor: Number of interpolated frames between snapshots.
+                         1 = no interpolation (one frame per snapshot)
+                         5 = 5x frames (4 interpolated + 1 snapshot)
+
+```python
+def __init__(simulation, interpolation_factor: int = 1)
+```
+
+**Parameters:**
+
+- `simulation`
+- `interpolation_factor` (`int`) — default: `1`
+
+---
+
+
+### Interactive3DVisualizer 
+
+High-level interface for 3D galaxy visualization from simulation.
+
+Provides multi-layer visualization with toggleable elements:
+- Background stars
+- Active civilizations (colored by Kardashev level)
+- Extinct civilizations
+- Death markers (with cause)
+- Hazard events (supernovae, GRBs)
+
+```python
+class Interactive3DVisualizer:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize visualizer with simulation data.
+
+Args:
+    simulation: GalaxySimulation instance
+    config: Optional VisualizationConfig
+
+```python
+def __init__(simulation, config: Optional[VisualizationConfig] = None)
+```
+
+**Parameters:**
+
+- `simulation`
+- `config` (`Optional[VisualizationConfig]`) — default: `None`
+
+---
+
+##### `create_static_figure`
+
+Create static multi-layer visualization.
+
+Args:
+    show_stars: Show background star field
+    show_active: Show active civilizations
+    show_extinct: Show extinct civilizations
+    show_deaths: Show death location markers
+    show_hazards: Show hazard events (supernova/GRB)
+    show_trajectories: Show expansion trajectory lines
+    show_spheres: Show influence spheres
+    subsample_stars: Number of stars to display (for performance)
+
+Returns:
+    Plotly Figure object
+
+```python
+def create_static_figure(show_stars: bool = True, show_active: bool = True, show_extinct: bool = True, show_deaths: bool = False, show_hazards: bool = False, show_trajectories: bool = False, show_spheres: bool = False, subsample_stars: int = 10000) -> go.Figure
+```
+
+**Parameters:**
+
+- `show_stars` (`bool`) — default: `True`
+- `show_active` (`bool`) — default: `True`
+- `show_extinct` (`bool`) — default: `True`
+- `show_deaths` (`bool`) — default: `False`
+- `show_hazards` (`bool`) — default: `False`
+- `show_trajectories` (`bool`) — default: `False`
+- `show_spheres` (`bool`) — default: `False`
+- `subsample_stars` (`int`) — default: `10000`
+
+---
+
+##### `create_animated_figure`
+
+Create animated 3D figure with time slider.
+
+Shows civilization lifecycle over time with play/pause controls
+and timeline slider.
+
+Args:
+    subsample_stars: Number of background stars to display
+    show_stars: Show background star field
+    show_hazards: Show hazard events
+    show_trajectories: Show expansion trajectory lines (grows over time)
+    show_spheres: Show influence spheres (expands over time)
+    show_probes: Show in-flight probes as animated trails (default True)
+    interpolation_factor: Number of interpolated frames between snapshots.
+                         1 = no interpolation (choppy, fast)
+                         5 = 5x smoother (recommended, default)
+                         10 = 10x smoother (very smooth but slower)
+
+Returns:
+    Plotly Figure with animation frames
+
+Raises:
+    ValueError: If simulation doesn't have snapshots
+
+```python
+def create_animated_figure(subsample_stars: int = 10000, show_stars: bool = True, show_hazards: bool = True, show_trajectories: bool = False, show_spheres: bool = False, show_probes: bool = True, interpolation_factor: int = 5) -> go.Figure
+```
+
+**Parameters:**
+
+- `subsample_stars` (`int`) — default: `10000`
+- `show_stars` (`bool`) — default: `True`
+- `show_hazards` (`bool`) — default: `True`
+- `show_trajectories` (`bool`) — default: `False`
+- `show_spheres` (`bool`) — default: `False`
+- `show_probes` (`bool`) — default: `True`
+- `interpolation_factor` (`int`) — default: `5`
+
+---

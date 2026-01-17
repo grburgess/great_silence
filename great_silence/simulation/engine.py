@@ -129,6 +129,7 @@ class CivilizationState:
     # Probe tracking
     active_probes: List["ProbeState"] = field(default_factory=list)
     archived_probes: List["ProbeState"] = field(default_factory=list)  # Completed probes
+    targeted_stars: Set[int] = field(default_factory=set)  # Stars with probes en-route (prevents redundant targeting)
 
     # Personality and AI behavior
     personality_type: str = "defensive"
@@ -530,6 +531,18 @@ class GalaxySimulation:
         # Pre-schedule civilization emergence events for O(1) emergence checks
         self._emergence_heap: List[Tuple[float, int]] = []  # (time_myr, star_idx)
         self._schedule_emergence_events(simulation_duration_myr)
+
+        # Compute effective expansion limits (scaled by star count or fixed)
+        n_habitable = len(self.habitable_star_indices)
+        n_total = len(self.galaxy.positions)
+        civ_cfg = self.config.civilization
+        if civ_cfg.use_scaled_probe_limits:
+            self._effective_max_colonies = max(10, int(n_habitable * civ_cfg.max_colonies_fraction))
+            self._effective_max_active_probes = max(10, int(n_total * civ_cfg.max_active_probes_fraction))
+        else:
+            self._effective_max_colonies = civ_cfg.max_colonies_per_civilization
+            self._effective_max_active_probes = civ_cfg.max_active_probes_per_civilization
+        self._effective_max_probe_generation = civ_cfg.max_probe_generation
 
         if self.config.simulation.save_snapshots:
             archive_path = Path(self.config.simulation.output_directory) / "disasters.h5"
@@ -1282,7 +1295,7 @@ class GalaxySimulation:
         - Replication delays at each destination
         """
         # Cap total colonies to prevent runaway
-        if len(civ.colonized_stars) >= self.config.civilization.max_colonies_per_civilization:
+        if len(civ.colonized_stars) >= self._effective_max_colonies:
             return
 
         # Check if civilization can start expansion program
@@ -1378,6 +1391,9 @@ class GalaxySimulation:
         probe.replication_complete_time_myr = (
             self.current_time_myr + probe.replication_delay_yr / 1e6
         )
+
+        # Remove from targeted_stars (probe has arrived, no longer "in flight")
+        civ.targeted_stars.discard(probe.target_star_idx)
 
         # Check if star already colonized by another civ (encounter!)
         for other_civ in self.civilizations:
@@ -1595,7 +1611,7 @@ class GalaxySimulation:
             buffer: Thread-local buffer to collect probes/events
         """
         # Check colony cap
-        if len(civ.colonized_stars) >= self.config.civilization.max_colonies_per_civilization:
+        if len(civ.colonized_stars) >= self._effective_max_colonies:
             return
 
         # Check if can start expansion
@@ -1627,12 +1643,13 @@ class GalaxySimulation:
 
         # Find targets
         targets = self._find_nearest_targets(
-            source_pos,
-            civ.probe_per_hop_range_pc,
-            civ.probe_min_metallicity,
-            civ.colonized_stars,
-            civ.probe_offspring_count,
-            civ.parent_star_idx,
+            source_pos=source_pos,
+            max_range_pc=civ.probe_per_hop_range_pc,
+            max_targets=civ.probe_offspring_count,
+            colonized_set=civ.colonized_stars,
+            targeted_set=civ.targeted_stars,
+            exclude_idx=civ.parent_star_idx,
+            min_metallicity=civ.probe_min_metallicity,
         )
 
         if len(targets) == 0:
@@ -1665,6 +1682,9 @@ class GalaxySimulation:
                 + (civ.probe_replication_delay_yr / 1e6),
                 has_replicated=False,
             )
+
+            # Track target immediately to prevent duplicate targeting
+            civ.targeted_stars.add(target_idx)
 
             # Add to buffer with civ_id for later merging
             buffer.new_probes.append((civ.civ_id, probe))
@@ -1705,6 +1725,14 @@ class GalaxySimulation:
             return  # Already processed
 
         probe.has_replicated = True
+
+        # Check generation limit (Hayflick-style cap on replication depth)
+        if probe.generation >= self._effective_max_probe_generation:
+            return  # Maximum generation reached, no further replication
+
+        # Check active probe limit (prevents runaway expansion)
+        if len(civ.active_probes) >= self._effective_max_active_probes:
+            return  # Too many probes in flight
 
         # Launch offspring probes
         # Note: Parent probe was already archived on arrival (see _handle_probe_arrival)
@@ -1775,7 +1803,8 @@ class GalaxySimulation:
             source_pos=home_pos,
             max_range_pc=civ.probe_per_hop_range_pc,
             max_targets=civ.probe_offspring_count,
-            colonized_set=civ.colonized_stars,  # PRIORITY 1B: Already a Set, no conversion needed
+            colonized_set=civ.colonized_stars,
+            targeted_set=civ.targeted_stars,
             exclude_idx=home_idx,
             min_metallicity=civ.probe_min_metallicity,
         )
@@ -1806,6 +1835,7 @@ class GalaxySimulation:
             )
             self.next_probe_id += 1
             civ.active_probes.append(probe)
+            civ.targeted_stars.add(target_idx)
             self._probe_by_id[probe.probe_id] = (civ.civ_id, probe)
 
             # PRIORITY 2: Schedule probe arrival event
@@ -1823,7 +1853,8 @@ class GalaxySimulation:
             source_pos=source_pos,
             max_range_pc=civ.probe_per_hop_range_pc,
             max_targets=civ.probe_offspring_count,
-            colonized_set=civ.colonized_stars,  # PRIORITY 1B: Already a Set, no conversion needed
+            colonized_set=civ.colonized_stars,
+            targeted_set=civ.targeted_stars,
             exclude_idx=source_idx,
             min_metallicity=civ.probe_min_metallicity,
         )
@@ -1854,6 +1885,7 @@ class GalaxySimulation:
             )
             self.next_probe_id += 1
             civ.active_probes.append(probe)
+            civ.targeted_stars.add(target_idx)
             self._probe_by_id[probe.probe_id] = (civ.civ_id, probe)
 
             # PRIORITY 2: Schedule probe arrival event
@@ -1867,6 +1899,7 @@ class GalaxySimulation:
         max_range_pc: float,
         max_targets: int,
         colonized_set: Set[int],
+        targeted_set: Set[int],
         exclude_idx: int,
         min_metallicity: float,
     ) -> List[int]:
@@ -1882,6 +1915,7 @@ class GalaxySimulation:
             max_range_pc: Maximum targeting range (parsecs)
             max_targets: Maximum number of targets to return
             colonized_set: Set of already-colonized star indices
+            targeted_set: Set of stars already targeted by in-flight probes
             exclude_idx: Source star index to exclude
             min_metallicity: Minimum [Fe/H] metallicity for replication
 
@@ -1912,13 +1946,14 @@ class GalaxySimulation:
             if len(nearby_indices) == 0:
                 return []
 
-        # Filter nearby stars: sufficient metallicity, uncolonized, not source
+        # Filter nearby stars: sufficient metallicity, uncolonized, not targeted, not source
         metallicity_mask = self.galaxy.metallicities[nearby_indices] >= min_metallicity
-        not_colonized = ~np.isin(nearby_indices, list(colonized_set))
+        excluded_stars = colonized_set | targeted_set
+        not_excluded = ~np.isin(nearby_indices, list(excluded_stars))
         not_source = nearby_indices != exclude_idx
 
         # Base candidates: any star meeting resource requirements
-        candidate_mask = metallicity_mask & not_colonized & not_source
+        candidate_mask = metallicity_mask & not_excluded & not_source
         candidate_local_indices = np.where(candidate_mask)[0]
 
         if len(candidate_local_indices) == 0:

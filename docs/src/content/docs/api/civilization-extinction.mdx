@@ -1,0 +1,318 @@
+---
+title: "Extinction"
+description: "API reference for great_silence.civilization.extinction"
+sidebar:
+  order: 8
+---
+
+# Extinction
+
+**Module:** `great_silence.civilization.extinction`
+
+Civilization extinction modeling.
+
+```python
+from great_silence.civilization.extinction import ...
+```
+
+## Classes
+
+
+### CrisisPeak <span class="badge">dataclass</span>
+
+Represents a technological crisis peak in the Kardashev scale.
+
+Each crisis is modeled as a Gaussian hazard peak centered at a specific
+technological level, representing periods of heightened self-destruction risk.
+
+```python
+@dataclass
+class CrisisPeak:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `name` | `str` |
+| `kardashev_center` | `float` |
+| `width` | `float` |
+| `amplitude` | `float` |
+| `enabled` | `bool = True` |
+
+
+### ExtinctionModel 
+
+Model various causes of civilization extinction.
+
+Implements:
+-----------
+1. Kardashev-dependent self-destruction with crisis peaks (Great Filter stages)
+2. Age-based exponential decay with colonization lifetime extension
+3. Colonial war risk (increases with colonies & K-scale at high tech levels)
+4. Distributed resilience (colonies provide survival redundancy)
+5. Home world destruction with temporary fragility period
+
+Physical Basis - Crisis Peaks:
+------------------------------
+The Kardashev-dependent model captures the empirical observation that technological
+civilizations face distinct existential risks at specific developmental stages:
+
+1. Nuclear Age (K~0.72): Nuclear war, climate collapse, biosphere degradation
+2. Planetary Unification (K~0.85): Coordination failures, resource conflicts
+3. AI Transition (K~1.05): AGI alignment failure, loss of human control
+4. Interplanetary Expansion (K~1.25): Space habitat failures, resource wars
+5. Stellar Engineering (K~1.80): Dyson sphere accidents, star manipulation failures
+6. Relativistic Weapons (K~2.50): Self-annihilation with near-c projectiles
+
+Each crisis is modeled as a Gaussian hazard peak. Total hazard rate is:
+    λ(K) = λ_base(K) + Σᵢ Aᵢ × exp(-((K - Kᵢ)² / (2σᵢ²)))
+
+where λ_base increases slowly with K (more complex systems, more failure modes).
+
+Distributed Resilience:
+-----------------------
+Multi-colony civilizations have reduced extinction risk from crises:
+- Crisis probability: p_total = p_single^N_mature (all colonies must fail)
+- Old-age death: p_total = p_single^N_mature (all colonies must die)
+- Colonial war risk: increases with colonies at K ≥ 1.5 (coordination breakdown)
+- Creates U-shaped risk curve: safe at mid-expansion, risky at extremes
+
+```python
+class ExtinctionModel:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize extinction model.
+
+Args:
+    self_destruction_rate: Self-destruction probability per Myr (for flat model)
+    mean_lifetime_myr: Mean civilization lifetime in Myr
+    model_type: "flat" for constant rate, "kardashev_dependent" for crisis peaks
+    baseline_rate: Baseline hazard rate at K=0 (per Myr)
+    baseline_scaling: Linear scaling factor for baseline with Kardashev scale
+    crisis_peaks: List of crisis peaks (if None, uses defaults)
+
+```python
+def __init__(self_destruction_rate: float, mean_lifetime_myr: float, model_type: str = 'flat', baseline_rate: float = 0.01, baseline_scaling: float = 0.05, crisis_peaks: Optional[List[CrisisPeak]] = None)
+```
+
+**Parameters:**
+
+- `self_destruction_rate` (`float`)
+- `mean_lifetime_myr` (`float`)
+- `model_type` (`str`) — default: `'flat'`
+- `baseline_rate` (`float`) — default: `0.01`
+- `baseline_scaling` (`float`) — default: `0.05`
+- `crisis_peaks` (`Optional[List[CrisisPeak]]`) — default: `None`
+
+---
+
+##### `calculate_kardashev_hazard_rate`
+
+Calculate self-destruction hazard rate based on Kardashev scale.
+
+Implements multi-peaked hazard function representing technological crises.
+
+Args:
+    kardashev_scale: Current Kardashev scale (0.7 = modern Earth, 3.0 = galactic)
+
+Returns:
+    Hazard rate λ(K) in units of per Myr
+
+Physical Interpretation:
+-----------------------
+- Baseline risk increases slowly with technology (complex systems are fragile)
+- Crisis peaks represent critical transitions with heightened risk
+- Peak widths reflect transition timescales (narrow = brief crisis, wide = prolonged)
+- Peak amplitudes reflect maximum hazard during crisis
+
+Example:
+--------
+At K=0.72 (modern Earth, nuclear age peak):
+    λ ≈ 0.01 (baseline) + 0.15 (nuclear crisis) = 0.16 per Myr
+    Survival probability over 1 Myr: exp(-0.16) ≈ 85%
+    Expected survival time: 1/0.16 ≈ 6.3 Myr
+
+At K=1.05 (AI transition peak):
+    λ ≈ 0.015 (baseline) + 0.20 (AI crisis) = 0.215 per Myr
+    Expected survival time: 1/0.215 ≈ 4.7 Myr
+
+At K=2.0 (Type II, between crises):
+    λ ≈ 0.02 (baseline) + ~0.03 (tail of stellar crisis) = 0.05 per Myr
+    Expected survival time: 1/0.05 = 20 Myr (much safer!)
+
+```python
+def calculate_kardashev_hazard_rate(kardashev_scale: float) -> float
+```
+
+**Parameters:**
+
+- `kardashev_scale` (`float`)
+
+---
+
+##### `check_self_destruction`
+
+Check if civilization self-destructs.
+
+Supports two models:
+- "flat": Constant hazard rate (original simple model)
+- "kardashev_dependent": Hazard varies with technological level
+
+Args:
+    dt_myr: Time step in Myr
+    rng: Random number generator
+    kardashev_scale: Current Kardashev scale (required if model_type="kardashev_dependent")
+
+Returns:
+    True if self-destruction occurs
+
+Raises:
+    ValueError: If kardashev_dependent model used without providing kardashev_scale
+
+```python
+def check_self_destruction(dt_myr: float, rng: np.random.Generator, kardashev_scale: Optional[float] = None) -> bool
+```
+
+**Parameters:**
+
+- `dt_myr` (`float`)
+- `rng` (`np.random.Generator`)
+- `kardashev_scale` (`Optional[float]`) — default: `None`
+
+---
+
+##### `check_age_extinction`
+
+Check if civilization dies of old age.
+
+Uses exponential decay after mean lifetime.
+
+Args:
+    age_myr: Current age in Myr
+    dt_myr: Time step in Myr
+    rng: Random number generator
+
+Returns:
+    True if extinction occurs
+
+```python
+def check_age_extinction(age_myr: float, dt_myr: float, rng: np.random.Generator) -> bool
+```
+
+**Parameters:**
+
+- `age_myr` (`float`)
+- `dt_myr` (`float`)
+- `rng` (`np.random.Generator`)
+
+---
+
+##### `survival_probability`
+
+Calculate survival probability at given age.
+
+For kardashev_dependent model, this is an approximation assuming
+constant Kardashev scale (actual scale evolves with time).
+
+Args:
+    age_myr: Age in Myr
+    kardashev_scale: Current Kardashev scale (for kardashev_dependent model)
+
+Returns:
+    Probability of surviving to this age
+
+```python
+def survival_probability(age_myr: float, kardashev_scale: Optional[float] = None) -> float
+```
+
+**Parameters:**
+
+- `age_myr` (`float`)
+- `kardashev_scale` (`Optional[float]`) — default: `None`
+
+---
+
+##### `get_crisis_info`
+
+Get information about all crisis peaks.
+
+Returns:
+    Dictionary mapping crisis names to their parameters
+
+```python
+def get_crisis_info() -> Dict[str, Dict[str, float]]
+```
+---
+
+##### `set_crisis_amplitude`
+
+Modify the amplitude of a specific crisis peak.
+
+Useful for scenario exploration (e.g., "what if AI risk is higher?").
+
+Args:
+    crisis_name: Name of crisis (e.g., "ai_transition")
+    amplitude: New amplitude (hazard rate in per Myr)
+
+Raises:
+    ValueError: If crisis_name not found
+
+```python
+def set_crisis_amplitude(crisis_name: str, amplitude: float) -> None
+```
+
+**Parameters:**
+
+- `crisis_name` (`str`)
+- `amplitude` (`float`)
+
+---
+
+##### `enable_crisis`
+
+Enable or disable a specific crisis peak.
+
+Args:
+    crisis_name: Name of crisis (e.g., "nuclear_age")
+    enabled: True to enable, False to disable
+
+Raises:
+    ValueError: If crisis_name not found
+
+```python
+def enable_crisis(crisis_name: str, enabled: bool = True) -> None
+```
+
+**Parameters:**
+
+- `crisis_name` (`str`)
+- `enabled` (`bool`) — default: `True`
+
+---
+
+##### `plot_hazard_function`
+
+Plot the hazard function λ(K) vs Kardashev scale.
+
+Requires matplotlib. Useful for understanding the crisis landscape.
+
+Args:
+    k_range: Tuple of (k_min, k_max) for plotting range. Default: (0.5, 3.0)
+
+Raises:
+    ImportError: If matplotlib not available
+
+```python
+def plot_hazard_function(k_range: Optional[tuple] = None) -> None
+```
+
+**Parameters:**
+
+- `k_range` (`Optional[tuple]`) — default: `None`
+
+---
