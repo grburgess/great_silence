@@ -1,0 +1,22 @@
+{
+  "name": "great-silence-docs",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.31.0",
+    "@fontsource/outfit": "^5.0.0",
+    "@fontsource/space-mono": "^5.0.0",
+    "astro": "^5.0.0",
+    "sharp": "^0.33.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

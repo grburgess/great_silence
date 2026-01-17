@@ -1,0 +1,331 @@
+---
+title: Basic Simulation Tutorial
+description: Step-by-step guide to running your first galactic civilization simulation
+sidebar:
+  order: 1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# Basic Simulation Tutorial
+
+This tutorial walks you through creating, running, and analyzing a complete galactic 
+civilization simulation from scratch.
+
+## What You'll Learn
+
+- Setting up a simulation configuration
+- Running the simulation with different presets
+- Interpreting results and statistics
+- Generating basic visualizations
+
+## Prerequisites
+
+Ensure you have Great Silence installed:
+
+```bash
+pip install great-silence
+```
+
+Or for development with all features:
+
+```bash
+pip install -e ".[dev,viz,webapp,notebook]"
+```
+
+## Step 1: Basic Simulation
+
+First, import the library:
+
+```python
+from great_silence import GalaxySimulation, SimulationConfig
+```
+
+Then create a configuration. Start with the "moderate" preset—a Fermi-consistent baseline:
+
+```python
+config = SimulationConfig.with_preset("moderate")
+
+# Reduce star count for quick testing
+config.galaxy.total_stars = 30_000
+
+# Set simulation duration to 5 billion years
+config.simulation.simulation_duration_gyr = 5.0
+
+# Enable snapshots for visualization
+config.simulation.save_snapshots = True
+```
+
+Initialize and run:
+
+```python
+# Create simulation with reproducible seed
+sim = GalaxySimulation(config, seed=42)
+
+# Run with progress output
+sim.run(verbose=True)
+```
+
+Expected output:
+
+```
+Initializing galaxy with 30,000 stars...
+  Habitable stars: 6,054 (20.2%)
+  Pre-scheduled disasters: 1,247 SNe, 12 GRBs, 45 NS mergers
+
+Running simulation: 0.0 → 5.0 Gyr
+[████████████████████████████████] 100% | 5.00 Gyr | 23 civs emerged
+
+Simulation complete in 2.3s
+  Total civilizations: 23
+  Active at end: 8
+  Peak simultaneous: 12
+```
+
+Finally, analyze results:
+
+```python
+stats = sim.get_statistics()
+
+print("=== Simulation Results ===")
+print(f"Total civilizations emerged: {stats['total_civilizations']}")
+print(f"Active at end: {stats['active_civilizations']}")
+print(f"Peak simultaneous: {stats['peak_civilizations']}")
+print(f"Total colonized systems: {stats['total_colonized_systems']}")
+print()
+print("=== Extinction Causes ===")
+print(f"Self-destruction: {stats['extinctions_by_self_destruction']}")
+print(f"Age extinction: {stats['extinctions_by_age']}")
+print(f"Hazards (SN/GRB): {stats['extinctions_by_hazard']}")
+print()
+print("=== Expansion ===")
+print(f"Civilizations that expanded: {stats['civilizations_that_expanded']}")
+print(f"Max colonies (single civ): {stats['max_colonies_single_civ']}")
+```
+
+## Step 2: Comparing Presets
+
+Let's compare different Fermi Paradox hypotheses:
+
+```python
+import pandas as pd
+
+presets = ["optimistic", "moderate", "late_filter", "early_filter", "rare_earth"]
+results = []
+
+for preset in presets:
+    config = SimulationConfig.with_preset(preset)
+    config.galaxy.total_stars = 30_000
+    config.simulation.simulation_duration_gyr = 5.0
+    config.simulation.save_snapshots = False  # Faster without snapshots
+    
+    sim = GalaxySimulation(config, seed=42)
+    sim.run(verbose=False)
+    
+    stats = sim.get_statistics()
+    results.append({
+        'Preset': preset,
+        'Total Civs': stats['total_civilizations'],
+        'Active': stats['active_civilizations'],
+        'Peak': stats['peak_civilizations'],
+        'Expanded': stats['civilizations_that_expanded'],
+        'Colonies': stats['total_colonized_systems'],
+    })
+
+df = pd.DataFrame(results)
+print(df.to_string(index=False))
+```
+
+Expected output:
+
+```
+     Preset  Total Civs  Active  Peak  Expanded  Colonies
+ optimistic         156      67    89        45      3421
+   moderate          23       8    12         4       156
+late_filter          89       3     8         1        12
+early_filter          3       2     3         1        45
+ rare_earth          12       5     7         2        89
+```
+
+<Aside type="note">
+  The "optimistic" preset produces many more civilizations because it assumes 
+  life is common and civilizations are long-lived.
+</Aside>
+
+## Step 3: Custom Configuration
+
+Create a custom scenario—testing the "technological puberty" hypothesis:
+
+```python
+config = SimulationConfig()
+
+# Galaxy settings
+config.galaxy.total_stars = 50_000
+config.galaxy.disk_radius_kpc = 15.0
+config.galaxy.include_bulge = True
+config.galaxy.enable_stellar_motion = True
+
+# Drake equation (moderate emergence)
+config.civilization.fraction_develop_life = 0.2
+config.civilization.fraction_develop_intelligence = 0.05
+config.civilization.fraction_develop_technology = 0.2
+config.civilization.min_stellar_age_for_life_gyr = 2.0
+
+# High crisis at technology threshold
+config.civilization.mean_civilization_lifetime_myr = 0.5  # Short-lived
+config.civilization.self_destruction_model_type = "kardashev_dependent"
+
+# Enable expansion for survivors
+config.civilization.expansion_enabled = True
+config.civilization.min_kardashev_for_expansion = 0.85
+
+# Simulation settings
+config.simulation.simulation_duration_gyr = 5.0
+config.simulation.save_snapshots = True
+config.simulation.snapshot_interval_myr = 50.0
+
+# Run
+sim = GalaxySimulation(config, seed=123)
+sim.run(verbose=True)
+```
+
+## Step 4: Accessing Detailed Data
+
+### Civilization Details
+
+```python
+# Get all civilizations (including extinct ones)
+for civ in sim.all_civilizations:
+    print(f"Civ {civ.civ_id}:")
+    print(f"  Born: {civ.birth_time_myr:.1f} Myr")
+    print(f"  Died: {civ.death_time_myr:.1f} Myr" if civ.death_time_myr else "  Still active")
+    print(f"  Final K-level: {civ.kardashev_level:.2f}")
+    print(f"  Colonies: {len(civ.colonized_stars)}")
+    print(f"  Death cause: {civ.death_cause}" if civ.death_cause else "")
+    print()
+```
+
+### Hazard Events
+
+```python
+# Get all recorded hazard events
+for event in sim.hazard_events:
+    print(f"{event.time_myr:.1f} Myr: {event.event_type}")
+    print(f"  Position: ({event.position[0]:.2f}, {event.position[1]:.2f}, {event.position[2]:.2f}) kpc")
+    if event.affected_civilizations:
+        print(f"  Affected civs: {event.affected_civilizations}")
+```
+
+### Snapshot Data
+
+```python
+# Access snapshots for animation
+for i, snapshot in enumerate(sim.snapshots[:5]):  # First 5
+    print(f"Snapshot {i}: t={snapshot.time_myr:.1f} Myr")
+    print(f"  Active civs: {len(snapshot.civilizations)}")
+    print(f"  Active probes: {len(snapshot.active_probes)}")
+```
+
+## Step 5: Basic Visualization
+
+### Quick Matplotlib Plot
+
+```python
+import matplotlib.pyplot as plt
+from great_silence.visualization import GalaxyVisualizer
+
+viz = GalaxyVisualizer(sim)
+
+fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+
+# Galaxy structure
+viz.plot_galaxy_2d(ax=axes[0, 0])
+axes[0, 0].set_title("Galaxy Structure")
+
+# Civilization timeline
+viz.plot_civilization_timeline(ax=axes[0, 1])
+axes[0, 1].set_title("Civilization Count Over Time")
+
+# Final colony distribution
+viz.plot_colonies(ax=axes[1, 0])
+axes[1, 0].set_title("Colony Distribution")
+
+# Hazard event distribution
+viz.plot_hazard_distribution(ax=axes[1, 1])
+axes[1, 1].set_title("Hazard Events")
+
+plt.tight_layout()
+plt.savefig("simulation_summary.png", dpi=150, facecolor='#0a0a0f')
+plt.show()
+```
+
+### Export Three.js Visualization
+
+```python
+from great_silence.visualization.threejs import export_html
+
+export_html(
+    sim,
+    "my_simulation.html",
+    animated=True,
+    show_trajectories=True,
+    show_hazards=True,
+)
+
+print("Open my_simulation.html in your browser!")
+```
+
+## Complete Example Script
+
+Here's a complete script you can run:
+
+```python
+#!/usr/bin/env python3
+"""Complete Great Silence simulation example."""
+
+from great_silence import GalaxySimulation, SimulationConfig
+from great_silence.visualization.threejs import export_html
+
+def main():
+    # Configure simulation
+    config = SimulationConfig.with_preset("optimistic")
+    config.galaxy.total_stars = 30_000
+    config.simulation.simulation_duration_gyr = 3.0
+    config.simulation.save_snapshots = True
+    config.simulation.snapshot_interval_myr = 25.0
+    
+    # Run simulation
+    print("Running simulation...")
+    sim = GalaxySimulation(config, seed=42)
+    sim.run(verbose=True)
+    
+    # Print results
+    stats = sim.get_statistics()
+    print("\n" + "="*50)
+    print("SIMULATION RESULTS")
+    print("="*50)
+    print(f"Total civilizations: {stats['total_civilizations']}")
+    print(f"Active at end: {stats['active_civilizations']}")
+    print(f"Peak simultaneous: {stats['peak_civilizations']}")
+    print(f"Total colonies: {stats['total_colonized_systems']}")
+    
+    # Export visualization
+    print("\nExporting visualization...")
+    export_html(sim, "galaxy.html", animated=True)
+    print("Done! Open galaxy.html in your browser.")
+
+if __name__ == "__main__":
+    main()
+```
+
+Save as `my_simulation.py` and run:
+
+```bash
+python my_simulation.py
+```
+
+## Next Steps
+
+- **[Monte Carlo Tutorial](/tutorials/monte-carlo/)** — Statistical analysis with multiple runs
+- **[Three.js Visualization](/tutorials/threejs-visualization/)** — Deep dive into 3D rendering
+- **[Configuration Guide](/getting-started/configuration/)** — Full parameter reference

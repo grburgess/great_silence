@@ -1,0 +1,322 @@
+---
+title: "Engine"
+description: "API reference for great_silence.simulation.engine"
+sidebar:
+  order: 25
+---
+
+# Engine
+
+**Module:** `great_silence.simulation.engine`
+
+Main simulation engine for galactic civilization modeling.
+
+```python
+from great_silence.simulation.engine import ...
+```
+
+## Classes
+
+
+### ProbeState <span class="badge">dataclass</span>
+
+State of a single self-replicating probe.
+
+```python
+@dataclass
+class ProbeState:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `probe_id` | `int` |
+| `parent_probe_id` | `Optional[int]` |
+| `generation` | `int` |
+| `launch_star_idx` | `int` |
+| `target_star_idx` | `int` |
+| `launch_time_myr` | `float` |
+| `arrival_time_myr` | `float` |
+| `velocity_c` | `float` |
+| `per_hop_range_pc` | `float` |
+| `offspring_count` | `int` |
+| `replication_delay_yr` | `float` |
+| `has_arrived` | `bool = False` |
+| `has_replicated` | `bool = False` |
+| `replication_complete_time_myr` | `Optional[float] = None` |
+
+
+### EncounterEvent <span class="badge">dataclass</span>
+
+Record of a civilization encounter event.
+
+```python
+@dataclass
+class EncounterEvent:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `time_myr` | `float` |
+| `civ_1_id` | `int` |
+| `civ_2_id` | `int` |
+| `encounter_type` | `str` |
+| `outcome` | `str` |
+| `resolution_details` | `str` |
+| `is_within_light_cone` | `bool` |
+
+
+### CivilizationState <span class="badge">dataclass</span>
+
+State of a single civilization.
+
+```python
+@dataclass
+class CivilizationState:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `civ_id` | `int` |
+| `birth_time_myr` | `float` |
+| `parent_star_idx` | `int` |
+| `colonized_stars` | `Set[int] = field(default_factory=set)` |
+| `colony_arrival_times` | `Dict[int, float] = field(default_factory=dict)` |
+| `kardashev_scale` | `float = 0.7` |
+| `kardashev_advancement_rate` | `float = 0.01` |
+| `is_active` | `bool = True` |
+| `death_time_myr` | `Optional[float] = None` |
+| `death_cause` | `Optional[str] = None` |
+| `home_world_destroyed` | `bool = False` |
+| `home_world_destruction_time_myr` | `Optional[float] = None` |
+| `expansion_program_started` | `bool = False` |
+| `expansion_start_kardashev` | `Optional[float] = None` |
+| `probe_velocity_c` | `Optional[float] = None` |
+| `probe_per_hop_range_pc` | `Optional[float] = None` |
+| `probe_offspring_count` | `Optional[int] = None` |
+| `probe_replication_delay_yr` | `Optional[float] = None` |
+| `probe_min_metallicity` | `Optional[float] = None` |
+| `probe_sensor_range_pc` | `Optional[float] = None` |
+| `active_probes` | `List['ProbeState'] = field(default_factory=list)` |
+| `archived_probes` | `List['ProbeState'] = field(default_factory=list)` |
+| `targeted_stars` | `Set[int] = field(default_factory=set)` |
+| `personality_type` | `str = 'defensive'` |
+| `friendliness` | `float = 0.5` |
+| `aggression_factor` | `float = 0.5` |
+| `war_trauma` | `float = 0.0` |
+| `victory_confidence` | `float = 0.5` |
+| `known_civilizations` | `Set[int] = field(default_factory=set)` |
+| `reputation` | `Dict[int, float] = field(default_factory=dict)` |
+| `allies` | `Set[int] = field(default_factory=set)` |
+| `enemies` | `Set[int] = field(default_factory=set)` |
+| `vassals` | `Dict[int, VassalState] = field(default_factory=dict)` |
+| `overlord` | `Optional[int] = None` |
+| `war_state` | `Optional[WarState] = None` |
+| `battles_fought` | `int = 0` |
+| `wars_won` | `int = 0` |
+| `wars_lost` | `int = 0` |
+| `active_fleets` | `List[FleetState] = field(default_factory=list)` |
+| `archived_fleets` | `List[FleetState] = field(default_factory=list)` |
+| `next_fleet_id` | `int = 0` |
+| `colony_strengths` | `Dict[int, float] = field(default_factory=dict)` |
+| `strategic_resource_stockpile` | `float = 100.0` |
+| `resource_debt` | `float = 0.0` |
+| `war_exhaustion` | `float = 0.0` |
+
+
+### HazardEvent <span class="badge">dataclass</span>
+
+Record of an astrophysical hazard event.
+
+```python
+@dataclass
+class HazardEvent:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `time_myr` | `float` |
+| `event_type` | `str` |
+| `position` | `np.ndarray` |
+| `energy` | `float` |
+| `sterilization_radius_pc` | `float` |
+| `affected_civ_ids` | `List[int] = field(default_factory=list)` |
+
+
+### HazardEvent <span class="badge">dataclass</span>
+
+Record of an astrophysical hazard event.
+
+```python
+@dataclass
+class HazardEvent:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `time_myr` | `float` |
+| `event_type` | `str` |
+| `position` | `np.ndarray` |
+| `energy` | `float` |
+| `sterilization_radius_pc` | `float` |
+| `affected_civ_ids` | `List[int] = field(default_factory=list)` |
+
+
+### ProbeSnapshot <span class="badge">dataclass</span>
+
+Snapshot of a single probe's state for visualization.
+
+```python
+@dataclass
+class ProbeSnapshot:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `probe_id` | `int` |
+| `civ_id` | `int` |
+| `launch_star_idx` | `int` |
+| `target_star_idx` | `int` |
+| `current_position` | `np.ndarray` |
+| `launch_time_myr` | `float` |
+| `arrival_time_myr` | `float` |
+| `progress_fraction` | `float` |
+| `velocity_c` | `float` |
+| `generation` | `int` |
+
+
+### SimulationSnapshot <span class="badge">dataclass</span>
+
+Snapshot of simulation state at a given time.
+
+```python
+@dataclass
+class SimulationSnapshot:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `time_myr` | `float` |
+| `active_civilizations` | `int` |
+| `total_civilizations_ever` | `int` |
+| `colonized_systems` | `int` |
+| `civilization_states` | `List[CivilizationState]` |
+| `stellar_positions` | `np.ndarray` |
+| `stellar_ages` | `Optional[np.ndarray] = None` |
+| `active_probes_in_flight` | `List[ProbeSnapshot] = field(default_factory=list)` |
+| `total_active_probes` | `int = 0` |
+| `hazard_events` | `List[HazardEvent] = field(default_factory=list)` |
+| `encounter_events` | `List[EncounterEvent] = field(default_factory=list)` |
+| `communication_events` | `List[CommunicationEvent] = field(default_factory=list)` |
+| `battle_events` | `List[BattleEvent] = field(default_factory=list)` |
+| `colony_positions` | `List[Tuple[int, np.ndarray]] = field(default_factory=list)` |
+| `civ_birth_ages` | `List[Tuple[int, float]] = field(default_factory=list)` |
+| `use_delta_compression` | `bool = False` |
+| `reference_time_myr` | `float = 0.0` |
+| `stellar_velocities` | `Optional[np.ndarray] = None` |
+| `initial_positions` | `Optional[np.ndarray] = None` |
+
+#### Methods
+
+##### `get_positions`
+
+Reconstruct stellar positions at this snapshot's time.
+
+For delta compression, computes: initial_positions + velocities * dt
+
+Args:
+    fallback_galaxy: GalaxyModel to use for initial_positions/velocities if not stored
+    
+Returns:
+    (N, 3) array of stellar positions in kpc
+
+```python
+def get_positions(fallback_galaxy: Optional[Any] = None) -> np.ndarray
+```
+
+**Parameters:**
+
+- `fallback_galaxy` (`Optional[Any]`) — default: `None`
+
+---
+
+
+### GalaxySimulation 
+
+Main simulation engine orchestrating all components.
+
+Manages galaxy evolution, civilization emergence/expansion, and
+astrophysical hazards over time.
+
+```python
+class GalaxySimulation:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize simulation.
+
+Args:
+    config: Simulation configuration
+    seed: Random seed for reproducibility
+
+```python
+def __init__(config: SimulationConfig, seed: Optional[int] = None)
+```
+
+**Parameters:**
+
+- `config` (`SimulationConfig`)
+- `seed` (`Optional[int]`) — default: `None`
+
+---
+
+##### `initialize`
+
+Initialize galaxy and stellar population.
+
+```python
+def initialize() -> None
+```
+---
+
+##### `run`
+
+Run the main simulation loop with adaptive or fixed time stepping.
+
+Args:
+    verbose: Whether to show progress bar
+
+```python
+def run(verbose: bool = True) -> None
+```
+
+**Parameters:**
+
+- `verbose` (`bool`) — default: `True`
+
+---
+
+##### `get_statistics`
+
+Get simulation statistics.
+
+```python
+def get_statistics() -> Dict[str, Any]
+```
+---

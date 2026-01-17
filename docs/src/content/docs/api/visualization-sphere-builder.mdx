@@ -1,0 +1,106 @@
+---
+title: "Sphere Builder"
+description: "API reference for great_silence.visualization.sphere_builder"
+sidebar:
+  order: 37
+---
+
+# Sphere Builder
+
+**Module:** `great_silence.visualization.sphere_builder`
+
+Build translucent spheres for civilization influence zones.
+
+```python
+from great_silence.visualization.sphere_builder import ...
+```
+
+## Classes
+
+
+### SphereBuilder 
+
+Build mesh3d spheres for civilization influence zones.
+
+Influence radius is calculated as the distance from the home world
+to the furthest colonized star.
+
+```python
+class SphereBuilder:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize sphere builder.
+
+Args:
+    color_mapper: Optional ColorMapper (creates default if None)
+
+```python
+def __init__(color_mapper: Optional[ColorMapper] = None)
+```
+
+**Parameters:**
+
+- `color_mapper` (`Optional[ColorMapper]`) — default: `None`
+
+---
+
+##### `build_sphere`
+
+Build mesh3d sphere.
+
+Args:
+    center: (x, y, z) center position in kpc
+    radius: Sphere radius in kpc
+    color: RGB color string
+    opacity: Sphere opacity (0-1), default 0.1 for translucency
+    resolution: Mesh resolution (12=low, 20=medium, 32=high)
+
+Returns:
+    plotly Mesh3d object
+
+```python
+def build_sphere(center: np.ndarray, radius: float, color: str, opacity: float = 0.1, resolution: int = 12) -> go.Mesh3d
+```
+
+**Parameters:**
+
+- `center` (`np.ndarray`)
+- `radius` (`float`)
+- `color` (`str`)
+- `opacity` (`float`) — default: `0.1`
+- `resolution` (`int`) — default: `12`
+
+---
+
+##### `build_influence_spheres`
+
+Build influence spheres for all civilizations at current time.
+
+Args:
+    civilizations: List of CivilizationState objects
+    galaxy_positions: Galaxy star positions array
+    current_time_myr: Current simulation time in Myr
+    skip_extinct: If True, skip extinct civilizations (for animations).
+                 If False, show all spheres (for static final view)
+    opacity: Sphere opacity (0-1), default 0.2
+
+Returns:
+    List of Mesh3d sphere objects
+
+```python
+def build_influence_spheres(civilizations: List, galaxy_positions: np.ndarray, current_time_myr: float, skip_extinct: bool = True, opacity: float = 0.2) -> List[go.Mesh3d]
+```
+
+**Parameters:**
+
+- `civilizations` (`List`)
+- `galaxy_positions` (`np.ndarray`)
+- `current_time_myr` (`float`)
+- `skip_extinct` (`bool`) — default: `True`
+- `opacity` (`float`) — default: `0.2`
+
+---

@@ -1,0 +1,201 @@
+---
+title: Presets Reference
+description: Detailed breakdown of available simulation presets
+sidebar:
+  order: 2
+---
+
+import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# Presets Reference
+
+Great Silence includes five presets representing different Fermi Paradox hypotheses.
+
+## Available Presets
+
+<CardGrid>
+  <Card title="optimistic" icon="sun">
+    Life is abundant, civilizations thrive
+  </Card>
+  <Card title="moderate" icon="open-book">
+    Fermi-consistent baseline
+  </Card>
+  <Card title="late_filter" icon="warning">
+    Technology leads to self-destruction
+  </Card>
+  <Card title="early_filter" icon="star">
+    Abiogenesis is extremely rare
+  </Card>
+  <Card title="rare_earth" icon="earth">
+    Habitable conditions are rare
+  </Card>
+</CardGrid>
+
+## optimistic
+
+**Hypothesis**: Life emerges easily, civilizations are long-lived and cooperative.
+
+| Parameter | Value |
+|-----------|-------|
+| `fraction_develop_life` | 0.5 |
+| `fraction_develop_intelligence` | 0.1 |
+| `fraction_develop_technology` | 0.5 |
+| `mean_civilization_lifetime_myr` | 10.0 |
+| `expansion_enabled` | True |
+
+**Expected Results** (30k stars, 5 Gyr):
+- Total civilizations: 100-300
+- Active at end: 50-150
+- Galaxy-spanning expansion likely
+
+```python
+config = SimulationConfig.with_preset("optimistic")
+```
+
+## moderate
+
+**Hypothesis**: Balanced parameters consistent with Fermi observations (no detected civilizations).
+
+| Parameter | Value |
+|-----------|-------|
+| `fraction_develop_life` | 0.1 |
+| `fraction_develop_intelligence` | 0.01 |
+| `fraction_develop_technology` | 0.1 |
+| `mean_civilization_lifetime_myr` | 1.0 |
+| `expansion_enabled` | True |
+
+**Expected Results** (30k stars, 5 Gyr):
+- Total civilizations: 15-40
+- Active at end: 5-15
+- Limited expansion
+
+```python
+config = SimulationConfig.with_preset("moderate")
+```
+
+## late_filter
+
+**Hypothesis**: Civilizations emerge frequently but destroy themselves at technological transition points.
+
+| Parameter | Value |
+|-----------|-------|
+| `fraction_develop_life` | 0.5 |
+| `fraction_develop_intelligence` | 0.1 |
+| `fraction_develop_technology` | 0.1 |
+| `mean_civilization_lifetime_myr` | 0.1 |
+| `base_extinction_rate_per_myr` | 0.1 |
+| `expansion_enabled` | True |
+
+**Expected Results** (30k stars, 5 Gyr):
+- Total civilizations: 50-150
+- Active at end: 1-10
+- High turnover, rare expansion
+
+```python
+config = SimulationConfig.with_preset("late_filter")
+```
+
+## early_filter
+
+**Hypothesis**: Life itself is extraordinarily rare—abiogenesis is the bottleneck.
+
+| Parameter | Value |
+|-----------|-------|
+| `fraction_develop_life` | 0.001 |
+| `fraction_develop_intelligence` | 0.1 |
+| `fraction_develop_technology` | 0.1 |
+| `mean_civilization_lifetime_myr` | 10.0 |
+| `expansion_enabled` | True |
+
+**Expected Results** (30k stars, 5 Gyr):
+- Total civilizations: 1-10
+- Active at end: 1-5
+- Survivors are long-lived
+
+```python
+config = SimulationConfig.with_preset("early_filter")
+```
+
+## rare_earth
+
+**Hypothesis**: Planets with all necessary conditions for complex life are extremely rare.
+
+| Parameter | Value |
+|-----------|-------|
+| `fraction_develop_life` | 0.5 |
+| `fraction_develop_intelligence` | 0.1 |
+| `fraction_develop_technology` | 0.1 |
+| `habitable_mass_min_msun` | 0.8 |
+| `habitable_mass_max_msun` | 1.2 |
+| `mean_civilization_lifetime_myr` | 10.0 |
+
+**Expected Results** (30k stars, 5 Gyr):
+- Total civilizations: 10-30
+- Active at end: 5-15
+- Narrower habitable zone
+
+```python
+config = SimulationConfig.with_preset("rare_earth")
+```
+
+## Parameter Comparison
+
+| Parameter | optimistic | moderate | late_filter | early_filter | rare_earth |
+|-----------|------------|----------|-------------|--------------|------------|
+| fl (life) | 0.5 | 0.1 | 0.5 | 0.001 | 0.5 |
+| fi (intel) | 0.1 | 0.01 | 0.1 | 0.1 | 0.1 |
+| fc (tech) | 0.5 | 0.1 | 0.1 | 0.1 | 0.1 |
+| L (Myr) | 10.0 | 1.0 | 0.1 | 10.0 | 10.0 |
+| Emergence | Very high | Medium | High | Very low | Low |
+| Survival | High | Medium | Very low | High | High |
+
+## Customizing Presets
+
+Start with a preset and modify:
+
+<Tabs>
+  <TabItem label="Python">
+```python
+config = SimulationConfig.with_preset("moderate")
+
+# Make it more optimistic
+config.civilization.fraction_develop_life = 0.3
+config.civilization.mean_civilization_lifetime_myr = 3.0
+
+# Keep other moderate settings
+```
+  </TabItem>
+  <TabItem label="YAML">
+```yaml
+# Based on moderate preset
+civilization:
+  fraction_develop_life: 0.3
+  mean_civilization_lifetime_myr: 3.0
+  # Other params use moderate defaults
+```
+  </TabItem>
+</Tabs>
+
+## Creating Custom Presets
+
+Save a configuration for reuse:
+
+```python
+# Create custom scenario
+config = SimulationConfig()
+config.civilization.fraction_develop_life = 0.25
+config.civilization.mean_civilization_lifetime_myr = 2.0
+# ... more customization
+
+# Save as preset
+config.to_yaml("~/.great_silence/presets/my_scenario.yaml")
+
+# Load later
+config = SimulationConfig.from_yaml("~/.great_silence/presets/my_scenario.yaml")
+```
+
+## See Also
+
+- [Parameters Reference](/reference/parameters/) — All parameters
+- [Configuration Guide](/getting-started/configuration/) — How to configure
+- [Drake Equation](/concepts/drake-equation/) — Understanding the parameters

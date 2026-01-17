@@ -1,0 +1,150 @@
+---
+title: "Encoding"
+description: "API reference for great_silence.simulation.disasters.encoding"
+sidebar:
+  order: 20
+---
+
+# Encoding
+
+**Module:** `great_silence.simulation.disasters.encoding`
+
+Binary disaster encoding for efficient storage and transmission.
+
+Encodes disaster events into compact 24-byte binary format.
+
+```python
+from great_silence.simulation.disasters.encoding import ...
+```
+
+## Constants
+
+| Constant | Value |
+|----------|-------|
+| `DISASTER_BINARY_FORMAT` | `'&lt;fBhhhhbbbBBBxxxxx'` |
+| `EVENT_TYPE_MAP` | `\{'sn': 0, 'supernova': 0, 'grb': 1, 'nsm': 2\}` |
+| `EVENT_TYPE_REVERSE` | `\{0: 'sn', 1: 'grb', 2: 'nsm'\}` |
+
+## Classes
+
+
+### DisasterBinary <span class="badge">dataclass</span>
+
+Compact binary representation of disaster event.
+
+Layout (24 bytes):
+    time_myr:        float32  (4 bytes) - simulation time
+    event_type:      uint8    (1 byte)  - 0=SN, 1=GRB, 2=NSM
+    position_x:      int16    (2 bytes) - kpc * 1000
+    position_y:      int16    (2 bytes)
+    position_z:      int16    (2 bytes)
+    lethal_radius:   int16    (2 bytes) - pc (integer precision)
+    jet_dir_x:       int8     (1 byte)  - unit vector * 127
+    jet_dir_y:       int8     (1 byte)
+    jet_dir_z:       int8     (1 byte)
+    beam_angle_deg:  uint8    (1 byte)  - degrees
+    energy_log10:    uint8    (1 byte)  - log10(energy/1e50) + 50
+    flags:           uint8    (1 byte)  - bit flags
+
+Flags:
+    bit 0: permanent_sterilization
+    bit 1: has_opposing_jet
+    bit 2-7: reserved
+
+```python
+@dataclass
+class DisasterBinary:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `time_myr` | `float` |
+| `event_type` | `int` |
+| `position` | `np.ndarray` |
+| `lethal_radius` | `int` |
+| `jet_direction` | `np.ndarray` |
+| `beam_angle_deg` | `int` |
+| `energy` | `float` |
+| `flags` | `int` |
+
+## Functions
+
+
+### `encode_disaster`
+
+Encode HazardEvent to 24-byte binary.
+
+Args:
+    event: Full HazardEvent object
+
+Returns:
+    24 bytes of packed data
+
+```python
+def encode_disaster(event: 'HazardEvent') -> bytes
+```
+
+**Parameters:**
+
+- `event` (`'HazardEvent'`)
+
+
+### `decode_disaster`
+
+Decode 24-byte binary to DisasterBinary.
+
+Args:
+    data: 24+ bytes of packed data
+
+Returns:
+    DisasterBinary with decoded fields
+
+```python
+def decode_disaster(data: bytes) -> DisasterBinary
+```
+
+**Parameters:**
+
+- `data` (`bytes`)
+
+
+### `encode_disaster_batch`
+
+Encode multiple disasters to contiguous binary.
+
+Args:
+    events: List of HazardEvent objects
+
+Returns:
+    len(events) * 24 bytes
+
+```python
+def encode_disaster_batch(events: list['HazardEvent']) -> bytes
+```
+
+**Parameters:**
+
+- `events` (`list['HazardEvent']`)
+
+
+### `decode_disaster_batch`
+
+Decode contiguous binary to list of DisasterBinary.
+
+Args:
+    data: count * 24 bytes
+    count: Number of disasters to decode
+
+Returns:
+    List of DisasterBinary objects
+
+```python
+def decode_disaster_batch(data: bytes, count: int) -> list[DisasterBinary]
+```
+
+**Parameters:**
+
+- `data` (`bytes`)
+- `count` (`int`)

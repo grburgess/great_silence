@@ -1,0 +1,147 @@
+---
+title: Drake Equation
+description: The mathematical framework for estimating the number of detectable civilizations
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# The Drake Equation
+
+The Drake Equation, formulated by astronomer Frank Drake in 1961, provides a probabilistic 
+framework for estimating the number of active, communicative extraterrestrial civilizations 
+in the Milky Way galaxy.
+
+## The Equation
+
+<div class="math-block">
+
+**N = R★ × fp × ne × fl × fi × fc × L**
+
+</div>
+
+Where:
+
+| Symbol | Parameter | Description |
+|--------|-----------|-------------|
+| **N** | — | Number of civilizations we could communicate with |
+| **R★** | Star formation rate | Average rate of star formation per year |
+| **fp** | Fraction with planets | Fraction of stars that have planetary systems |
+| **ne** | Habitable planets | Average number of planets that could support life per star with planets |
+| **fl** | Fraction with life | Fraction of habitable planets where life actually develops |
+| **fi** | Fraction intelligent | Fraction of life-bearing planets where intelligence evolves |
+| **fc** | Fraction communicative | Fraction of intelligent civilizations that develop detectable technology |
+| **L** | Lifetime | Length of time such civilizations release detectable signals |
+
+## Modern Estimates
+
+Our understanding of these parameters has evolved significantly:
+
+### Parameters We Know Well
+
+**R★ ≈ 1-3** stars/year in the Milky Way. **fp ≈ 1.0** from Kepler data shows nearly all stars have planets. **ne ≈ 0.1-0.4** based on multiple potentially habitable exoplanet discoveries.
+
+### Highly Uncertain Parameters
+
+**fl** ranges from 10⁻¹⁰ to 1.0 depending on abiogenesis assumptions. **fi** could be inevitable (~1) or vanishingly rare (~10⁻⁶). **fc** may depend on evolutionary convergence toward technology.
+
+### The Great Unknown
+
+**L** (civilization lifetime) is completely unknown—estimates range from pessimistic (100-1000 years due to self-destruction), to moderate (10,000-100,000 years), to optimistic (millions of years for post-biological civilizations).
+
+## Implementation in Great Silence
+
+Great Silence implements a modified Drake equation for per-star emergence probability:
+
+```python
+# Per-star emergence probability (per Myr)
+P_emergence = (
+    fraction_stars_with_planets ×      # fp
+    avg_habitable_planets_per_system × # ne  
+    fraction_develop_life ×            # fl
+    fraction_develop_intelligence ×    # fi
+    fraction_develop_technology        # fc
+) × dt_myr / L
+```
+
+### Key Differences from Classic Drake
+
+1. **Per-star calculation**: Each star has an independent probability
+2. **Time-scaled**: Probability scales with timestep duration
+3. **Age constraint**: Stars must be old enough for life to evolve
+4. **Mass constraint**: Only stars in habitable mass range (0.5-1.5 M☉)
+
+### Configuration Parameters
+
+```python
+from great_silence import SimulationConfig
+
+config = SimulationConfig()
+
+# Drake parameters
+config.civilization.fraction_stars_with_planets = 1.0      # fp
+config.civilization.avg_habitable_planets_per_system = 0.2 # ne
+config.civilization.fraction_develop_life = 0.1            # fl
+config.civilization.fraction_develop_intelligence = 0.01   # fi
+config.civilization.fraction_develop_technology = 0.1      # fc
+config.civilization.mean_civilization_lifetime_myr = 1.0   # L
+```
+
+## Presets and Drake Values
+
+| Preset | fl | fi | fc | L (Myr) | Expected N |
+|--------|-----|-----|-----|---------|------------|
+| `optimistic` | 0.5 | 0.1 | 0.5 | 10.0 | ~50,000 |
+| `moderate` | 0.1 | 0.01 | 0.1 | 1.0 | ~1,000 |
+| `late_filter` | 0.5 | 0.1 | 0.1 | 0.1 | ~100 |
+| `early_filter` | 0.001 | 0.1 | 0.1 | 10.0 | ~10 |
+| `rare_earth` | 0.5 | 0.1 | 0.1 | 10.0 | ~50 |
+
+## Emergence Mechanics
+
+In Great Silence, civilization emergence follows these steps:
+
+1. **Filter habitable stars**: Only 0.5-1.5 M☉ stars (F, G, K types)
+2. **Check stellar age**: Must exceed `min_stellar_age_for_life_gyr` (default: 1 Gyr)
+3. **Calculate probability**: Apply Drake parameters
+4. **Random sampling**: Bernoulli trial with calculated probability
+5. **Schedule emergence**: Pre-compute all emergences at initialization for efficiency
+
+<Aside type="tip">
+  The event-driven emergence system pre-samples all emergence times at initialization,
+  reducing per-timestep overhead from O(N_habitable) to O(1).
+</Aside>
+
+## Sensitivity Analysis
+
+The dominant uncertainties are **fl** (life probability) and **L** (lifetime):
+
+```python
+import numpy as np
+from great_silence import GalaxySimulation, SimulationConfig
+
+# Sensitivity to fl
+fl_values = [0.001, 0.01, 0.1, 0.5, 1.0]
+results = []
+
+for fl in fl_values:
+    config = SimulationConfig.with_preset("moderate")
+    config.galaxy.total_stars = 50_000
+    config.civilization.fraction_develop_life = fl
+    
+    sim = GalaxySimulation(config, seed=42)
+    sim.run()
+    
+    stats = sim.get_statistics()
+    results.append({
+        'fl': fl,
+        'total_civs': stats['total_civilizations']
+    })
+```
+
+## Further Reading
+
+- [Fermi Paradox](/concepts/fermi-paradox/) — The context for the Drake equation
+- [Kardashev Scale](/concepts/kardashev-scale/) — How civilizations advance
+- [Configuration Guide](/getting-started/configuration/) — Full parameter reference

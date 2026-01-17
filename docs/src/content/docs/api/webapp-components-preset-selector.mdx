@@ -1,0 +1,54 @@
+---
+title: "Preset Selector"
+description: "API reference for great_silence.webapp.components.preset_selector"
+sidebar:
+  order: 48
+---
+
+# Preset Selector
+
+**Module:** `great_silence.webapp.components.preset_selector`
+
+Preset selector component with clickable scenario cards.
+
+```python
+from great_silence.webapp.components.preset_selector import ...
+```
+
+## Constants
+
+| Constant | Value |
+|----------|-------|
+| `PRESETS` | `\{'moderate': \{'icon': '⚖️', 'title': 'Moderate', '...` |
+
+## Classes
+
+
+### PresetSelector 
+
+Component for selecting simulation presets via clickable cards.
+
+```python
+class PresetSelector:
+```
+
+#### Methods
+
+##### `__init__`
+
+```python
+def __init__(on_select: Optional[Callable[[str], None]] = None)
+```
+
+**Parameters:**
+
+- `on_select` (`Optional[Callable[[str], None]]`) — default: `None`
+
+---
+
+##### `get_selected`
+
+```python
+def get_selected() -> str
+```
+---

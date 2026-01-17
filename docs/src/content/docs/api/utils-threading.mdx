@@ -1,0 +1,143 @@
+---
+title: "Threading"
+description: "API reference for great_silence.utils.threading"
+sidebar:
+  order: 33
+---
+
+# Threading
+
+**Module:** `great_silence.utils.threading`
+
+Threading configuration utilities for optimal performance on M1 Max.
+
+Handles the complex interaction between NumPy BLAS, Numba OpenMP, and
+system threads to avoid oversubscription and maximize performance.
+
+```python
+from great_silence.utils.threading import ...
+```
+
+## Functions
+
+
+### `configure_m1_max_threading`
+
+Configure threading for optimal M1 Max performance.
+
+The M1 Max has 8 performance cores + 2 efficiency cores. For scientific
+computing, we want to:
+1. Use Numba's parallelism (8 threads on P-cores)
+2. Disable NumPy's BLAS parallelism (avoid nested parallelism)
+3. Suppress deprecated OpenMP warnings
+
+Args:
+    numba_threads: Number of threads for Numba (default: 8 for M1 Max P-cores)
+    numpy_threads: Number of threads for NumPy BLAS (default: 1 to avoid nesting)
+    suppress_omp_warnings: Whether to suppress OpenMP warnings (default: True)
+
+Example:
+    &gt;&gt;&gt; from great_silence.utils.threading import configure_m1_max_threading
+    &gt;&gt;&gt; configure_m1_max_threading()  # Optimal M1 Max settings
+    &gt;&gt;&gt; # Now run your simulation
+
+Technical Details:
+    The M1 Max has:
+    - 8 P-cores (performance) @ 3.2 GHz
+    - 2 E-cores (efficiency) @ 2.0 GHz
+
+    For compute-heavy workloads like GalaticBot:
+    - Use P-cores only (8 threads)
+    - Avoid E-cores (slower, cause context switching)
+    - Disable nested parallelism (NumPy BLAS threads)
+
+    Why NumPy threads = 1?
+    - GalaticBot uses Numba for hot loops
+    - Numba already parallelizes these loops
+    - NumPy BLAS parallelism underneath Numba = oversubscription
+    - Oversubscription: 8 Numba threads × 8 BLAS threads = 64 OS threads
+    - Result: Thrashing, cache contention, slow!
+
+    Why Numba threads = 8?
+    - Matches P-core count
+    - Parallelizes position evolution, distance calcs
+    - 10-100x speedup on these operations
+
+```python
+def configure_m1_max_threading(numba_threads: int = 8, numpy_threads: int = 1, suppress_omp_warnings: bool = True) -> None
+```
+
+**Parameters:**
+
+- `numba_threads` (`int`) — default: `8`
+- `numpy_threads` (`int`) — default: `1`
+- `suppress_omp_warnings` (`bool`) — default: `True`
+
+
+### `configure_custom_threading`
+
+Configure threading for custom hardware.
+
+Args:
+    n_threads: Total number of threads to use
+    allow_nested: Allow nested parallelism (NumPy + Numba)
+    suppress_omp_warnings: Suppress OpenMP warnings
+
+Example:
+    &gt;&gt;&gt; # For 16-core AMD workstation
+    &gt;&gt;&gt; configure_custom_threading(n_threads=16)
+
+    &gt;&gt;&gt; # For dual-socket server with hyperthreading
+    &gt;&gt;&gt; configure_custom_threading(n_threads=64, allow_nested=True)
+
+```python
+def configure_custom_threading(n_threads: int, allow_nested: bool = False, suppress_omp_warnings: bool = True) -> None
+```
+
+**Parameters:**
+
+- `n_threads` (`int`)
+- `allow_nested` (`bool`) — default: `False`
+- `suppress_omp_warnings` (`bool`) — default: `True`
+
+
+### `get_optimal_thread_count`
+
+Detect optimal thread count for current hardware.
+
+Returns:
+    Recommended number of threads
+
+Example:
+    &gt;&gt;&gt; n_threads = get_optimal_thread_count()
+    &gt;&gt;&gt; configure_custom_threading(n_threads)
+
+```python
+def get_optimal_thread_count() -> int
+```
+
+
+### `benchmark_threading`
+
+Benchmark different threading configurations.
+
+Tests performance with different thread counts to find optimal.
+
+Args:
+    n_trials: Number of trials per configuration
+
+Example:
+    &gt;&gt;&gt; benchmark_threading()
+    Testing 1 threads: 2.34s
+    Testing 2 threads: 1.18s
+    Testing 4 threads: 0.61s
+    Testing 8 threads: 0.31s  ← FASTEST
+    Optimal: 8 threads
+
+```python
+def benchmark_threading(n_trials: int = 5) -> None
+```
+
+**Parameters:**
+
+- `n_trials` (`int`) — default: `5`

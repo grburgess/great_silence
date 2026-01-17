@@ -1,0 +1,225 @@
+---
+title: "Galaxy Viz"
+description: "API reference for great_silence.visualization.galaxy_viz"
+sidebar:
+  order: 34
+---
+
+# Galaxy Viz
+
+**Module:** `great_silence.visualization.galaxy_viz`
+
+3D visualization tools for galaxy and civilizations.
+
+```python
+from great_silence.visualization.galaxy_viz import ...
+```
+
+## Classes
+
+
+### GalaxyVisualizer 
+
+Visualize galaxy structure and civilization distribution.
+
+```python
+class GalaxyVisualizer:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize visualizer.
+
+Args:
+    figsize: Figure size for plots
+
+```python
+def __init__(figsize: tuple = (12, 10))
+```
+
+**Parameters:**
+
+- `figsize` (`tuple`) — default: `(12, 10)`
+
+---
+
+##### `plot_galaxy_structure`
+
+Plot 3D galaxy structure.
+
+Args:
+    stellar_positions: Array of shape (N, 3) with positions in kpc
+    save_path: Optional path to save figure
+
+```python
+def plot_galaxy_structure(stellar_positions: np.ndarray, save_path: Optional[str] = None) -> None
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `save_path` (`Optional[str]`) — default: `None`
+
+---
+
+##### `plot_civilization_distribution`
+
+Plot civilizations on galaxy map.
+
+Args:
+    stellar_positions: All stellar positions
+    civilization_indices: Indices of civilization home stars
+    colonized_indices: Optional indices of colonized stars
+    save_path: Optional path to save figure
+
+```python
+def plot_civilization_distribution(stellar_positions: np.ndarray, civilization_indices: List[int], colonized_indices: Optional[List[int]] = None, save_path: Optional[str] = None) -> None
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `civilization_indices` (`List[int]`)
+- `colonized_indices` (`Optional[List[int]]`) — default: `None`
+- `save_path` (`Optional[str]`) — default: `None`
+
+---
+
+##### `plot_density_map`
+
+Plot 2D density map of galaxy.
+
+Args:
+    stellar_positions: Stellar positions
+    bins: Number of bins for 2D histogram
+    save_path: Optional path to save figure
+
+```python
+def plot_density_map(stellar_positions: np.ndarray, bins: int = 100, save_path: Optional[str] = None) -> None
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `bins` (`int`) — default: `100`
+- `save_path` (`Optional[str]`) — default: `None`
+
+---
+
+##### `plot_civilization_evolution`
+
+Plot civilizations color-coded by Kardashev scale and status.
+
+Args:
+    stellar_positions: All stellar positions
+    civilizations: List of CivilizationState objects
+    save_path: Optional path to save figure
+
+```python
+def plot_civilization_evolution(stellar_positions: np.ndarray, civilizations: List, save_path: Optional[str] = None) -> None
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `civilizations` (`List`)
+- `save_path` (`Optional[str]`) — default: `None`
+
+---
+
+##### `plot_bulge_and_disk`
+
+Plot galaxy showing bulge and disk components separately.
+
+Args:
+    stellar_positions: Array of shape (N, 3) with positions in kpc
+    component_type: Array of component types (0=bulge, 1=disk)
+    save_path: Optional path to save figure
+
+```python
+def plot_bulge_and_disk(stellar_positions: np.ndarray, component_type: np.ndarray, save_path: Optional[str] = None) -> None
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `component_type` (`np.ndarray`)
+- `save_path` (`Optional[str]`) — default: `None`
+
+---
+
+##### `plot_age_gradient`
+
+Plot stellar age gradient (inside-out formation).
+
+Args:
+    stellar_positions: Array of shape (N, 3) with positions in kpc
+    stellar_ages: Array of stellar ages in Gyr
+    save_path: Optional path to save figure
+
+```python
+def plot_age_gradient(stellar_positions: np.ndarray, stellar_ages: np.ndarray, save_path: Optional[str] = None) -> None
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `save_path` (`Optional[str]`) — default: `None`
+
+---
+
+##### `plot_metallicity_gradient`
+
+Plot stellar metallicity gradient.
+
+Args:
+    stellar_positions: Array of shape (N, 3) with positions in kpc
+    metallicities: Array of [Fe/H] metallicities
+    save_path: Optional path to save figure
+
+```python
+def plot_metallicity_gradient(stellar_positions: np.ndarray, metallicities: np.ndarray, save_path: Optional[str] = None) -> None
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `metallicities` (`np.ndarray`)
+- `save_path` (`Optional[str]`) — default: `None`
+
+---
+
+##### `plot_hazard_zones`
+
+Plot galactic hazard zones (supernova and GRB risk).
+
+Shows regions of high astrophysical hazard based on:
+- Local stellar density (more stars → more supernovae)
+- Component type (bulge → higher evolved fraction)
+- Metallicity (metal-poor → more GRBs)
+
+Args:
+    stellar_positions: Array of shape (N, 3) with positions in kpc
+    stellar_masses: Stellar masses in solar masses
+    stellar_ages: Stellar ages in Gyr
+    component_types: Component types (0=bulge, 1=disk)
+    metallicities: Stellar metallicities [Fe/H]
+    save_path: Optional path to save figure
+
+```python
+def plot_hazard_zones(stellar_positions: np.ndarray, stellar_masses: np.ndarray, stellar_ages: np.ndarray, component_types: np.ndarray, metallicities: np.ndarray, save_path: Optional[str] = None) -> None
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `component_types` (`np.ndarray`)
+- `metallicities` (`np.ndarray`)
+- `save_path` (`Optional[str]`) — default: `None`
+
+---

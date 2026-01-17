@@ -1,0 +1,204 @@
+---
+title: "Neutron Star Merger"
+description: "API reference for great_silence.astrophysics.neutron_star_merger"
+sidebar:
+  order: 3
+---
+
+# Neutron Star Merger
+
+**Module:** `great_silence.astrophysics.neutron_star_merger`
+
+Neutron star merger (kilonova) modeling and hazard assessment.
+
+Neutron star mergers produce:
+1. Gravitational waves (already detected by LIGO/Virgo)
+2. Short gamma-ray bursts (sGRB) - highly beamed
+3. Kilonova - r-process nucleosynthesis, less beamed radiation
+4. Relativistic jets
+
+References:
+- Abbott et al. (2017): GW170817 detection
+- Metzger (2019): Kilonova review
+- Fong et al. (2015): sGRB-host galaxy correlations
+
+```python
+from great_silence.astrophysics.neutron_star_merger import ...
+```
+
+## Classes
+
+
+### NeutronStarMergerModel 
+
+Model neutron star mergers (binary NS and NS-BH) and their effects.
+
+NS mergers are rare but devastating events that produce:
+- Short gamma-ray bursts (highly beamed, ~kpc lethal range)
+- Kilonova emission (less beamed, ~10-50 pc lethal range)
+- Heavy element enrichment (r-process)
+
+Rate estimates:
+- Milky Way: ~10-100 Myr^-1 (Abbott et al. 2017)
+- Solar neighborhood density scaling
+
+```python
+class NeutronStarMergerModel:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize neutron star merger model.
+
+Args:
+    params: Astrophysics configuration parameters
+
+```python
+def __init__(params: AstrophysicsParameters)
+```
+
+**Parameters:**
+
+- `params` (`AstrophysicsParameters`)
+
+---
+
+##### `sample_merger_direction`
+
+Sample random merger jet direction (isotropic).
+
+Args:
+    rng: Random number generator
+
+Returns:
+    Unit vector representing jet direction
+
+```python
+def sample_merger_direction(rng: np.random.Generator) -> np.ndarray
+```
+
+**Parameters:**
+
+- `rng` (`np.random.Generator`)
+
+---
+
+##### `delay_time_distribution`
+
+Sample delay time from formation to merger.
+
+NS mergers have a wide delay time distribution, typically
+modeled as P(t) ∝ t^(-1) (power law).
+
+Args:
+    rng: Random number generator
+    
+Returns:
+    Delay time in Gyr
+
+```python
+def delay_time_distribution(rng: np.random.Generator) -> float
+```
+
+**Parameters:**
+
+- `rng` (`np.random.Generator`)
+
+---
+
+##### `merger_probability_per_timestep`
+
+Calculate probability of a merger occurring near civilization.
+
+Uses local stellar mass density to scale the galactic-average
+merger rate.
+
+Args:
+    stellar_positions: (N, 3) positions in kpc
+    stellar_masses: (N,) masses in solar masses
+    stellar_ages: (N,) ages in Gyr
+    civ_position: (3,) civilization position in kpc
+    dt_myr: Time step in Myr
+    spatial_index: Optional SpatialIndex for fast queries
+    
+Returns:
+    Tuple of (probability, info_dict)
+
+```python
+def merger_probability_per_timestep(stellar_positions: np.ndarray, stellar_masses: np.ndarray, stellar_ages: np.ndarray, civ_position: np.ndarray, dt_myr: float, spatial_index = None) -> Tuple[float, dict]
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `civ_position` (`np.ndarray`)
+- `dt_myr` (`float`)
+- `spatial_index` — default: `None`
+
+---
+
+##### `evaluate_merger_effects`
+
+Evaluate effects of a NS merger on a civilization.
+
+Considers both:
+1. sGRB (short gamma-ray burst) - highly beamed
+2. Kilonova - less beamed but shorter range
+
+Args:
+    civ_position: (3,) civilization position in kpc
+    merger_position: (3,) merger position in kpc
+    rng: Random number generator
+    
+Returns:
+    Tuple of (destroyed, info_dict)
+
+```python
+def evaluate_merger_effects(civ_position: np.ndarray, merger_position: np.ndarray, rng: np.random.Generator) -> Tuple[bool, dict]
+```
+
+**Parameters:**
+
+- `civ_position` (`np.ndarray`)
+- `merger_position` (`np.ndarray`)
+- `rng` (`np.random.Generator`)
+
+---
+
+##### `sample_merger_position`
+
+Sample a merger position based on NS progenitor distribution.
+
+Mergers occur preferentially near massive, evolved stars.
+
+Args:
+    stellar_positions: (N, 3) stellar positions
+    stellar_masses: (N,) stellar masses
+    stellar_ages: (N,) stellar ages
+    search_center: (3,) center for search
+    search_radius_kpc: Search radius
+    rng: Random number generator
+    spatial_index: Optional spatial index
+    
+Returns:
+    (3,) merger position or None if no suitable location
+
+```python
+def sample_merger_position(stellar_positions: np.ndarray, stellar_masses: np.ndarray, stellar_ages: np.ndarray, search_center: np.ndarray, search_radius_kpc: float, rng: np.random.Generator, spatial_index = None) -> Optional[np.ndarray]
+```
+
+**Parameters:**
+
+- `stellar_positions` (`np.ndarray`)
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `search_center` (`np.ndarray`)
+- `search_radius_kpc` (`float`)
+- `rng` (`np.random.Generator`)
+- `spatial_index` — default: `None`
+
+---

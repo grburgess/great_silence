@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="galaxyGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#c084fc;stop-opacity:1" />
+      <stop offset="40%" style="stop-color:#8B5CF6;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#1e1b4b;stop-opacity:0" />
+    </radialGradient>
+    <radialGradient id="coreGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#fef3c7;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#fbbf24;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#f59e0b;stop-opacity:0" />
+    </radialGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="128" height="128" fill="#0a0a0f" rx="16"/>
+  
+  <!-- Galaxy spiral arms -->
+  <g transform="translate(64, 64)">
+    <!-- Spiral arm 1 -->
+    <ellipse cx="0" cy="0" rx="52" ry="20" fill="url(#galaxyGrad)" transform="rotate(-30)" opacity="0.7"/>
+    <!-- Spiral arm 2 -->
+    <ellipse cx="0" cy="0" rx="48" ry="18" fill="url(#galaxyGrad)" transform="rotate(60)" opacity="0.6"/>
+    <!-- Spiral arm 3 -->
+    <ellipse cx="0" cy="0" rx="44" ry="16" fill="url(#galaxyGrad)" transform="rotate(150)" opacity="0.5"/>
+    
+    <!-- Galaxy core -->
+    <circle cx="0" cy="0" r="16" fill="url(#coreGrad)"/>
+    <circle cx="0" cy="0" r="8" fill="#fef3c7" opacity="0.9"/>
+  </g>
+  
+  <!-- Stars -->
+  <circle cx="20" cy="25" r="1.5" fill="#ffffff" opacity="0.8"/>
+  <circle cx="108" cy="30" r="1" fill="#ffffff" opacity="0.6"/>
+  <circle cx="95" cy="100" r="1.2" fill="#ffffff" opacity="0.7"/>
+  <circle cx="30" cy="105" r="1" fill="#ffffff" opacity="0.5"/>
+  <circle cx="15" cy="70" r="0.8" fill="#00ffff" opacity="0.6"/>
+  <circle cx="110" cy="65" r="0.8" fill="#c084fc" opacity="0.6"/>
+</svg>

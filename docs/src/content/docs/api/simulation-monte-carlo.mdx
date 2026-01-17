@@ -1,0 +1,112 @@
+---
+title: "Monte Carlo"
+description: "API reference for great_silence.simulation.monte_carlo"
+sidebar:
+  order: 26
+---
+
+# Monte Carlo
+
+**Module:** `great_silence.simulation.monte_carlo`
+
+Monte Carlo framework for running multiple simulation realizations.
+
+```python
+from great_silence.simulation.monte_carlo import ...
+```
+
+## Classes
+
+
+### MonteCarloRunner 
+
+Run multiple independent simulation realizations for statistical analysis.
+
+```python
+class MonteCarloRunner:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize Monte Carlo runner.
+
+Args:
+    config: Base simulation configuration
+
+```python
+def __init__(config: SimulationConfig)
+```
+
+**Parameters:**
+
+- `config` (`SimulationConfig`)
+
+---
+
+##### `run_single_realization`
+
+Run a single simulation realization.
+
+Args:
+    realization_id: Unique ID for this realization
+
+Returns:
+    Dictionary with simulation results
+
+```python
+def run_single_realization(realization_id: int) -> Dict[str, Any]
+```
+
+**Parameters:**
+
+- `realization_id` (`int`)
+
+---
+
+##### `run_parallel`
+
+Run multiple realizations in parallel.
+
+Args:
+    n_processes: Number of parallel processes (None = auto)
+
+Returns:
+    List of result dictionaries
+
+```python
+def run_parallel(n_processes: Optional[int] = None) -> List[Dict[str, Any]]
+```
+
+**Parameters:**
+
+- `n_processes` (`Optional[int]`) — default: `None`
+
+---
+
+##### `run_sequential`
+
+Run multiple realizations sequentially (for debugging).
+
+Returns:
+    List of result dictionaries
+
+```python
+def run_sequential() -> List[Dict[str, Any]]
+```
+---
+
+##### `analyze_results`
+
+Analyze Monte Carlo results and compute comprehensive statistics.
+
+Includes mean, std, median, percentiles, and 95% confidence intervals.
+
+Returns:
+    Dictionary with statistical analysis including CI and percentiles
+
+```python
+def analyze_results() -> Dict[str, Any]
+```
+---

@@ -1,0 +1,251 @@
+---
+title: "Progress"
+description: "API reference for great_silence.utils.progress"
+sidebar:
+  order: 31
+---
+
+# Progress
+
+**Module:** `great_silence.utils.progress`
+
+Progress tracking for simulation runs.
+
+```python
+from great_silence.utils.progress import ...
+```
+
+## Classes
+
+
+### ProgressMetrics <span class="badge">dataclass</span>
+
+Snapshot of simulation progress at a given time.
+
+```python
+@dataclass
+class ProgressMetrics:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `current_time_myr` | `float` |
+| `total_time_myr` | `float` |
+| `step_count` | `int` |
+| `current_dt_myr` | `float` |
+| `active_civs` | `int` |
+| `active_probes` | `int` |
+| `event_queue_size` | `int` |
+| `wall_time_elapsed` | `float` |
+
+#### Methods
+
+##### `time_fraction` `property`
+
+Calculate time fraction completed.
+
+```python
+def time_fraction() -> float
+```
+---
+
+##### `time_pct` `property`
+
+Calculate time percentage completed.
+
+```python
+def time_pct() -> float
+```
+---
+
+
+### ProgressTracker 
+
+Base progress tracker.
+
+```python
+class ProgressTracker:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize tracker.
+
+```python
+def __init__(total_myr: float)
+```
+
+**Parameters:**
+
+- `total_myr` (`float`)
+
+---
+
+##### `start`
+
+Start tracking.
+
+```python
+def start(total_myr: float) -> None
+```
+
+**Parameters:**
+
+- `total_myr` (`float`)
+
+---
+
+##### `update`
+
+Update progress.
+
+```python
+def update(metrics: ProgressMetrics) -> None
+```
+
+**Parameters:**
+
+- `metrics` (`ProgressMetrics`)
+
+---
+
+##### `finish`
+
+Finish tracking.
+
+```python
+def finish() -> None
+```
+---
+
+
+### TqdmProgressTracker 
+
+Progress tracker using tqdm.
+
+```python
+class TqdmProgressTracker(ProgressTracker):
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize with tqdm.
+
+```python
+def __init__(total_myr: float)
+```
+
+**Parameters:**
+
+- `total_myr` (`float`)
+
+---
+
+##### `update`
+
+Update tqdm bar.
+
+```python
+def update(metrics: ProgressMetrics) -> None
+```
+
+**Parameters:**
+
+- `metrics` (`ProgressMetrics`)
+
+---
+
+##### `finish`
+
+Close tqdm bar.
+
+```python
+def finish() -> None
+```
+---
+
+
+### JupyterProgressTracker 
+
+Progress tracker for Jupyter notebooks.
+
+```python
+class JupyterProgressTracker(ProgressTracker):
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize for Jupyter.
+
+```python
+def __init__(total_myr: float)
+```
+
+**Parameters:**
+
+- `total_myr` (`float`)
+
+---
+
+##### `start`
+
+Start Jupyter widget.
+
+```python
+def start(total_myr: float) -> None
+```
+
+**Parameters:**
+
+- `total_myr` (`float`)
+
+---
+
+##### `update`
+
+Update Jupyter widget.
+
+```python
+def update(metrics: ProgressMetrics) -> None
+```
+
+**Parameters:**
+
+- `metrics` (`ProgressMetrics`)
+
+---
+
+## Functions
+
+
+### `create_progress_tracker`
+
+Create appropriate progress tracker for environment.
+
+Args:
+    environment: 'auto', 'tqdm', 'jupyter', or 'none'
+    show_iteration_rate: Show iteration rate (for basic tracker)
+    show_probe_count: Show probe count (for basic tracker)
+    **kwargs: Additional arguments
+
+Returns:
+    ProgressTracker instance
+
+```python
+def create_progress_tracker(environment: str = 'auto', show_iteration_rate: bool = True, show_probe_count: bool = True, **kwargs: Any) -> ProgressTracker
+```
+
+**Parameters:**
+
+- `environment` (`str`) — default: `'auto'`
+- `show_iteration_rate` (`bool`) — default: `True`
+- `show_probe_count` (`bool`) — default: `True`
+- `**kwargs` (`Any`)

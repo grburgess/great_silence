@@ -1,0 +1,114 @@
+---
+title: "Spatial"
+description: "API reference for great_silence.utils.spatial"
+sidebar:
+  order: 32
+---
+
+# Spatial
+
+**Module:** `great_silence.utils.spatial`
+
+Spatial indexing utilities for efficient nearest neighbor searches.
+
+```python
+from great_silence.utils.spatial import ...
+```
+
+## Classes
+
+
+### SpatialIndex 
+
+Spatial index for fast nearest neighbor queries in 3D.
+
+Uses KD-tree for efficient spatial queries.
+
+```python
+class SpatialIndex:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize spatial index.
+
+Args:
+    positions: Array of shape (N, 3) with 3D positions
+
+```python
+def __init__(positions: np.ndarray)
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+
+---
+
+##### `query_radius`
+
+Find all points within radius of center.
+
+Args:
+    center: Center position (3D)
+    radius: Search radius
+    return_distances: Whether to return distances
+
+Returns:
+    Indices of points within radius, and optionally their distances
+
+```python
+def query_radius(center: np.ndarray, radius: float, return_distances: bool = False) -> Tuple[np.ndarray, Optional[np.ndarray]]
+```
+
+**Parameters:**
+
+- `center` (`np.ndarray`)
+- `radius` (`float`)
+- `return_distances` (`bool`) — default: `False`
+
+---
+
+##### `query_nearest`
+
+Find k nearest neighbors to a point.
+
+Args:
+    point: Query point (3D)
+    k: Number of neighbors
+
+Returns:
+    Distances and indices of k nearest neighbors
+
+```python
+def query_nearest(point: np.ndarray, k: int = 1) -> Tuple[np.ndarray, np.ndarray]
+```
+
+**Parameters:**
+
+- `point` (`np.ndarray`)
+- `k` (`int`) — default: `1`
+
+---
+
+##### `query_pairs`
+
+Find all pairs of points within max_distance of each other.
+
+Args:
+    max_distance: Maximum distance between pairs
+
+Returns:
+    Set of (i, j) index pairs where i &lt; j
+
+```python
+def query_pairs(max_distance: float) -> set
+```
+
+**Parameters:**
+
+- `max_distance` (`float`)
+
+---

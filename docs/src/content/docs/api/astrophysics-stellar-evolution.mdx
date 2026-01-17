@@ -1,0 +1,205 @@
+---
+title: "Stellar Evolution"
+description: "API reference for great_silence.astrophysics.stellar_evolution"
+sidebar:
+  order: 4
+---
+
+# Stellar Evolution
+
+**Module:** `great_silence.astrophysics.stellar_evolution`
+
+Stellar evolution calculations.
+
+```python
+from great_silence.astrophysics.stellar_evolution import ...
+```
+
+## Classes
+
+
+### StellarEvolution 
+
+Simple stellar evolution model for main sequence lifetimes and colors.
+
+```python
+class StellarEvolution:
+```
+
+#### Methods
+
+##### `main_sequence_lifetime` `staticmethod`
+
+Calculate main sequence lifetimes.
+
+Uses simplified relation: t_ms ∝ M^(-2.5)
+
+Args:
+    masses: (N,) stellar masses in M_sun
+    metallicities: (N,) metallicities Z (not used in simple model)
+
+Returns:
+    (N,) main sequence lifetimes in Gyr
+
+```python
+def main_sequence_lifetime(masses: np.ndarray, metallicities: np.ndarray) -> np.ndarray
+```
+
+**Parameters:**
+
+- `masses` (`np.ndarray`)
+- `metallicities` (`np.ndarray`)
+
+---
+
+##### `effective_temperature` `staticmethod`
+
+Calculate main sequence effective temperature from mass.
+
+Uses mass-temperature relation for main sequence: T_eff ∝ M^0.5
+Normalized to Sun: T_sun = 5778 K
+
+Args:
+    masses: (N,) stellar masses in M_sun
+    
+Returns:
+    (N,) effective temperatures in Kelvin
+
+```python
+def effective_temperature(masses: np.ndarray) -> np.ndarray
+```
+
+**Parameters:**
+
+- `masses` (`np.ndarray`)
+
+---
+
+##### `luminosity` `staticmethod`
+
+Calculate main sequence luminosity from mass.
+
+Uses mass-luminosity relation: L ∝ M^3.5 (approximate)
+
+Args:
+    masses: (N,) stellar masses in M_sun
+    
+Returns:
+    (N,) luminosities in L_sun
+
+```python
+def luminosity(masses: np.ndarray) -> np.ndarray
+```
+
+**Parameters:**
+
+- `masses` (`np.ndarray`)
+
+---
+
+##### `temperature_to_rgb` `staticmethod`
+
+Convert effective temperature to RGB color.
+
+Uses blackbody approximation for stellar colors.
+Based on Tanner Helland's algorithm adapted for stars.
+
+Temperature ranges:
+- O stars: &gt; 30000 K (blue-white)
+- B stars: 10000-30000 K (blue-white)  
+- A stars: 7500-10000 K (white)
+- F stars: 6000-7500 K (yellow-white)
+- G stars: 5200-6000 K (yellow, Sun-like)
+- K stars: 3700-5200 K (orange)
+- M stars: 2400-3700 K (red)
+
+Args:
+    temperatures: (N,) temperatures in Kelvin
+    
+Returns:
+    (N, 3) RGB colors normalized to [0, 1]
+
+```python
+def temperature_to_rgb(temperatures: np.ndarray) -> np.ndarray
+```
+
+**Parameters:**
+
+- `temperatures` (`np.ndarray`)
+
+---
+
+##### `mass_to_color` `staticmethod`
+
+Convert stellar masses to RGB colors via temperature.
+
+Args:
+    masses: (N,) stellar masses in M_sun
+    
+Returns:
+    (N, 3) RGB colors normalized to [0, 1]
+
+```python
+def mass_to_color(masses: np.ndarray) -> np.ndarray
+```
+
+**Parameters:**
+
+- `masses` (`np.ndarray`)
+
+---
+
+##### `mass_to_apparent_size` `staticmethod`
+
+Calculate apparent size based on luminosity.
+
+Brighter stars appear larger. Uses sqrt of luminosity for visual scaling.
+
+Args:
+    masses: (N,) stellar masses in M_sun
+    base_size: Base point size for 1 M_sun star
+    
+Returns:
+    (N,) apparent sizes for rendering
+
+```python
+def mass_to_apparent_size(masses: np.ndarray, base_size: float = 0.05) -> np.ndarray
+```
+
+**Parameters:**
+
+- `masses` (`np.ndarray`)
+- `base_size` (`float`) — default: `0.05`
+
+---
+
+##### `evolved_properties` `staticmethod`
+
+Calculate evolved stellar properties based on mass and age.
+
+Tracks stellar evolution through phases:
+- Main sequence: stable temperature/luminosity
+- Red giant: cooler (~3500K), brighter (10-1000x MS luminosity)
+- Dead: supernova/white dwarf (removed from visualization)
+
+Args:
+    masses: (N,) stellar masses in M_sun
+    ages: (N,) stellar ages in Gyr
+    
+Returns:
+    Tuple of:
+    - temperatures: (N,) effective temperatures in K
+    - luminosities: (N,) luminosities in L_sun
+    - phases: (N,) phase codes (0=MS, 1=RGB, 2=dead)
+    - colors: (N,3) RGB colors
+
+```python
+def evolved_properties(masses: np.ndarray, ages: np.ndarray) -> tuple
+```
+
+**Parameters:**
+
+- `masses` (`np.ndarray`)
+- `ages` (`np.ndarray`)
+
+---

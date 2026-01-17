@@ -1,0 +1,107 @@
+---
+title: "Expansion"
+description: "API reference for great_silence.civilization.expansion"
+sidebar:
+  order: 7
+---
+
+# Expansion
+
+**Module:** `great_silence.civilization.expansion`
+
+Civilization expansion and colonization modeling.
+
+```python
+from great_silence.civilization.expansion import ...
+```
+
+## Classes
+
+
+### ExpansionModel 
+
+Model civilization expansion through space.
+
+Accounts for:
+- Travel time at sub-light speeds
+- Colonization wave fronts
+- Selection of colonization targets
+
+```python
+class ExpansionModel:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize expansion model.
+
+Args:
+    expansion_velocity_c: Expansion velocity as fraction of c
+    colonization_probability: Probability of colonizing a candidate star
+    max_range_pc: Maximum expansion range in parsecs
+
+```python
+def __init__(expansion_velocity_c: float, colonization_probability: float, max_range_pc: float)
+```
+
+**Parameters:**
+
+- `expansion_velocity_c` (`float`)
+- `colonization_probability` (`float`)
+- `max_range_pc` (`float`)
+
+---
+
+##### `find_colonization_candidates`
+
+Find stars that can be reached and colonized.
+
+Args:
+    colony_positions: Positions of existing colonies
+    stellar_positions: All stellar positions
+    habitable_mask: Boolean mask of habitable stars
+    colonized_indices: Set of already colonized star indices
+    current_time_myr: Current simulation time
+
+Returns:
+    List of (star_index, arrival_time_myr) tuples
+
+```python
+def find_colonization_candidates(colony_positions: np.ndarray, stellar_positions: np.ndarray, habitable_mask: np.ndarray, colonized_indices: set, current_time_myr: float) -> List[Tuple[int, float]]
+```
+
+**Parameters:**
+
+- `colony_positions` (`np.ndarray`)
+- `stellar_positions` (`np.ndarray`)
+- `habitable_mask` (`np.ndarray`)
+- `colonized_indices` (`set`)
+- `current_time_myr` (`float`)
+
+---
+
+##### `select_colonies`
+
+Select which candidates to actually colonize.
+
+Args:
+    candidates: List of (star_index, arrival_time) tuples
+    rng: Random number generator
+    max_new_colonies: Maximum number of new colonies per time step
+
+Returns:
+    List of selected star indices
+
+```python
+def select_colonies(candidates: List[Tuple[int, float]], rng: np.random.Generator, max_new_colonies: int = 10) -> List[int]
+```
+
+**Parameters:**
+
+- `candidates` (`List[Tuple[int, float]]`)
+- `rng` (`np.random.Generator`)
+- `max_new_colonies` (`int`) — default: `10`
+
+---

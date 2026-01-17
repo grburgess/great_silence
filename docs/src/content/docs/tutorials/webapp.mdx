@@ -1,0 +1,257 @@
+---
+title: Web Application
+description: Using the interactive NiceGUI web interface
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+# Web Application Tutorial
+
+Great Silence includes an interactive web application built with NiceGUI that provides 
+a graphical interface for running simulations.
+
+## Starting the Web App
+
+```bash
+# Install webapp dependencies
+pip install -e ".[webapp]"
+
+# Launch the web application
+great-silence-webapp --port 8080
+```
+
+Then open **http://localhost:8080** in your browser.
+
+## Interface Overview
+
+The web app provides a complete workflow:
+
+1. **Preset Selection** — Choose a Fermi Paradox scenario
+2. **Configuration** — Adjust parameters
+3. **Simulation** — Run with live progress
+4. **Results** — View statistics and visualization
+
+## Preset Selector
+
+The landing page shows five scenario cards:
+
+| Preset | Description |
+|--------|-------------|
+| **Early Filter** | Life itself is rare—abiogenesis is the bottleneck |
+| **Late Filter** | Technology is self-destructive—civilizations die young |
+| **Rare Earth** | Habitable planets with right conditions are rare |
+| **Optimistic** | Life is common, civilizations are long-lived |
+| **Moderate** | Balanced parameters consistent with Fermi observations |
+
+Click a card to load its configuration.
+
+## Configuration Panels
+
+### Basic Settings
+
+Quick access to essential parameters:
+
+- **Star Count**: Number of stars (1k-1M)
+- **Duration**: Simulation time in Gyr
+- **Random Seed**: For reproducibility
+- **Monte Carlo**: Toggle ensemble mode
+
+### Advanced Settings
+
+Collapsible panels for all ~100 parameters organized by category:
+
+| Category | Parameters |
+|----------|------------|
+| **Galaxy** | Disk radius and height, bulge fraction, scale length, stellar motion |
+| **Civilization** | Drake equation, expansion settings, Kardashev thresholds, extinction model |
+| **Astrophysics** | Supernova, GRB settings, NS merger rates |
+| **Simulation** | Timestep controls, snapshot settings, parallelization |
+
+## Running Simulations
+
+### Single Run
+
+<Steps>
+
+1. Select a preset or configure parameters
+2. Click **Run Simulation**
+3. Watch the progress bar and live statistics
+4. View results when complete
+
+</Steps>
+
+### Live Feed
+
+During simulation, the interface shows:
+
+- **Progress bar**: Current time / total duration
+- **Civilization count**: Active civilizations
+- **Event feed**: Recent emergences, extinctions, expansions
+
+```
+[2.34 Gyr] Civilization emerged at star #12,456 (K=0.70)
+[2.41 Gyr] Civ #23 began expansion (K=0.85)
+[2.67 Gyr] Supernova at (-3.2, 1.1, 0.3) kpc - no casualties
+[2.89 Gyr] Civ #18 extinct (self-destruction at K=0.84)
+```
+
+## Results Dashboard
+
+### Statistics Tab
+
+Summary metrics:
+
+- Total civilizations emerged
+- Active at end
+- Peak simultaneous
+- Expansion statistics
+- Extinction breakdown
+
+### Visualization Tab
+
+Embedded Three.js viewer:
+
+- Click **Open Fullscreen** for immersive view
+- All standard controls available
+- Timeline scrubbing
+- Camera presets
+
+### Export Tab
+
+Download options:
+
+- **Statistics JSON**: Complete results data
+- **Configuration YAML**: Save current settings
+- **Visualization HTML**: Standalone 3D viewer
+
+## Configuration Management
+
+### Save Configuration
+
+```
+1. Configure parameters
+2. Click "Save Config" button
+3. Enter filename (e.g., "my_scenario")
+4. File saved to ~/.great_silence/presets/
+```
+
+### Load Configuration
+
+```
+1. Click "Load Config" button
+2. Browse saved presets
+3. Select file to load
+4. Parameters updated in UI
+```
+
+### Custom Presets
+
+Create your own presets by saving configurations:
+
+```bash
+# Presets stored in:
+~/.great_silence/presets/
+├── my_scenario.yaml
+├── high_hazards.yaml
+└── fast_expansion.yaml
+```
+
+## Advanced Usage
+
+### Command Line Options
+
+```bash
+# Custom port
+great-silence-webapp --port 3000
+
+# Enable reload for development
+great-silence-webapp --reload
+
+# Bind to all interfaces
+great-silence-webapp --host 0.0.0.0
+```
+
+### Programmatic Access
+
+```python
+from great_silence.webapp import create_app
+from nicegui import ui
+
+# Create app instance
+app = create_app()
+
+# Add custom routes
+@ui.page('/custom')
+def custom_page():
+    ui.label('Custom content')
+
+ui.run(port=8080)
+```
+
+## Dark Space Theme
+
+The web app uses a dark theme with:
+
+- Deep space black background (#0a0a0f)
+- Purple accent colors (#8B5CF6)
+- Glassmorphism card effects
+- Animated background gradients
+
+### Customizing Theme
+
+Edit `great_silence/webapp/themes.py`:
+
+```python
+SPACE_THEME = {
+    'bg_color': '#0a0a0f',
+    'accent_color': '#8B5CF6',
+    'text_color': '#e0e0e8',
+    # ... more options
+}
+```
+
+## Troubleshooting
+
+### Port Already in Use
+
+```bash
+# Find process using port
+lsof -i :8080
+
+# Kill process
+kill -9 <PID>
+
+# Or use different port
+great-silence-webapp --port 8081
+```
+
+### Visualization Not Loading
+
+1. Ensure simulation has snapshots enabled
+2. Check browser WebGL support
+3. Try reducing star count
+
+### Slow Performance
+
+1. Reduce star count
+2. Disable Monte Carlo mode
+3. Increase snapshot interval
+
+<Aside type="tip">
+  For production deployment, consider using a reverse proxy (nginx) 
+  and running with `--host 0.0.0.0`.
+</Aside>
+
+## API Reference
+
+- [`great_silence.webapp.app`](/api/webapp-app/) — Main application
+- [`great_silence.webapp.state`](/api/webapp-state/) — Reactive state management
+- [`great_silence.webapp.components`](/api/webapp-components-basic-settings/) — UI components
+
+## Next Steps
+
+- **[Basic Simulation](/tutorials/basic-simulation/)** — Python API tutorial
+- **[Configuration Guide](/getting-started/configuration/)** — Full parameter reference
+- **[Three.js Visualization](/tutorials/threejs-visualization/)** — Advanced visualization

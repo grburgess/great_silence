@@ -1,0 +1,121 @@
+---
+title: "Config Panels"
+description: "API reference for great_silence.webapp.components.config_panels"
+sidebar:
+  order: 46
+---
+
+# Config Panels
+
+**Module:** `great_silence.webapp.components.config_panels`
+
+Advanced hierarchical configuration panels for all simulation parameters.
+
+```python
+from great_silence.webapp.components.config_panels import ...
+```
+
+## Classes
+
+
+### ConfigPanels 
+
+Hierarchical configuration panels for all simulation parameters.
+
+```python
+class ConfigPanels:
+```
+
+#### Methods
+
+##### `__init__`
+
+```python
+def __init__(on_change: Optional[Callable[[], None]] = None)
+```
+
+**Parameters:**
+
+- `on_change` (`Optional[Callable[[], None]]`) — default: `None`
+
+---
+
+## Functions
+
+
+### `create_slider`
+
+Create a labeled slider for a config parameter.
+
+```python
+def create_slider(label: str, param_name: str, config_obj: Any, min_val: float, max_val: float, step: float = None, unit: str = '', tooltip: str = '', format_fn: Callable[[float], str] = None, on_change: Optional[Callable[[], None]] = None) -> None
+```
+
+**Parameters:**
+
+- `label` (`str`)
+- `param_name` (`str`)
+- `config_obj` (`Any`)
+- `min_val` (`float`)
+- `max_val` (`float`)
+- `step` (`float`) — default: `None`
+- `unit` (`str`) — default: `''`
+- `tooltip` (`str`) — default: `''`
+- `format_fn` (`Callable[[float], str]`) — default: `None`
+- `on_change` (`Optional[Callable[[], None]]`) — default: `None`
+
+
+### `create_number_input`
+
+Create a labeled number input for a config parameter.
+
+```python
+def create_number_input(label: str, param_name: str, config_obj: Any, min_val: float = None, max_val: float = None, step: float = 1, unit: str = '', tooltip: str = '', on_change: Optional[Callable[[], None]] = None) -> None
+```
+
+**Parameters:**
+
+- `label` (`str`)
+- `param_name` (`str`)
+- `config_obj` (`Any`)
+- `min_val` (`float`) — default: `None`
+- `max_val` (`float`) — default: `None`
+- `step` (`float`) — default: `1`
+- `unit` (`str`) — default: `''`
+- `tooltip` (`str`) — default: `''`
+- `on_change` (`Optional[Callable[[], None]]`) — default: `None`
+
+
+### `create_toggle`
+
+Create a labeled toggle for a boolean config parameter.
+
+```python
+def create_toggle(label: str, param_name: str, config_obj: Any, tooltip: str = '', on_change: Optional[Callable[[], None]] = None) -> None
+```
+
+**Parameters:**
+
+- `label` (`str`)
+- `param_name` (`str`)
+- `config_obj` (`Any`)
+- `tooltip` (`str`) — default: `''`
+- `on_change` (`Optional[Callable[[], None]]`) — default: `None`
+
+
+### `create_dropdown`
+
+Create a labeled dropdown for a config parameter.
+
+```python
+def create_dropdown(label: str, param_name: str, config_obj: Any, options: list, tooltip: str = '', on_change: Optional[Callable[[], None]] = None) -> None
+```
+
+**Parameters:**
+
+- `label` (`str`)
+- `param_name` (`str`)
+- `config_obj` (`Any`)
+- `options` (`list`)
+- `tooltip` (`str`) — default: `''`
+- `on_change` (`Optional[Callable[[], None]]`) — default: `None`

@@ -1,0 +1,58 @@
+---
+title: "Parameter Plots"
+description: "API reference for great_silence.webapp.components.parameter_plots"
+sidebar:
+  order: 47
+---
+
+# Parameter Plots
+
+**Module:** `great_silence.webapp.components.parameter_plots`
+
+Interactive parameter visualization plots for the webapp sidebar.
+
+```python
+from great_silence.webapp.components.parameter_plots import ...
+```
+
+## Constants
+
+| Constant | Value |
+|----------|-------|
+| `DARK_THEME` | `dict(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='...` |
+| `COLORS` | `\{'cyan': '#00d4ff', 'purple': '#a855f7', 'orange':...` |
+| `PLOT_OPTIONS` | `[('kardashev', 'Kardashev Crisis'), ('drake', 'Dra...` |
+
+## Classes
+
+
+### ParameterPlots 
+
+Component for displaying interactive parameter visualization plots.
+
+```python
+class ParameterPlots:
+```
+
+#### Methods
+
+##### `__init__`
+
+```python
+def __init__(on_ready: Optional[Callable] = None)
+```
+
+**Parameters:**
+
+- `on_ready` (`Optional[Callable]`) — default: `None`
+
+---
+
+##### `refresh`
+
+Refresh all 4 plots with current config values.
+
+```python
+def refresh() -> None
+```
+---

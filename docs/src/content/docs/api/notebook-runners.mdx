@@ -1,0 +1,288 @@
+---
+title: "Runners"
+description: "API reference for great_silence.notebook.runners"
+sidebar:
+  order: 17
+---
+
+# Runners
+
+**Module:** `great_silence.notebook.runners`
+
+Notebook-specific simulation runner with progress tracking.
+
+```python
+from great_silence.notebook.runners import ...
+```
+
+## Classes
+
+
+### NotebookSimulationRunner 
+
+Wrapper for GalaxySimulation with notebook-specific features.
+
+Provides:
+- Progress tracking via ipywidgets
+- Result packaging
+- Snapshot management
+- HDF5 persistence
+
+```python
+class NotebookSimulationRunner:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize notebook simulation runner.
+
+Args:
+    config: SimulationConfig instance
+    seed: Random seed for reproducibility
+
+```python
+def __init__(config: SimulationConfig, seed: Optional[int] = None)
+```
+
+**Parameters:**
+
+- `config` (`SimulationConfig`)
+- `seed` (`Optional[int]`) — default: `None`
+
+---
+
+##### `run`
+
+Run single simulation with progress tracking.
+
+Args:
+    verbose: Show progress output
+
+Returns:
+    Dictionary with results
+
+```python
+def run(verbose: bool = True) -> Dict[str, Any]
+```
+
+**Parameters:**
+
+- `verbose` (`bool`) — default: `True`
+
+---
+
+##### `run_monte_carlo`
+
+Run Monte Carlo ensemble.
+
+Args:
+    num_realizations: Number of realizations (uses config if None)
+    verbose: Show progress
+
+Returns:
+    Dictionary with aggregate results
+
+```python
+def run_monte_carlo(num_realizations: Optional[int] = None, verbose: bool = True) -> Dict[str, Any]
+```
+
+**Parameters:**
+
+- `num_realizations` (`Optional[int]`) — default: `None`
+- `verbose` (`bool`) — default: `True`
+
+---
+
+##### `save`
+
+Save results to HDF5.
+
+Args:
+    path: Output path (without extension)
+    compress: Use gzip compression
+
+Returns:
+    Path to saved file
+
+```python
+def save(path: str, compress: bool = True) -> Path
+```
+
+**Parameters:**
+
+- `path` (`str`)
+- `compress` (`bool`) — default: `True`
+
+---
+
+##### `get_summary_table`
+
+Get formatted summary table.
+
+Returns:
+    pandas DataFrame with statistics
+
+```python
+def get_summary_table()
+```
+---
+
+##### `get_civilization_dataframe`
+
+Get civilizations as pandas DataFrame.
+
+Returns:
+    DataFrame with civilization data
+
+```python
+def get_civilization_dataframe()
+```
+---
+
+##### `filter_civilizations`
+
+Filter civilizations by criteria.
+
+Args:
+    status: 'active' or 'extinct'
+    min_kardashev: Minimum Kardashev level
+    max_kardashev: Maximum Kardashev level
+    death_cause: Filter by specific death cause
+
+Returns:
+    Filtered list of civilization dicts
+
+```python
+def filter_civilizations(status: Optional[str] = None, min_kardashev: Optional[float] = None, max_kardashev: Optional[float] = None, death_cause: Optional[str] = None)
+```
+
+**Parameters:**
+
+- `status` (`Optional[str]`) — default: `None`
+- `min_kardashev` (`Optional[float]`) — default: `None`
+- `max_kardashev` (`Optional[float]`) — default: `None`
+- `death_cause` (`Optional[str]`) — default: `None`
+
+---
+
+##### `plot_3d_galaxy`
+
+Create 3D galaxy visualization.
+
+Args:
+    show_civilizations: Highlight civilizations
+    backend: 'plotly', 'threejs', or 'matplotlib'
+
+Returns:
+    Figure object
+
+```python
+def plot_3d_galaxy(show_civilizations: bool = True, backend: str = 'plotly')
+```
+
+**Parameters:**
+
+- `show_civilizations` (`bool`) — default: `True`
+- `backend` (`str`) — default: `'plotly'`
+
+---
+
+##### `plot_interactive_3d_galaxy`
+
+Create enhanced interactive 3D galaxy visualization with multi-layer support.
+
+Args:
+    subsample_stars: Number of background stars to show (default: 10000)
+    **layer_toggles: Layer visibility controls:
+        show_stars (bool): Show background star field (default: True)
+        show_active (bool): Show active civilizations (default: True)
+        show_extinct (bool): Show extinct civilizations (default: True)
+        show_deaths (bool): Show death location markers (default: False)
+        show_hazards (bool): Show hazard events (default: False)
+
+Returns:
+    plotly Figure object with toggleable layers
+
+Example:
+    &gt;&gt;&gt; fig = runner.plot_interactive_3d_galaxy(
+    ...     subsample_stars=20000,
+    ...     show_deaths=True,
+    ...     show_hazards=True
+    ... )
+    &gt;&gt;&gt; fig.show()
+
+```python
+def plot_interactive_3d_galaxy(subsample_stars = 10000, **layer_toggles)
+```
+
+**Parameters:**
+
+- `subsample_stars` — default: `10000`
+- `**layer_toggles`
+
+---
+
+##### `plot_animated_3d_galaxy`
+
+Create animated 3D galaxy visualization with time slider.
+
+Shows civilization evolution over simulation time with
+play/pause controls and timeline slider.
+
+Args:
+    subsample_stars: Number of background stars to show (default: 10000)
+    show_stars: Show background star field (default: True)
+    show_hazards: Show hazard events (default: True)
+    show_trajectories: Show expansion trajectory lines (default: False)
+    show_spheres: Show civilization influence spheres (default: False)
+
+Returns:
+    plotly Figure object with animation frames
+
+Raises:
+    ValueError: If simulation doesn't have snapshots enabled
+
+Example:
+    &gt;&gt;&gt; fig = runner.plot_animated_3d_galaxy(
+    ...     subsample_stars=20000,
+    ...     show_hazards=True,
+    ...     show_trajectories=True
+    ... )
+    &gt;&gt;&gt; fig.show()
+
+Note:
+    Requires simulation to be run with save_snapshots=True in config.
+
+```python
+def plot_animated_3d_galaxy(subsample_stars = 10000, show_stars = True, show_hazards = True, show_trajectories = False, show_spheres = False)
+```
+
+**Parameters:**
+
+- `subsample_stars` — default: `10000`
+- `show_stars` — default: `True`
+- `show_hazards` — default: `True`
+- `show_trajectories` — default: `False`
+- `show_spheres` — default: `False`
+
+---
+
+##### `plot_timeline`
+
+Create timeline visualization.
+
+```python
+def plot_timeline()
+```
+---
+
+##### `plot_extinction_causes`
+
+Create extinction cause breakdown.
+
+```python
+def plot_extinction_causes()
+```
+---

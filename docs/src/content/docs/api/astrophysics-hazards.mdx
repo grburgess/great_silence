@@ -1,0 +1,207 @@
+---
+title: "Hazards"
+description: "API reference for great_silence.astrophysics.hazards"
+sidebar:
+  order: 2
+---
+
+# Hazards
+
+**Module:** `great_silence.astrophysics.hazards`
+
+Combined hazard evaluation for civilizations.
+
+```python
+from great_silence.astrophysics.hazards import ...
+```
+
+## Classes
+
+
+### HazardEvaluator 
+
+Evaluate combined astrophysical hazards affecting civilizations.
+
+Handles:
+- Supernovae (Type II core-collapse, Type Ia thermonuclear)
+- Gamma-ray bursts (long-duration from collapsars)
+- Neutron star mergers (kilonovae, short gamma-ray bursts)
+
+Optimizations:
+- Spatial indexing for O(log N) neighbor queries
+- Numba-accelerated kernels for hot loops
+- Batch evaluation for multiple civilizations
+
+```python
+class HazardEvaluator:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize hazard evaluator.
+
+Args:
+    params: Astrophysics configuration parameters
+    use_numba: Whether to use Numba-accelerated kernels
+
+```python
+def __init__(params: AstrophysicsParameters, use_numba: bool = True)
+```
+
+**Parameters:**
+
+- `params` (`AstrophysicsParameters`)
+- `use_numba` (`bool`) — default: `True`
+
+---
+
+##### `evaluate_supernova_hazard`
+
+Check if civilization is destroyed by supernova.
+
+Uses spatial index if available for 100-1000x speedup on large N.
+Now accounts for local density and component-dependent rates.
+
+Args:
+    civilization_position: 3D position of civilization
+    stellar_positions: Positions of all stars
+    stellar_masses: Masses of all stars
+    stellar_ages: Ages of all stars (Gyr)
+    component_types: Component types (0=bulge, 1=disk)
+    dt_myr: Time step in Myr
+    rng: Random number generator
+    spatial_index: Optional SpatialIndex for fast queries
+
+Returns:
+    Tuple of (destroyed: bool, info: dict with hazard statistics)
+
+```python
+def evaluate_supernova_hazard(civilization_position: np.ndarray, stellar_positions: np.ndarray, stellar_masses: np.ndarray, stellar_ages: np.ndarray, component_types: np.ndarray, dt_myr: float, rng: np.random.Generator, spatial_index = None) -> Tuple[bool, dict]
+```
+
+**Parameters:**
+
+- `civilization_position` (`np.ndarray`)
+- `stellar_positions` (`np.ndarray`)
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `component_types` (`np.ndarray`)
+- `dt_myr` (`float`)
+- `rng` (`np.random.Generator`)
+- `spatial_index` — default: `None`
+
+---
+
+##### `evaluate_grb_hazard`
+
+Check if civilization is destroyed by GRB.
+
+Now uses metallicity-dependent GRB rates and realistic spatial
+distribution following massive star locations.
+
+Args:
+    civilization_position: 3D position of civilization
+    stellar_positions: Positions of all stars
+    stellar_masses: Masses of all stars
+    stellar_ages: Ages of all stars (Gyr)
+    metallicities: Stellar metallicities [Fe/H]
+    dt_myr: Time step in Myr
+    rng: Random number generator
+    spatial_index: Optional SpatialIndex for fast queries
+
+Returns:
+    Tuple of (destroyed: bool, info: dict with hazard statistics)
+
+```python
+def evaluate_grb_hazard(civilization_position: np.ndarray, stellar_positions: np.ndarray, stellar_masses: np.ndarray, stellar_ages: np.ndarray, metallicities: np.ndarray, dt_myr: float, rng: np.random.Generator, spatial_index = None) -> Tuple[bool, dict]
+```
+
+**Parameters:**
+
+- `civilization_position` (`np.ndarray`)
+- `stellar_positions` (`np.ndarray`)
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `metallicities` (`np.ndarray`)
+- `dt_myr` (`float`)
+- `rng` (`np.random.Generator`)
+- `spatial_index` — default: `None`
+
+---
+
+##### `evaluate_ns_merger_hazard`
+
+Check if civilization is destroyed by neutron star merger.
+
+NS mergers produce:
+1. Short GRB (highly beamed, lethal at ~kpc scale)
+2. Kilonova (less beamed, lethal at ~30 pc)
+
+Args:
+    civilization_position: 3D position of civilization (kpc)
+    stellar_positions: Positions of all stars (kpc)
+    stellar_masses: Masses of all stars (solar masses)
+    stellar_ages: Ages of all stars (Gyr)
+    dt_myr: Time step in Myr
+    rng: Random number generator
+    spatial_index: Optional SpatialIndex for fast queries
+    
+Returns:
+    Tuple of (destroyed: bool, info: dict)
+
+```python
+def evaluate_ns_merger_hazard(civilization_position: np.ndarray, stellar_positions: np.ndarray, stellar_masses: np.ndarray, stellar_ages: np.ndarray, dt_myr: float, rng: np.random.Generator, spatial_index = None) -> Tuple[bool, dict]
+```
+
+**Parameters:**
+
+- `civilization_position` (`np.ndarray`)
+- `stellar_positions` (`np.ndarray`)
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `dt_myr` (`float`)
+- `rng` (`np.random.Generator`)
+- `spatial_index` — default: `None`
+
+---
+
+##### `evaluate_all_hazards`
+
+Evaluate all astrophysical hazards for a civilization.
+
+Checks supernovae, GRBs, and neutron star mergers in sequence.
+Returns on first destruction event.
+
+Args:
+    civilization_position: 3D position in kpc
+    stellar_positions: All stellar positions
+    stellar_masses: All stellar masses
+    stellar_ages: All stellar ages (Gyr)
+    metallicities: All stellar metallicities
+    component_types: Galaxy component (0=bulge, 1=disk)
+    dt_myr: Time step in Myr
+    rng: Random number generator
+    spatial_index: Optional SpatialIndex
+    
+Returns:
+    Tuple of (destroyed, hazard_type, combined_info)
+
+```python
+def evaluate_all_hazards(civilization_position: np.ndarray, stellar_positions: np.ndarray, stellar_masses: np.ndarray, stellar_ages: np.ndarray, metallicities: np.ndarray, component_types: np.ndarray, dt_myr: float, rng: np.random.Generator, spatial_index = None) -> Tuple[bool, str, dict]
+```
+
+**Parameters:**
+
+- `civilization_position` (`np.ndarray`)
+- `stellar_positions` (`np.ndarray`)
+- `stellar_masses` (`np.ndarray`)
+- `stellar_ages` (`np.ndarray`)
+- `metallicities` (`np.ndarray`)
+- `component_types` (`np.ndarray`)
+- `dt_myr` (`float`)
+- `rng` (`np.random.Generator`)
+- `spatial_index` — default: `None`
+
+---

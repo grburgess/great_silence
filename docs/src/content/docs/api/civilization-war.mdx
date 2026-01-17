@@ -1,0 +1,360 @@
+---
+title: "War"
+description: "API reference for great_silence.civilization.war"
+sidebar:
+  order: 11
+---
+
+# War
+
+**Module:** `great_silence.civilization.war`
+
+War mechanics with fleet tracking and causal communication.
+
+```python
+from great_silence.civilization.war import ...
+```
+
+## Classes
+
+
+### BattleOutcome 
+
+Possible outcomes of a battle.
+
+```python
+class BattleOutcome(Enum):
+```
+
+
+### WarPhase 
+
+Phases of war.
+
+```python
+class WarPhase(Enum):
+```
+
+
+### FleetState <span class="badge">dataclass</span>
+
+State of a military fleet.
+
+```python
+@dataclass
+class FleetState:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `fleet_id` | `int` |
+| `owner_civ_id` | `int` |
+| `current_star_idx` | `int` |
+| `target_star_idx` | `Optional[int]` |
+| `strength` | `float` |
+| `ships` | `int` |
+| `velocity_c` | `float` |
+| `launch_time_myr` | `float` |
+| `arrival_time_myr` | `float` |
+| `is_in_transit` | `bool` |
+| `mission_type` | `str` |
+
+
+### BattleEvent <span class="badge">dataclass</span>
+
+Record of a battle.
+
+```python
+@dataclass
+class BattleEvent:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `time_myr` | `float` |
+| `star_idx` | `int` |
+| `attacker_civ_id` | `int` |
+| `defender_civ_id` | `int` |
+| `attacker_fleet_id` | `Optional[int]` |
+| `defender_fleet_id` | `Optional[int]` |
+| `outcome` | `BattleOutcome` |
+| `attacker_casualties` | `float` |
+| `defender_casualties` | `float` |
+| `territory_transferred` | `bool = False` |
+
+
+### WarState <span class="badge">dataclass</span>
+
+State of an ongoing war between two civilizations.
+
+```python
+@dataclass
+class WarState:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `enemy_civ_id` | `int` |
+| `start_time_myr` | `float` |
+| `last_encounter_time_myr` | `float` |
+| `phase` | `WarPhase = WarPhase.MOBILIZATION` |
+| `territory_disputed` | `Set[int] = field(default_factory=set)` |
+| `territory_controlled` | `Dict[int, Set[int]] = field(default_factory=dict)` |
+| `casualties_suffered` | `float = 0.0` |
+| `victories` | `int = 0` |
+| `defeats` | `int = 0` |
+| `war_exhaustion` | `float = 0.0` |
+| `peace_proposed` | `bool = False` |
+| `surrender_condition_met` | `bool = False` |
+| `vassalization_offered` | `bool = False` |
+
+
+### CommunicationEvent <span class="badge">dataclass</span>
+
+Record of a communication between civilizations.
+
+```python
+@dataclass
+class CommunicationEvent:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `time_myr` | `float` |
+| `sender_civ_id` | `int` |
+| `receiver_civ_id` | `int` |
+| `message_type` | `str` |
+| `content` | `str` |
+| `is_within_light_cone` | `bool` |
+| `arrival_time_myr` | `float` |
+
+
+### VassalState <span class="badge">dataclass</span>
+
+State of a vassal civilization.
+
+```python
+@dataclass
+class VassalState:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `overlord_civ_id` | `int` |
+| `tribute_rate` | `float` |
+| `military_obligation` | `bool` |
+| `autonomy_level` | `float` |
+| `vassal_since_myr` | `float` |
+
+## Functions
+
+
+### `calculate_fleet_strength`
+
+Calculate fleet strength.
+
+Strength depends on:
+- Kardashev scale (higher K = better weapons, shields)
+- Number of ships
+- Colony strength (logistic capacity, shipyards)
+- Fleet experience (older fleets are more experienced)
+
+Args:
+    kardashev_scale: Technological level
+    num_ships: Number of ships in fleet
+    colony_strength: Strength of supporting colony
+    fleet_age_myr: Age of fleet in Myr
+
+Returns:
+    Combined fleet strength
+
+```python
+def calculate_fleet_strength(kardashev_scale: float, num_ships: int, colony_strength: float, fleet_age_myr: float) -> float
+```
+
+**Parameters:**
+
+- `kardashev_scale` (`float`)
+- `num_ships` (`int`)
+- `colony_strength` (`float`)
+- `fleet_age_myr` (`float`)
+
+
+### `calculate_colony_strength`
+
+Calculate colony strength for defense/offense.
+
+Older colonies are stronger (more infrastructure).
+Higher K gives better weapons.
+Home worlds have cultural/morale bonus.
+
+Args:
+    colony_age_myr: Age of colony in Myr
+    kardashev_scale: Technological level
+    population: Colony population (relative units)
+    is_home_world: Whether this is the home world
+
+Returns:
+    Colony strength multiplier
+
+```python
+def calculate_colony_strength(colony_age_myr: float, kardashev_scale: float, population: float, is_home_world: bool) -> float
+```
+
+**Parameters:**
+
+- `colony_age_myr` (`float`)
+- `kardashev_scale` (`float`)
+- `population` (`float`)
+- `is_home_world` (`bool`)
+
+
+### `resolve_battle`
+
+Resolve a single battle.
+
+Battle mechanics:
+- Calculate fleet strengths
+- Apply tech advantage (sigmoid function)
+- Apply defensive terrain bonus (defender in colony gets bonus)
+- Roll for outcome
+- Calculate casualties
+
+Args:
+    attacker_fleet: Attacker's fleet
+    defender_fleet: Defender's fleet
+    colony_strength_defender: Strength of defending colony
+    tech_gap: K_attacker - K_defender
+    rng: Random number generator
+
+Returns:
+    (BattleOutcome, attacker_casualties, defender_casualties)
+
+```python
+def resolve_battle(attacker_fleet: FleetState, defender_fleet: FleetState, colony_strength_defender: float, tech_gap: float, rng: np.random.Generator) -> Tuple[BattleOutcome, float, float]
+```
+
+**Parameters:**
+
+- `attacker_fleet` (`FleetState`)
+- `defender_fleet` (`FleetState`)
+- `colony_strength_defender` (`float`)
+- `tech_gap` (`float`)
+- `rng` (`np.random.Generator`)
+
+
+### `calculate_war_duration`
+
+Estimate war duration in Myr.
+
+Factors:
+- Tech gap: larger gaps = shorter wars (one side dominates)
+- Territory importance: contested core systems = longer wars
+- Initial strength: balanced wars = longer
+
+Args:
+    kardashev_gap: |K_a - K_b|
+    territory_importance: 0.0-1.0 (how valuable disputed territory is)
+    initial_strength_ratio: strength_a / strength_b
+
+Returns:
+    Expected war duration in Myr
+
+```python
+def calculate_war_duration(kardashev_gap: float, territory_importance: float, initial_strength_ratio: float) -> float
+```
+
+**Parameters:**
+
+- `kardashev_gap` (`float`)
+- `territory_importance` (`float`)
+- `initial_strength_ratio` (`float`)
+
+
+### `calculate_light_cone_arrival`
+
+Calculate when message arrives given speed of light.
+
+Args:
+    sender_pos: Sender position [x, y, z] in kpc
+    receiver_pos: Receiver position [x, y, z] in kpc
+    send_time_myr: Time message sent in Myr
+
+Returns:
+    Arrival time in Myr
+
+```python
+def calculate_light_cone_arrival(sender_pos: np.ndarray, receiver_pos: np.ndarray, send_time_myr: float) -> float
+```
+
+**Parameters:**
+
+- `sender_pos` (`np.ndarray`)
+- `receiver_pos` (`np.ndarray`)
+- `send_time_myr` (`float`)
+
+
+### `is_communication_possible`
+
+Check if communication is causally possible.
+
+Message must be able to travel at light speed.
+
+Args:
+    sender_pos: Sender position [x, y, z] in kpc
+    receiver_pos: Receiver position [x, y, z] in kpc
+    send_time_myr: Time message sent in Myr
+    receive_time_myr: Time receiver is active in Myr
+
+Returns:
+    True if communication possible
+
+```python
+def is_communication_possible(sender_pos: np.ndarray, receiver_pos: np.ndarray, send_time_myr: float, receive_time_myr: float) -> bool
+```
+
+**Parameters:**
+
+- `sender_pos` (`np.ndarray`)
+- `receiver_pos` (`np.ndarray`)
+- `send_time_myr` (`float`)
+- `receive_time_myr` (`float`)
+
+
+### `check_alliance_cascade_light_cone`
+
+Determine which allies can join war based on light cone constraints.
+
+Allies can only join war if they:
+- Have learned about the war via causal communication
+- Can physically reach the battlefield in reasonable time
+
+Args:
+    attacker_civ_id: Attacker civilization ID
+    defender_civ_id: Defender civilization ID
+    ally_positions: Dict mapping civ_id -&gt; home world position
+    war_start_time_myr: Time war started
+
+Returns:
+    List of ally IDs that can join war
+
+```python
+def check_alliance_cascade_light_cone(attacker_civ_id: int, defender_civ_id: int, ally_positions: Dict[int, np.ndarray], war_start_time_myr: float) -> List[int]
+```
+
+**Parameters:**
+
+- `attacker_civ_id` (`int`)
+- `defender_civ_id` (`int`)
+- `ally_positions` (`Dict[int, np.ndarray]`)
+- `war_start_time_myr` (`float`)

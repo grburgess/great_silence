@@ -1,0 +1,176 @@
+---
+title: Kardashev Scale
+description: Measuring civilization advancement by energy consumption
+sidebar:
+  order: 3
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+# The Kardashev Scale
+
+The Kardashev Scale, proposed by Soviet astronomer Nikolai Kardashev in 1964, classifies 
+civilizations by their energy consumption. It provides a framework for understanding 
+technological advancement that transcends specific technologies.
+
+## The Original Scale
+
+<CardGrid>
+  <Card title="Type I" icon="earth">
+    **Planetary Civilization**
+    
+    Controls all energy resources of its home planet (~10¹⁶ W)
+    
+    Can control weather, earthquakes, volcanoes
+  </Card>
+  <Card title="Type II" icon="sun">
+    **Stellar Civilization**
+    
+    Harnesses the total energy output of its star (~10²⁶ W)
+    
+    Dyson spheres, stellar engineering
+  </Card>
+  <Card title="Type III" icon="star">
+    **Galactic Civilization**
+    
+    Commands the energy of an entire galaxy (~10³⁶ W)
+    
+    Interstellar travel, galactic engineering
+  </Card>
+</CardGrid>
+
+## Extended Scale in Great Silence
+
+Great Silence uses a continuous Kardashev scale (K-level) from 0 to 3+:
+
+| K-Level | Energy (W) | Description | Capabilities |
+|---------|------------|-------------|--------------|
+| 0.0 | 10¹² | Pre-industrial | Fire, basic tools |
+| 0.72 | 10¹⁴ | Industrial | Fossil fuels, early tech |
+| 1.0 | 10¹⁶ | Planetary | Full planetary control |
+| 1.5 | 10²¹ | Early stellar | Space infrastructure |
+| 2.0 | 10²⁶ | Full stellar | Dyson swarms |
+| 2.5 | 10³¹ | Multi-stellar | Regional colonization |
+| 3.0 | 10³⁶ | Galactic | Galaxy-wide presence |
+
+<Aside type="note">
+  Humanity is currently at approximately K = 0.73 on this scale, having not yet 
+  achieved full planetary energy utilization.
+</Aside>
+
+## K-Level and Civilization Capabilities
+
+In Great Silence, the Kardashev level determines key capabilities:
+
+### Probe Technology
+
+```python
+from great_silence.civilization.probe_design import (
+    probe_velocity_from_kardashev,
+    per_hop_range_from_kardashev,
+    offspring_count,
+    replication_delay_years
+)
+
+# Example for K = 0.85
+k_level = 0.85
+velocity = probe_velocity_from_kardashev(k_level)      # ~0.01c
+hop_range = per_hop_range_from_kardashev(k_level)      # ~5 pc
+offspring = offspring_count(k_level)                    # ~2 probes
+delay = replication_delay_years(k_level)               # ~80,000 years
+```
+
+### Scaling Functions
+
+| Capability | K=0.85 | K=1.0 | K=1.5 | K=2.0 |
+|------------|--------|-------|-------|-------|
+| Probe velocity | 0.01c | 0.03c | 0.1c | 0.3c |
+| Hop range | 5 pc | 15 pc | 40 pc | 80 pc |
+| Offspring count | 2 | 3 | 5 | 7 |
+| Replication time | 80 kyr | 50 kyr | 25 kyr | 12 kyr |
+
+### Expansion Threshold
+
+Civilizations must reach **K ≥ 0.85** to begin interstellar expansion:
+
+```python
+config.civilization.min_kardashev_for_expansion = 0.85
+```
+
+This represents the technological threshold for:
+- Self-replicating probe construction
+- Interstellar propulsion systems
+- Long-duration autonomous operation
+
+## K-Level Advancement
+
+Civilizations advance through the Kardashev scale over time:
+
+```python
+# Advancement rate varies by civilization
+base_advancement_rate = config.civilization.kardashev_advancement_rate
+individual_rate = base_rate × (1 + random_factor)
+
+# Each timestep
+new_k_level = old_k_level + rate × dt_myr
+```
+
+### Advancement Characteristics
+
+- **Initial K-level**: 0.7 (post-industrial technology)
+- **Growth phases**: Breakthrough periods and stagnation
+- **Maximum K-level**: 3.0 (theoretical galactic limit)
+
+## Crisis Peaks and K-Levels
+
+The Great Filter model places crisis peaks at specific K-levels:
+
+| K-Level | Crisis | Description |
+|---------|--------|-------------|
+| 0.72 | Industrial | Climate change, resource depletion |
+| 0.85 | Early space | Nuclear weapons, AI risk |
+| 1.0 | Planetary | Unknown existential risks |
+| 1.5 | Stellar | Megastructure instabilities |
+| 2.0 | Post-stellar | Theoretical advanced risks |
+
+<Aside type="caution">
+  The K=0.85 crisis peak (early space era) has the highest default amplitude,
+  representing the "technological puberty" hypothesis—the period of greatest
+  self-destruction risk.
+</Aside>
+
+## Implementation Details
+
+### K-Level Storage
+
+Each `CivilizationState` tracks:
+
+```python
+@dataclass
+class CivilizationState:
+    kardashev_level: float = 0.7  # Current K-level
+    expansion_started: bool = False
+    probe_params_locked: bool = False  # Locked at expansion start
+    locked_velocity_c: float = 0.0
+    locked_range_pc: float = 0.0
+```
+
+### Probe Parameter Locking
+
+Once expansion begins, probe capabilities are locked:
+
+```python
+if civ.kardashev_level >= min_kardashev_for_expansion and not civ.expansion_started:
+    civ.expansion_started = True
+    civ.probe_params_locked = True
+    civ.locked_velocity_c = probe_velocity_from_kardashev(civ.kardashev_level)
+    civ.locked_range_pc = per_hop_range_from_kardashev(civ.kardashev_level)
+```
+
+This represents technological lock-in during expansion phases.
+
+## Further Reading
+
+- [The Great Filter](/concepts/great-filter/) — Crisis peaks and extinction
+- [Probe Expansion Guide](/guides/probe-expansion/) — Detailed expansion mechanics
+- [API: probe_design](/api/civilization-probe-design/) — Scaling functions reference

@@ -1,0 +1,250 @@
+---
+title: "Unified Scheduler"
+description: "API reference for great_silence.simulation.disasters.unified_scheduler"
+sidebar:
+  order: 24
+---
+
+# Unified Scheduler
+
+**Module:** `great_silence.simulation.disasters.unified_scheduler`
+
+Unified disaster scheduler with precomputed SN, GRB, and NS merger events.
+
+This module provides O(log N) disaster event queries using min-heaps.
+All disaster types are scheduled at initialization based on stellar properties.
+
+```python
+from great_silence.simulation.disasters.unified_scheduler import ...
+```
+
+## Classes
+
+
+### DisasterType 
+
+```python
+class DisasterType(IntEnum):
+```
+
+
+### ScheduledStarBirth <span class="badge">dataclass</span>
+
+A pre-scheduled star birth event.
+
+```python
+@dataclass
+class ScheduledStarBirth:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `time_myr` | `float` |
+| `position` | `np.ndarray` |
+| `mass` | `float` |
+| `metallicity` | `float` |
+
+
+### ScheduledDisaster <span class="badge">dataclass</span>
+
+A pre-scheduled disaster event.
+
+```python
+@dataclass
+class ScheduledDisaster:
+```
+
+#### Fields
+
+| Field | Type |
+|-------|------|
+| `time_myr` | `float` |
+| `disaster_type` | `DisasterType` |
+| `star_idx` | `int` |
+| `position` | `np.ndarray` |
+| `energy_ergs` | `float` |
+| `lethal_radius_pc` | `float` |
+| `sterilization_radius_pc` | `float` |
+| `grb_jet_theta` | `float = 0.0` |
+| `grb_jet_phi` | `float = 0.0` |
+| `grb_beaming_angle_deg` | `float = 10.0` |
+| `merger_partner_idx` | `int = -1` |
+
+#### Methods
+
+##### `get_position`
+
+Get disaster position, optionally tracking parent star's current location.
+
+Args:
+    galaxy_positions: Current stellar positions array (N, 3) in kpc
+    track_parent_star: If True and star_idx &gt;= 0, use star's current position
+    
+Returns:
+    Position as (3,) array in kpc
+
+```python
+def get_position(galaxy_positions: Optional[np.ndarray] = None, track_parent_star: bool = True) -> np.ndarray
+```
+
+**Parameters:**
+
+- `galaxy_positions` (`Optional[np.ndarray]`) — default: `None`
+- `track_parent_star` (`bool`) — default: `True`
+
+---
+
+
+### UnifiedDisasterScheduler 
+
+Unified scheduler for all astrophysical disasters.
+
+Precomputes:
+- Supernova times for all M &gt; 8 Msun stars
+- GRB events (subset of SNe based on mass + metallicity)
+- NS merger events (from NS remnants with delay time distribution)
+
+All events stored in min-heaps for O(log N) queries.
+
+```python
+class UnifiedDisasterScheduler:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize unified disaster scheduler.
+
+Args:
+    positions: (N, 3) stellar positions in kpc
+    masses: (N,) stellar masses in Msun
+    ages_gyr: (N,) stellar ages in Gyr
+    metallicities: (N,) stellar metallicities [Fe/H]
+    config: AstrophysicsParameters
+    rng: Random number generator
+    simulation_duration_myr: Total simulation duration
+    enable_star_formation: If True, schedule continuous star births
+    galaxy_scale_radius_kpc: Galaxy scale radius for star formation
+    spread_initial_disasters: If True, artificially spread disasters for visualization
+
+```python
+def __init__(positions: np.ndarray, masses: np.ndarray, ages_gyr: np.ndarray, metallicities: np.ndarray, config, rng: np.random.Generator, simulation_duration_myr: float, enable_star_formation: bool = True, galaxy_scale_radius_kpc: float = 3.0, spread_initial_disasters: bool = False)
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `masses` (`np.ndarray`)
+- `ages_gyr` (`np.ndarray`)
+- `metallicities` (`np.ndarray`)
+- `config`
+- `rng` (`np.random.Generator`)
+- `simulation_duration_myr` (`float`)
+- `enable_star_formation` (`bool`) — default: `True`
+- `galaxy_scale_radius_kpc` (`float`) — default: `3.0`
+- `spread_initial_disasters` (`bool`) — default: `False`
+
+---
+
+##### `get_star_births_in_window`
+
+Get all star births occurring in time window.
+
+Args:
+    start_myr: Window start (Myr)
+    end_myr: Window end (Myr)
+    
+Returns:
+    List of ScheduledStarBirth events
+
+```python
+def get_star_births_in_window(start_myr: float, end_myr: float) -> List[ScheduledStarBirth]
+```
+
+**Parameters:**
+
+- `start_myr` (`float`)
+- `end_myr` (`float`)
+
+---
+
+##### `peek_next_star_birth_time`
+
+Get time of next scheduled star birth without consuming it.
+
+Returns:
+    Time in Myr, or None if no more star births
+
+```python
+def peek_next_star_birth_time() -> Optional[float]
+```
+---
+
+##### `peek_next_event_time`
+
+Get time of next event (disaster or star birth), whichever is first.
+
+Returns:
+    Time in Myr, or None if no more events
+
+```python
+def peek_next_event_time() -> Optional[float]
+```
+---
+
+##### `get_disasters_in_window`
+
+Get all disasters occurring in time window.
+
+Complexity: O(k log N) where k = events in window
+
+Args:
+    start_myr: Window start (Myr)
+    end_myr: Window end (Myr)
+    
+Returns:
+    List of ScheduledDisaster events
+
+```python
+def get_disasters_in_window(start_myr: float, end_myr: float) -> List[ScheduledDisaster]
+```
+
+**Parameters:**
+
+- `start_myr` (`float`)
+- `end_myr` (`float`)
+
+---
+
+##### `peek_next_disaster_time`
+
+Get time of next scheduled disaster without consuming it.
+
+Returns:
+    Time in Myr, or None if no more disasters
+
+```python
+def peek_next_disaster_time() -> Optional[float]
+```
+---
+
+##### `get_statistics`
+
+Get disaster and star birth schedule statistics.
+
+```python
+def get_statistics() -> dict
+```
+---
+
+##### `pending_count` `property`
+
+Number of disasters still pending.
+
+```python
+def pending_count() -> int
+```
+---

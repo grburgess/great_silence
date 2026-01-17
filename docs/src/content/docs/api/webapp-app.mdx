@@ -1,0 +1,64 @@
+---
+title: "App"
+description: "API reference for great_silence.webapp.app"
+sidebar:
+  order: 44
+---
+
+# App
+
+**Module:** `great_silence.webapp.app`
+
+Main NiceGUI web application for Great Silence simulations.
+
+```python
+from great_silence.webapp.app import ...
+```
+
+## Functions
+
+
+### `apply_dark_theme`
+
+Apply dark space theme to the application.
+
+```python
+def apply_dark_theme(theme_name: str = 'deep_space')
+```
+
+**Parameters:**
+
+- `theme_name` (`str`) — default: `'deep_space'`
+
+
+### `refresh_ui_from_state`
+
+Refresh UI components after loading config.
+
+```python
+def refresh_ui_from_state()
+```
+
+
+### `main_page`
+
+Main application page.
+
+```python
+def main_page()
+```
+
+
+### `run_app`
+
+Run the web application.
+
+```python
+def run_app(host: str = '127.0.0.1', port: int = 8080, reload: bool = False)
+```
+
+**Parameters:**
+
+- `host` (`str`) — default: `'127.0.0.1'`
+- `port` (`int`) — default: `8080`
+- `reload` (`bool`) — default: `False`

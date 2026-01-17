@@ -1,0 +1,206 @@
+---
+title: "Structure"
+description: "API reference for great_silence.galaxy.structure"
+sidebar:
+  order: 15
+---
+
+# Structure
+
+**Module:** `great_silence.galaxy.structure`
+
+3D galactic structure modeling with proper stellar kinematics.
+
+```python
+from great_silence.galaxy.structure import ...
+```
+
+## Classes
+
+
+### GalaxyModel 
+
+3D model of a Milky Way-like spiral galaxy.
+
+Handles stellar positions, velocities, and galactic rotation.
+Uses exponential disk profile with optional bulge and spiral arms.
+
+```python
+class GalaxyModel:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize galaxy model.
+
+Args:
+    params: Galaxy configuration parameters
+    seed: Random seed for reproducibility
+    use_numba: Use Numba JIT-compiled kernels for performance (recommended for M1 Max)
+
+```python
+def __init__(params: GalaxyParameters, seed: Optional[int] = None, use_numba: bool = True)
+```
+
+**Parameters:**
+
+- `params` (`GalaxyParameters`)
+- `seed` (`Optional[int]`) — default: `None`
+- `use_numba` (`bool`) — default: `True`
+
+---
+
+##### `generate_stellar_population`
+
+Generate stellar positions, velocities, and properties.
+
+Includes bulge + disk components if configured.
+
+```python
+def generate_stellar_population() -> None
+```
+---
+
+##### `calculate_metallicities`
+
+Calculate metallicity [Fe/H] for each star with radial gradient.
+
+Metallicity decreases with galactocentric radius (radial gradient).
+Bulge stars are metal-rich.
+
+Returns:
+    Array of metallicities in dex ([Fe/H])
+
+```python
+def calculate_metallicities() -> np.ndarray
+```
+---
+
+##### `evolve_positions`
+
+Evolve stellar positions and velocities using leapfrog integrator.
+
+**EXPERIMENTAL FEATURE:** Gravitational evolution is currently disabled
+by default because the initial velocity distribution (flat rotation curve)
+is not in perfect equilibrium with the Miyamoto-Nagai + Hernquist + halo
+potential. This causes systematic radial drift over long timescales.
+
+For most simulations (&lt;1 Gyr), static stellar positions are a good
+approximation since stellar neighborhoods don't change significantly.
+
+Uses a second-order symplectic leapfrog integrator which conserves
+energy and angular momentum well for orbital dynamics.
+
+The leapfrog algorithm (drift-kick form):
+1. Compute acceleration a(t) at current positions
+2. Update positions: r(t+dt) = r(t) + v(t)×dt + 0.5×a(t)×dt²
+3. Compute acceleration a(t+dt) at new positions
+4. Update velocities: v(t+dt) = v(t) + 0.5×(a(t) + a(t+dt))×dt
+
+Args:
+    dt_myr: Time step in million years
+    use_numba: Use Numba JIT-compiled kernel (10-20x speedup)
+    enable_motion: Enable gravitational evolution (disabled by default)
+
+```python
+def evolve_positions(dt_myr: float, use_numba: bool = True, enable_motion: bool = False) -> None
+```
+
+**Parameters:**
+
+- `dt_myr` (`float`)
+- `use_numba` (`bool`) — default: `True`
+- `enable_motion` (`bool`) — default: `False`
+
+---
+
+##### `initialize_adaptive_timesteps`
+
+Initialize individual timesteps for each star based on orbital dynamics.
+
+Uses the standard criterion: dt_i = η × sqrt(r_i / |a_i|)
+where η is a dimensionless accuracy parameter (typically 0.01-0.1).
+
+Timesteps are quantized to block timesteps (powers of 2) for efficiency.
+
+Args:
+    eta: Accuracy parameter (smaller = more accurate but slower)
+    min_dt: Minimum allowed timestep in Myr
+    max_dt: Maximum allowed timestep in Myr
+
+```python
+def initialize_adaptive_timesteps(eta: float = 0.02, min_dt: float = 0.05, max_dt: float = 2.0) -> None
+```
+
+**Parameters:**
+
+- `eta` (`float`) — default: `0.02`
+- `min_dt` (`float`) — default: `0.05`
+- `max_dt` (`float`) — default: `2.0`
+
+---
+
+##### `evolve_positions_adaptive`
+
+Evolve stellar positions using adaptive individual timesteps.
+
+Only stars whose time_until_update &lt;= 0 are integrated.
+This provides major speedup since outer disk stars (80%+) use
+much larger timesteps than inner bulge stars.
+
+Args:
+    dt_myr: Global simulation timestep in Myr
+    use_numba: Use Numba kernels for acceleration
+
+```python
+def evolve_positions_adaptive(dt_myr: float, use_numba: bool = True) -> None
+```
+
+**Parameters:**
+
+- `dt_myr` (`float`)
+- `use_numba` (`bool`) — default: `True`
+
+---
+
+##### `get_distance_matrix`
+
+Compute pairwise distance matrix between stars.
+
+Args:
+    indices: Optional subset of star indices to compute distances for
+
+Returns:
+    Distance matrix in parsecs
+
+```python
+def get_distance_matrix(indices: Optional[np.ndarray] = None) -> np.ndarray
+```
+
+**Parameters:**
+
+- `indices` (`Optional[np.ndarray]`) — default: `None`
+
+---
+
+##### `get_stellar_density`
+
+Get stellar number density at a given position.
+
+Args:
+    position: 3D position (x, y, z) in kpc
+
+Returns:
+    Number density in stars/kpc³
+
+```python
+def get_stellar_density(position: np.ndarray) -> float
+```
+
+**Parameters:**
+
+- `position` (`np.ndarray`)
+
+---

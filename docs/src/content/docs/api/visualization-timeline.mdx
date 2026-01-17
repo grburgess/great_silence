@@ -1,0 +1,132 @@
+---
+title: "Timeline"
+description: "API reference for great_silence.visualization.timeline"
+sidebar:
+  order: 42
+---
+
+# Timeline
+
+**Module:** `great_silence.visualization.timeline`
+
+Timeline visualization and animation tools.
+
+```python
+from great_silence.visualization.timeline import ...
+```
+
+## Classes
+
+
+### TimelineAnimator 
+
+Create animations showing civilization evolution over time.
+
+```python
+class TimelineAnimator:
+```
+
+#### Methods
+
+##### `__init__`
+
+Initialize animator.
+
+Args:
+    figsize: Figure size for animations
+
+```python
+def __init__(figsize: tuple = (12, 10))
+```
+
+**Parameters:**
+
+- `figsize` (`tuple`) — default: `(12, 10)`
+
+---
+
+##### `plot_timeline_statistics`
+
+Plot civilization statistics over time.
+
+Args:
+    times_gyr: Time points in Gyr
+    n_active: Number of active civilizations
+    n_total: Total civilizations ever emerged
+    n_colonized: Optional number of colonized systems
+    save_path: Optional path to save figure
+
+```python
+def plot_timeline_statistics(times_gyr: np.ndarray, n_active: np.ndarray, n_total: np.ndarray, n_colonized: Optional[np.ndarray] = None, save_path: Optional[str] = None) -> None
+```
+
+**Parameters:**
+
+- `times_gyr` (`np.ndarray`)
+- `n_active` (`np.ndarray`)
+- `n_total` (`np.ndarray`)
+- `n_colonized` (`Optional[np.ndarray]`) — default: `None`
+- `save_path` (`Optional[str]`) — default: `None`
+
+---
+
+##### `plot_extinction_causes`
+
+Plot pie chart of extinction causes.
+
+Args:
+    causes: Dictionary mapping cause names to counts
+    save_path: Optional path to save figure
+
+```python
+def plot_extinction_causes(causes: dict, save_path: Optional[str] = None) -> None
+```
+
+**Parameters:**
+
+- `causes` (`dict`)
+- `save_path` (`Optional[str]`) — default: `None`
+
+---
+
+##### `plot_kardashev_progression`
+
+Plot histogram of Kardashev scales and technological progression.
+
+Args:
+    civilizations: List of CivilizationState objects
+    simulation_duration_myr: Total simulation duration in Myr
+    save_path: Optional path to save figure
+
+```python
+def plot_kardashev_progression(civilizations: List, simulation_duration_myr: float, save_path: Optional[str] = None) -> None
+```
+
+**Parameters:**
+
+- `civilizations` (`List`)
+- `simulation_duration_myr` (`float`)
+- `save_path` (`Optional[str]`) — default: `None`
+
+---
+
+##### `create_animation`
+
+Create animation of simulation progression.
+
+Args:
+    snapshots: List of SimulationSnapshot objects
+    output_path: Path to save animation (e.g., 'output.mp4')
+    fps: Frames per second
+
+```python
+def create_animation(snapshots: List, output_path: str, fps: int = 10) -> None
+```
+
+**Parameters:**
+
+- `snapshots` (`List`)
+- `output_path` (`str`)
+- `fps` (`int`) — default: `10`
+
+---

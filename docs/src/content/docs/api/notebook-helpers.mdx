@@ -1,0 +1,152 @@
+---
+title: "Helpers"
+description: "API reference for great_silence.notebook.helpers"
+sidebar:
+  order: 16
+---
+
+# Helpers
+
+**Module:** `great_silence.notebook.helpers`
+
+Helper utilities for Jupyter notebook interfaces.
+
+```python
+from great_silence.notebook.helpers import ...
+```
+
+## Functions
+
+
+### `configure_notebook_display`
+
+Configure display settings for notebook environment.
+
+```python
+def configure_notebook_display()
+```
+
+
+### `save_simulation_hdf5`
+
+Save simulation results to HDF5 format.
+
+Args:
+    simulation: GalaxySimulation instance
+    path: Output path (without .h5 extension)
+    compress: Whether to use gzip compression
+
+```python
+def save_simulation_hdf5(simulation, path: str, compress: bool = True)
+```
+
+**Parameters:**
+
+- `simulation`
+- `path` (`str`)
+- `compress` (`bool`) — default: `True`
+
+
+### `load_simulation`
+
+Load simulation results from HDF5 file.
+
+Args:
+    path: Path to .h5 file
+
+Returns:
+    Dictionary containing simulation data
+
+```python
+def load_simulation(path: str) -> Dict[str, Any]
+```
+
+**Parameters:**
+
+- `path` (`str`)
+
+
+### `export_interactive_plot`
+
+Export plotly or three.js figure to standalone HTML.
+
+Args:
+    fig: Plotly figure or three.js renderer
+    path: Output HTML path
+    auto_open: Whether to open in browser
+
+```python
+def export_interactive_plot(fig, path: str, auto_open: bool = False)
+```
+
+**Parameters:**
+
+- `fig`
+- `path` (`str`)
+- `auto_open` (`bool`) — default: `False`
+
+
+### `reconstruct_simulation_from_hdf5`
+
+Reconstruct a GalaxySimulation object from HDF5 file for visualization.
+
+Args:
+    path: Path to .h5 file
+
+Returns:
+    GalaxySimulation object suitable for visualization
+
+Note:
+    This recreates the simulation state from saved data but won't have
+    all internal state (e.g., spatial indices, running simulation).
+    Suitable for visualization and analysis only.
+
+```python
+def reconstruct_simulation_from_hdf5(path: str)
+```
+
+**Parameters:**
+
+- `path` (`str`)
+
+
+### `create_results_summary`
+
+Create formatted summary table of simulation results.
+
+Args:
+    simulation: GalaxySimulation instance or stats dict
+
+Returns:
+    DataFrame with summary statistics
+
+```python
+def create_results_summary(simulation) -> pd.DataFrame
+```
+
+**Parameters:**
+
+- `simulation`
+
+
+### `create_threejs_visualization`
+
+Create interactive 3D visualization using pythreejs.
+
+Args:
+    positions: Nx3 array of positions
+    colors: Nx3 array of RGB colors (0-1 range), optional
+    sizes: N array of point sizes, optional
+
+Returns:
+    pythreejs renderer object
+
+```python
+def create_threejs_visualization(positions: np.ndarray, colors: Optional[np.ndarray] = None, sizes: Optional[np.ndarray] = None) -> Any
+```
+
+**Parameters:**
+
+- `positions` (`np.ndarray`)
+- `colors` (`Optional[np.ndarray]`) — default: `None`
+- `sizes` (`Optional[np.ndarray]`) — default: `None`

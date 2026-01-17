@@ -1,0 +1,55 @@
+---
+title: "API Reference"
+description: "Complete API documentation for Great Silence"
+sidebar:
+  order: 0
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+# API Reference
+
+Complete API documentation for the Great Silence simulation framework.
+
+
+<CardGrid>
+  <Card title="Astrophysics" icon="document">
+    Astrophysical hazards including supernovae and GRBs. Contains 5 classes and 0 functions.
+  </Card>
+  <Card title="Civilization" icon="document">
+    Civilization emergence, expansion, and extinction models. Contains 12 classes and 17 functions.
+  </Card>
+  <Card title="Config" icon="document">
+    Configuration dataclasses and parameter management. Contains 5 classes and 0 functions.
+  </Card>
+  <Card title="Core" icon="document">
+    The core module. Contains 0 classes and 1 functions.
+  </Card>
+  <Card title="Galaxy" icon="document">
+    Galactic structure, stellar populations, and dynamics. Contains 3 classes and 0 functions.
+  </Card>
+  <Card title="Notebook" icon="document">
+    Jupyter notebook integration helpers. Contains 5 classes and 7 functions.
+  </Card>
+  <Card title="Simulation" icon="document">
+    Core simulation engine and Monte Carlo framework. Contains 20 classes and 4 functions.
+  </Card>
+  <Card title="Utils" icon="document">
+    Utility functions and spatial indexing. Contains 8 classes and 35 functions.
+  </Card>
+  <Card title="Visualization" icon="document">
+    Plotting and 3D visualization tools. Contains 13 classes and 2 functions.
+  </Card>
+  <Card title="Webapp" icon="document">
+    NiceGUI web application interface. Contains 9 classes and 15 functions.
+  </Card>
+</CardGrid>
+
+## Quick Links
+
+### Core Classes
+
+- [`GalaxySimulation`](/api/simulation-engine/#galaxysimulation) — Main simulation orchestrator
+- [`SimulationConfig`](/api/config-parameters/#simulationconfig) — Configuration container
+- [`GalaxyModel`](/api/galaxy-structure/#galaxymodel) — Galaxy structure model
+- [`CivilizationState`](/api/simulation-engine/#civilizationstate) — Civilization state tracking

@@ -1,0 +1,296 @@
+---
+title: Visualization
+description: Creating stunning 3D visualizations of your simulations
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# Visualization Guide
+
+Great Silence provides multiple visualization options, from quick matplotlib plots 
+to interactive WebGL 3D renderings.
+
+## Three.js Visualization
+
+The primary visualization system uses Three.js for GPU-accelerated WebGL rendering.
+
+### Quick Export
+
+```python
+from great_silence import GalaxySimulation, SimulationConfig
+from great_silence.visualization.threejs import export_html
+
+# Run simulation with snapshots
+config = SimulationConfig.with_preset("optimistic")
+config.simulation.save_snapshots = True
+config.simulation.snapshot_interval_myr = 25.0
+
+sim = GalaxySimulation(config, seed=42)
+sim.run()
+
+# Export visualization
+export_html(sim, "galaxy.html", animated=True)
+```
+
+### Features
+
+The Three.js visualization includes:
+
+| Feature | Description |
+|---------|-------------|
+| **Star particles** | GPU-instanced rendering with LOD |
+| **Civilization markers** | Color-coded by Kardashev level |
+| **Probe trajectories** | Animated paths showing expansion |
+| **Disaster effects** | Shockwaves, beams, and kill zones |
+| **Timeline controls** | Play, pause, scrub, speed control |
+| **Camera presets** | Top-down, edge-on, angled views |
+| **Post-processing** | Bloom, grain, vignette effects |
+
+### Configuration
+
+```python
+from great_silence.visualization.threejs import ThreeJSConfig, export_html
+
+viz_config = ThreeJSConfig()
+
+# Camera settings
+viz_config.camera_presets = [
+    {"name": "Top View", "position": [0, 0, 40], "target": [0, 0, 0]},
+    {"name": "Edge View", "position": [30, 0, 0], "target": [0, 0, 0]},
+    {"name": "Angled", "position": [20, 15, 20], "target": [0, 0, 0]},
+]
+
+# Visual options
+viz_config.star_size = 0.5
+viz_config.civilization_size = 2.0
+viz_config.show_trajectories = True
+viz_config.trajectory_opacity = 0.6
+
+# Export with config
+export_html(sim, "galaxy.html", config=viz_config, animated=True)
+```
+
+### Keyboard Controls
+
+| Key | Action |
+|-----|--------|
+| `Space` | Play/Pause animation |
+| `←` / `→` | Step backward/forward one frame |
+| `+` / `-` | Speed up/slow down playback |
+| `R` | Reset camera to default |
+| `T` | Toggle auto-rotate |
+| `1-5` | Switch camera presets |
+
+## Matplotlib Visualization
+
+For quick plots and publication-quality figures:
+
+```python
+from great_silence.visualization import GalaxyVisualizer
+
+viz = GalaxyVisualizer(sim)
+
+# 2D scatter plot
+viz.plot_galaxy_2d(save_path="galaxy_2d.png")
+
+# 3D scatter plot
+viz.plot_galaxy_3d(save_path="galaxy_3d.png")
+
+# Timeline of civilization counts
+viz.plot_civilization_timeline(save_path="timeline.png")
+
+# Hazard event distribution
+viz.plot_hazard_distribution(save_path="hazards.png")
+```
+
+### Customization
+
+```python
+import matplotlib.pyplot as plt
+
+viz = GalaxyVisualizer(sim)
+
+fig, axes = plt.subplots(1, 2, figsize=(16, 8))
+
+# Custom colors and styles
+viz.plot_galaxy_2d(
+    ax=axes[0],
+    star_color='#404050',
+    civ_cmap='plasma',
+    show_colonies=True,
+)
+
+viz.plot_civilization_timeline(
+    ax=axes[1],
+    color='#8B5CF6',
+    fill_alpha=0.3,
+)
+
+plt.tight_layout()
+plt.savefig("combined.png", dpi=150, facecolor='#0a0a0f')
+```
+
+## Plotly Interactive Plots
+
+For interactive exploration in Jupyter notebooks:
+
+```python
+from great_silence.visualization import Plotly3DGalaxyViz
+
+viz = Plotly3DGalaxyViz(sim)
+
+# Interactive 3D scatter
+fig = viz.create_galaxy_plot(
+    show_civilizations=True,
+    show_probes=True,
+    colorscale='Viridis',
+)
+fig.show()
+```
+
+## Animation Generation
+
+### Frame-by-Frame Export
+
+```python
+from great_silence.visualization import TimelineAnimator
+
+animator = TimelineAnimator(sim)
+
+# Export frames
+animator.export_frames(
+    output_dir="frames/",
+    fps=30,
+    duration_seconds=10,
+)
+```
+
+### Video Generation
+
+```bash
+# Using ffmpeg to combine frames
+ffmpeg -framerate 30 -i frames/frame_%04d.png \
+       -c:v libx264 -pix_fmt yuv420p \
+       galaxy_animation.mp4
+```
+
+## Disaster Visualization
+
+The Three.js visualization includes comprehensive disaster rendering:
+
+| Type | Visual Effects | Toggle |
+|------|---------------|--------|
+| **Supernovae** | Red expanding shockwave rings, semi-transparent sterilization spheres, marker at explosion location | Toggle "Supernovae" filter |
+| **GRBs** | Cyan bipolar jet cones, stylized 25° visualization angle, kill zone projection | Toggle "GRBs" filter |
+| **NS Mergers** | Magenta spherical shells, combined sGRB + kilonova effects, death markers at destroyed colonies | Toggle "NS Mergers" filter |
+
+```python
+# Enable disaster visualization
+export_html(sim, "output.html", show_hazards=True)
+```
+
+### Disaster Timeline
+
+The visualization includes a clickable timeline showing:
+
+- All disaster events as markers
+- Click to jump to that time
+- Filter by disaster type
+- Toggle history mode (show all past events)
+
+## Stellar Motion
+
+With stellar motion enabled, stars move during animation:
+
+```python
+config.galaxy.enable_stellar_motion = True
+
+# Snapshots use delta compression
+# Stars are interpolated on GPU
+```
+
+The visualization uses GPU instanced rendering with a custom vertex shader:
+
+```glsl
+// Interpolate position from initial + velocity
+vec3 pos = initialPosition + velocity * (currentTime - referenceTime) * 0.001022;
+```
+
+This achieves 60 FPS with 100k+ stars.
+
+## Live Demo
+
+### 1. Generate Demo Data
+
+```python
+from great_silence import GalaxySimulation, SimulationConfig
+from great_silence.visualization.threejs import export_html
+
+config = SimulationConfig.with_preset("optimistic")
+config.galaxy.total_stars = 30_000
+config.simulation.save_snapshots = True
+config.simulation.simulation_duration_gyr = 2.0
+
+sim = GalaxySimulation(config, seed=42)
+sim.run()
+
+export_html(sim, "docs/demo/index.html", animated=True)
+```
+
+### 2. Deploy to GitHub Pages
+
+The demo is automatically deployed to: **https://grburgess.github.io/great_silence/demo/**
+
+### 3. Embed in Documentation
+
+```html
+<iframe 
+  src="https://grburgess.github.io/great_silence/demo/" 
+  width="100%" 
+  height="600"
+  frameborder="0"
+></iframe>
+```
+
+## Web Application
+
+The NiceGUI web app includes embedded visualization:
+
+```bash
+great-silence-webapp --port 8080
+```
+
+Features:
+- Run simulations with live progress
+- Embedded Three.js viewer
+- Fullscreen mode
+- Export to standalone HTML
+
+<Aside type="tip">
+  The web app's Three.js viewer is the same as the standalone export,
+  embedded in a dialog overlay for fullscreen viewing.
+</Aside>
+
+## Performance Tips
+
+| Stars | Recommended Settings |
+|-------|---------------------|
+| < 50k | Full features, all effects |
+| 50k-200k | Reduce post-processing |
+| > 200k | Disable bloom, reduce trajectory count |
+
+```python
+# For large simulations
+viz_config = ThreeJSConfig()
+viz_config.enable_bloom = False
+viz_config.max_trajectory_points = 1000
+viz_config.lod_distances = [10, 20, 40]  # Aggressive LOD
+```
+
+## Further Reading
+
+- [Three.js Tutorial](/tutorials/threejs-visualization/) — Deep dive into 3D viz
+- [API: ThreeJSConfig](/api/visualization-threejs-config/) — Configuration reference
+- [Simulation Flow](/guides/simulation-flow/) — How snapshots are saved

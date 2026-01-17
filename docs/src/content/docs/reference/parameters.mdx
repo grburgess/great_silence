@@ -1,0 +1,237 @@
+---
+title: Parameters Reference
+description: Complete reference for all simulation parameters
+sidebar:
+  order: 1
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# Parameters Reference
+
+Complete reference for all configurable parameters in Great Silence.
+
+## GalaxyParameters
+
+Galaxy structure and stellar population settings.
+
+### Structure
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `disk_radius_kpc` | float | 15.0 | Galactic disk radius (kpc) |
+| `disk_height_kpc` | float | 0.3 | Thin disk scale height (kpc) |
+| `thick_disk_height_kpc` | float | 1.0 | Thick disk scale height (kpc) |
+| `bulge_radius_kpc` | float | 1.0 | Bulge effective radius (kpc) |
+| `halo_radius_kpc` | float | 50.0 | Dark matter halo radius (kpc) |
+| `scale_length_kpc` | float | 3.5 | Disk exponential scale length (kpc) |
+
+### Components
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `include_bulge` | bool | True | Include central bulge component |
+| `bulge_fraction` | float | 0.2 | Fraction of stars in bulge |
+| `include_thick_disk` | bool | False | Include thick disk component |
+| `thick_disk_fraction` | float | 0.1 | Fraction in thick disk |
+| `stellar_density_profile` | str | "exponential" | Density profile type |
+
+### Gradients
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `use_age_gradient` | bool | True | Enable radial age gradient |
+| `age_gradient_scale_kpc` | float | 8.0 | Age gradient scale length |
+| `central_mean_age_gyr` | float | 11.0 | Mean age in center (Gyr) |
+| `outer_mean_age_gyr` | float | 3.0 | Mean age in outer disk (Gyr) |
+| `use_metallicity_gradient` | bool | True | Enable metallicity gradient |
+| `central_metallicity_feh` | float | 0.3 | Central [Fe/H] |
+| `metallicity_gradient_dex_per_kpc` | float | -0.07 | Gradient (dex/kpc) |
+
+### Dynamics
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `rotation_velocity_km_s` | float | 220.0 | Circular velocity at solar radius |
+| `bulge_velocity_dispersion_km_s` | float | 100.0 | Bulge velocity dispersion |
+| `spiral_arm_count` | int | 4 | Number of spiral arms |
+| `spiral_arm_strength` | float | 0.2 | Spiral arm density contrast |
+| `enable_bar` | bool | True | Include galactic bar |
+| `velocity_init_mode` | str | "simple" | Velocity initialization mode |
+| `enable_stellar_motion` | bool | True | Enable gravitational evolution |
+
+### Stellar Population
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `total_stars` | int | 100,000,000 | Total stars in simulation |
+| `max_stellar_age_gyr` | float | 13.0 | Maximum stellar age (Gyr) |
+| `habitable_mass_min_msun` | float | 0.5 | Minimum habitable star mass |
+| `habitable_mass_max_msun` | float | 1.5 | Maximum habitable star mass |
+
+## AstrophysicsParameters
+
+Astrophysical processes and hazards.
+
+### Star Formation
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `current_sfr_msun_yr` | float | 1.5 | Current SFR (M☉/yr) |
+| `sfr_peak_age_gyr` | float | 10.0 | Peak SFR epoch (Gyr ago) |
+| `imf_type` | str | "kroupa" | IMF type (kroupa/salpeter/chabrier) |
+
+### Supernovae
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sn_rate_per_century` | float | 2.0 | Galactic SN rate |
+| `sn_lethal_range_pc` | float | 10.0 | Kill distance (pc) |
+| `sn_sterilization_range_pc` | float | 30.0 | Sterilization distance (pc) |
+
+### Gamma-Ray Bursts
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `grb_rate_per_century` | float | 0.01 | Galactic GRB rate |
+| `grb_lethal_range_kpc` | float | 5.0 | Kill distance (kpc) |
+| `grb_beaming_angle_deg` | float | 10.0 | Jet opening angle |
+| `grb_fraction_of_sne` | float | 0.01 | Fraction of SNe producing GRBs |
+| `grb_min_progenitor_mass` | float | 20.0 | Min progenitor mass (M☉) |
+
+### Neutron Star Mergers
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `ns_merger_rate_per_myr` | float | 50.0 | Galactic rate (per Myr) |
+| `ns_sgrb_beaming_angle_deg` | float | 5.0 | Short GRB beaming angle |
+| `ns_sgrb_lethal_range_kpc` | float | 3.0 | sGRB kill distance (kpc) |
+| `ns_kilonova_lethal_range_pc` | float | 30.0 | Kilonova kill distance (pc) |
+| `ns_delay_time_min_gyr` | float | 0.01 | Min inspiral time (Gyr) |
+| `ns_delay_time_max_gyr` | float | 10.0 | Max inspiral time (Gyr) |
+
+## CivilizationParameters
+
+Civilization emergence, expansion, and extinction.
+
+### Drake Equation
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `fraction_stars_with_planets` | float | 1.0 | fp - planet fraction |
+| `avg_habitable_planets_per_system` | float | 0.2 | ne - habitable planets |
+| `fraction_develop_life` | float | 0.1 | fl - life probability |
+| `fraction_develop_intelligence` | float | 0.01 | fi - intelligence prob |
+| `fraction_develop_technology` | float | 0.1 | fc - technology prob |
+| `mean_civilization_lifetime_myr` | float | 1.0 | L - mean lifetime (Myr) |
+| `lifetime_stddev_myr` | float | 0.5 | Lifetime std dev (Myr) |
+| `min_stellar_age_for_life_gyr` | float | 1.0 | Min stellar age (Gyr) |
+
+### Expansion
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `expansion_enabled` | bool | True | Allow probe expansion |
+| `min_kardashev_for_expansion` | float | 0.85 | K threshold for probes |
+| `max_colonies_per_civilization` | int | 1000 | Colony cap |
+| `max_active_probes_per_civilization` | int | 500 | Active probe cap |
+| `max_probe_generation` | int | 20 | Max replication depth |
+| `use_scaled_probe_limits` | bool | True | Scale limits by galaxy |
+| `max_colonies_fraction` | float | 0.5 | Max colonies (fraction) |
+| `max_active_probes_fraction` | float | 0.05 | Max probes (fraction) |
+
+### Metallicity Thresholds
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `metallicity_threshold_k085` | float | -0.3 | Threshold at K=0.85 |
+| `metallicity_threshold_k095` | float | -0.5 | Threshold at K=0.95 |
+| `metallicity_threshold_k120` | float | -1.0 | Threshold at K=1.2 |
+
+### Extinction Model
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `self_destruction_model_type` | str | "kardashev_dependent" | Model type |
+| `base_extinction_rate_per_myr` | float | 0.01 | Base hazard rate |
+| `kardashev_advancement_rate` | float | 0.1 | K-level growth rate |
+
+## SimulationParameters
+
+Simulation control and output.
+
+### Time Settings
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `simulation_duration_gyr` | float | 10.0 | Total duration (Gyr) |
+| `min_timestep_myr` | float | 0.01 | Minimum dt (Myr) |
+| `max_timestep_myr` | float | 10.0 | Maximum dt (Myr) |
+| `adaptive_timestepping` | bool | True | Use adaptive dt |
+
+### Snapshots
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `save_snapshots` | bool | True | Save periodic snapshots |
+| `snapshot_interval_myr` | float | 50.0 | Interval between snapshots |
+
+### Parallelization
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enable_parallelization` | bool | True | Use parallel processing |
+| `max_parallel_workers` | int | 8 | Max worker threads |
+
+### Features
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enable_star_formation` | bool | True | Continuous star birth |
+| `enable_encounters` | bool | False | Civilization encounters |
+| `enable_wars` | bool | False | War mechanics |
+
+## Usage Examples
+
+<Tabs>
+  <TabItem label="Python">
+```python
+from great_silence import SimulationConfig
+
+config = SimulationConfig()
+
+# Galaxy
+config.galaxy.total_stars = 50_000
+config.galaxy.enable_stellar_motion = True
+
+# Civilization
+config.civilization.fraction_develop_life = 0.2
+config.civilization.mean_civilization_lifetime_myr = 5.0
+
+# Simulation
+config.simulation.simulation_duration_gyr = 5.0
+config.simulation.save_snapshots = True
+```
+  </TabItem>
+  <TabItem label="YAML">
+```yaml
+galaxy:
+  total_stars: 50000
+  enable_stellar_motion: true
+
+civilization:
+  fraction_develop_life: 0.2
+  mean_civilization_lifetime_myr: 5.0
+
+simulation:
+  simulation_duration_gyr: 5.0
+  save_snapshots: true
+```
+  </TabItem>
+</Tabs>
+
+## See Also
+
+- [Configuration Guide](/getting-started/configuration/)
+- [Presets Reference](/reference/presets/)
+- [API: SimulationConfig](/api/config-parameters/)

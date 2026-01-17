@@ -1,0 +1,200 @@
+---
+title: CLI Reference
+description: Command-line interface reference
+sidebar:
+  order: 3
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+# CLI Reference
+
+Great Silence provides two command-line tools: `great-silence` for simulations and 
+`great-silence-webapp` for the web interface.
+
+## great-silence
+
+Main simulation command.
+
+### Basic Usage
+
+```bash
+# Run with defaults
+great-silence
+
+# Quick test mode (reduced parameters)
+great-silence --quick
+
+# With configuration file
+great-silence --config my_scenario.yaml
+```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--config PATH` | Load YAML configuration file | — |
+| `--mode MODE` | Simulation mode (single/monte-carlo) | single |
+| `--output DIR` | Output directory for results | ./output |
+| `--seed INT` | Random seed for reproducibility | random |
+| `--preset NAME` | Use a preset configuration | moderate |
+| `--quick` | Quick test mode (10k stars, 1 Gyr) | False |
+| `--visualize` | Generate matplotlib visualizations | False |
+| `--export-html` | Export Three.js visualization | False |
+| `--verbose` / `-v` | Verbose output | False |
+| `--help` / `-h` | Show help message | — |
+
+### Modes
+
+<Tabs>
+  <TabItem label="Single">
+```bash
+# Single simulation run
+great-silence --mode single --seed 42 --output results/
+```
+  </TabItem>
+  <TabItem label="Monte Carlo">
+```bash
+# Run 100 simulations for statistics
+great-silence --mode monte-carlo --realizations 100 --output mc_results/
+```
+  </TabItem>
+</Tabs>
+
+### Monte Carlo Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--realizations N` | Number of simulation runs | 100 |
+| `--parallel / --no-parallel` | Use parallel execution | parallel |
+| `--workers N` | Max parallel workers | CPU count |
+
+### Configuration Override
+
+Override specific parameters from command line:
+
+```bash
+# Override star count
+great-silence --stars 50000
+
+# Override duration
+great-silence --duration 5.0
+
+# Override Drake parameters
+great-silence --fl 0.2 --fi 0.05
+
+# Combine with preset
+great-silence --preset optimistic --stars 30000 --duration 3.0
+```
+
+### Output Files
+
+With `--output results/`:
+
+```
+results/
+├── simulation_stats.json    # Statistics summary
+├── config.yaml              # Configuration used
+├── civilizations.json       # Detailed civ data
+├── hazard_events.json       # Disaster records
+└── visualization.html       # If --export-html
+```
+
+### Examples
+
+```bash
+# Quick visualization
+great-silence --quick --visualize --export-html --output demo/
+
+# Full Monte Carlo analysis
+great-silence --mode monte-carlo \
+  --preset moderate \
+  --realizations 200 \
+  --parallel \
+  --workers 8 \
+  --output monte_carlo_results/
+
+# Custom configuration
+great-silence --config scenarios/high_hazards.yaml \
+  --seed 123 \
+  --visualize \
+  --output custom_results/
+
+# Override preset parameters
+great-silence --preset optimistic \
+  --stars 50000 \
+  --duration 3.0 \
+  --fl 0.3 \
+  --export-html
+```
+
+## great-silence-webapp
+
+Web application server.
+
+### Basic Usage
+
+```bash
+# Start on default port (8080)
+great-silence-webapp
+
+# Custom port
+great-silence-webapp --port 3000
+```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--port PORT` | Server port | 8080 |
+| `--host HOST` | Bind address | 127.0.0.1 |
+| `--reload` | Auto-reload on code changes | False |
+| `--dark-mode` | Force dark theme | True |
+
+### Production Deployment
+
+```bash
+# Bind to all interfaces
+great-silence-webapp --host 0.0.0.0 --port 80
+
+# With reverse proxy (nginx recommended)
+great-silence-webapp --host 127.0.0.1 --port 8080
+```
+
+<Aside type="caution">
+  For production, use a reverse proxy (nginx/caddy) for SSL termination 
+  and static file serving.
+</Aside>
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `GREAT_SILENCE_CONFIG` | Default config file path |
+| `GREAT_SILENCE_OUTPUT` | Default output directory |
+| `GREAT_SILENCE_SEED` | Default random seed |
+| `GREAT_SILENCE_PRESETS` | Custom presets directory |
+
+```bash
+# Set defaults via environment
+export GREAT_SILENCE_OUTPUT=~/simulations
+export GREAT_SILENCE_PRESETS=~/my_presets
+
+great-silence --preset my_custom_scenario
+```
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Configuration error |
+| 3 | File not found |
+| 4 | Invalid parameters |
+
+## See Also
+
+- [Quick Start](/getting-started/quickstart/) — Getting started guide
+- [Configuration Guide](/getting-started/configuration/) — Parameter details
+- [Web Application](/tutorials/webapp/) — Web app tutorial

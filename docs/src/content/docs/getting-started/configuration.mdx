@@ -1,0 +1,243 @@
+---
+title: Configuration
+description: Complete guide to configuring Great Silence simulations
+sidebar:
+  order: 3
+---
+
+import { Tabs, TabItem, Aside, Code } from '@astrojs/starlight/components';
+
+# Configuration Guide
+
+Great Silence uses a hierarchical configuration system with sensible defaults. You can customize
+everything from galaxy structure to civilization behavior.
+
+## Configuration Structure
+
+```python
+from great_silence import SimulationConfig
+
+config = SimulationConfig()
+
+# Access nested parameter groups
+config.galaxy          # GalaxyParameters
+config.astrophysics    # AstrophysicsParameters  
+config.civilization    # CivilizationParameters
+config.simulation      # SimulationParameters
+```
+
+## Using Presets
+
+Start with a preset and customize:
+
+```python
+# Available presets
+config = SimulationConfig.with_preset("optimistic")   # Abundant life
+config = SimulationConfig.with_preset("moderate")     # Fermi-consistent
+config = SimulationConfig.with_preset("late_filter")  # Technology kills
+config = SimulationConfig.with_preset("early_filter") # Life is rare
+config = SimulationConfig.with_preset("rare_earth")   # Planets are rare
+
+# Then customize specific parameters
+config.galaxy.total_stars = 100_000
+config.civilization.mean_civilization_lifetime_myr = 5.0
+```
+
+## Key Parameters
+
+### Galaxy Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `total_stars` | 100,000,000 | Number of stars in simulation |
+| `disk_radius_kpc` | 15.0 | Galactic disk radius (kpc) |
+| `bulge_fraction` | 0.2 | Fraction of stars in central bulge |
+| `scale_length_kpc` | 3.5 | Exponential disk scale length |
+| `habitable_mass_min_msun` | 0.5 | Min stellar mass for habitability |
+| `habitable_mass_max_msun` | 1.5 | Max stellar mass for habitability |
+
+```python
+config.galaxy.total_stars = 50_000
+config.galaxy.disk_radius_kpc = 12.0
+config.galaxy.bulge_fraction = 0.15
+config.galaxy.enable_stellar_motion = True  # Gravitational evolution
+```
+
+### Civilization Parameters (Drake Equation)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `fraction_stars_with_planets` | 1.0 | fp in Drake equation |
+| `avg_habitable_planets_per_system` | 0.2 | ne in Drake equation |
+| `fraction_develop_life` | 0.1 | fl - probability of life |
+| `fraction_develop_intelligence` | 0.01 | fi - probability of intelligence |
+| `fraction_develop_technology` | 0.1 | fc - probability of technology |
+| `mean_civilization_lifetime_myr` | 1.0 | L - average lifetime (Myr) |
+
+```python
+# Optimistic Drake parameters
+config.civilization.fraction_develop_life = 0.5
+config.civilization.fraction_develop_intelligence = 0.1
+config.civilization.mean_civilization_lifetime_myr = 10.0
+```
+
+### Expansion Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `expansion_enabled` | True | Allow probe-based expansion |
+| `min_kardashev_for_expansion` | 0.85 | Minimum K-level for probes |
+| `max_colonies_per_civilization` | 1000 | Colony cap |
+| `max_active_probes_per_civilization` | 500 | Concurrent probe limit |
+| `max_probe_generation` | 20 | Maximum replication depth |
+
+```python
+config.civilization.expansion_enabled = True
+config.civilization.min_kardashev_for_expansion = 0.9
+config.civilization.use_scaled_probe_limits = True  # Scale by galaxy size
+```
+
+<Aside type="note">
+  Probe velocity, range, and replication rate are determined by Kardashev level
+  at the time of expansion start. See `great_silence.civilization.probe_design` 
+  for the scaling functions.
+</Aside>
+
+### Astrophysical Hazards
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `sn_lethal_range_pc` | 10.0 | Supernova kill distance (pc) |
+| `grb_lethal_range_kpc` | 5.0 | GRB kill distance (kpc) |
+| `grb_beaming_angle_deg` | 10.0 | GRB jet opening angle |
+| `ns_merger_rate_per_myr` | 50.0 | Neutron star merger rate |
+
+```python
+config.astrophysics.sn_lethal_range_pc = 15.0
+config.astrophysics.grb_lethal_range_kpc = 3.0
+config.astrophysics.grb_beaming_angle_deg = 8.0
+```
+
+### Simulation Control
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `simulation_duration_gyr` | 10.0 | Total simulation time (Gyr) |
+| `adaptive_timestepping` | True | Use adaptive dt |
+| `save_snapshots` | True | Save periodic snapshots |
+| `snapshot_interval_myr` | 50.0 | Time between snapshots |
+| `enable_parallelization` | True | Use parallel processing |
+
+```python
+config.simulation.simulation_duration_gyr = 5.0
+config.simulation.save_snapshots = True
+config.simulation.snapshot_interval_myr = 25.0  # More frequent snapshots
+```
+
+## YAML Configuration
+
+Save and load configurations as YAML:
+
+<Tabs>
+  <TabItem label="Save">
+```python
+# Save current configuration
+config.to_yaml("my_scenario.yaml")
+```
+  </TabItem>
+  <TabItem label="Load">
+```python
+# Load from file
+config = SimulationConfig.from_yaml("my_scenario.yaml")
+```
+  </TabItem>
+  <TabItem label="Example YAML">
+```yaml
+# my_scenario.yaml
+galaxy:
+  total_stars: 50000
+  disk_radius_kpc: 15.0
+  bulge_fraction: 0.2
+  enable_stellar_motion: true
+
+civilization:
+  fraction_develop_life: 0.3
+  fraction_develop_intelligence: 0.05
+  mean_civilization_lifetime_myr: 5.0
+  expansion_enabled: true
+
+astrophysics:
+  sn_lethal_range_pc: 10.0
+  grb_lethal_range_kpc: 5.0
+
+simulation:
+  simulation_duration_gyr: 5.0
+  save_snapshots: true
+  random_seed: 42
+```
+  </TabItem>
+</Tabs>
+
+## Preset Details
+
+### Optimistic
+
+Assumes life is common and civilizations are long-lived:
+
+```python
+fraction_develop_life = 0.5
+fraction_develop_intelligence = 0.1
+mean_civilization_lifetime_myr = 10.0
+```
+
+**Expected result**: Many simultaneous civilizations, visible galaxy-spanning expansion.
+
+### Late Filter
+
+Many civilizations emerge but technology is self-destructive:
+
+```python
+fraction_develop_life = 0.5
+fraction_develop_intelligence = 0.1
+mean_civilization_lifetime_myr = 0.1  # Only 100,000 years!
+```
+
+**Expected result**: High turnover, most die before expansion.
+
+### Early Filter
+
+Abiogenesis is extremely rare:
+
+```python
+fraction_develop_life = 0.001  # 1 in 1000
+fraction_develop_intelligence = 0.1
+mean_civilization_lifetime_myr = 10.0
+```
+
+**Expected result**: Few civilizations, but survivors are long-lived.
+
+## Performance Tuning
+
+For large simulations, consider:
+
+```python
+# Reduce memory usage
+config.simulation.save_snapshots = False
+config.simulation.snapshot_interval_myr = 100.0  # Less frequent
+
+# Use scaled limits
+config.civilization.use_scaled_probe_limits = True
+
+# Enable parallelization
+config.simulation.enable_parallelization = True
+config.simulation.max_parallel_workers = 8
+```
+
+<Aside type="caution">
+  Simulations with 1M+ stars require significant memory. Start with
+  smaller simulations (10k-100k stars) for parameter exploration.
+</Aside>
+
+## Complete Reference
+
+For the full parameter list, see the [API Reference](/api/config-parameters/).
