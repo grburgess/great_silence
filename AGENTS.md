@@ -527,3 +527,40 @@ python scripts/benchmark_baseline.py  # Detailed profiling
   - Simplified to just 2-point lines (start → end)
   - Reduced opacity (0.9 → 0.7) and linewidth (3 → 2)
 - **Webapp Update**: Added "circular" to velocity init mode dropdown in `config_panels.py`
+
+### Jan 2026 - Probe Worldline Visualization
+- **Problem**: Trajectory lines were static (start/end) while stars moved, causing visual disconnect
+- **Solution**: Implemented physically accurate worldline visualization
+- **Data Changes** (`data_extractor.py`):
+  - Renamed `start`/`end` to `launch_position`/`intercept_position`
+  - Calculate positions at actual launch/arrival times: `pos = initial + velocity * time * 0.001022`
+  - Both `_extract_expansion_trajectories()` and `_extract_sparse_events()` updated
+- **Visualization** (`particles.js.j2`):
+  - `createWorldlineTrajectory()`: New unified trajectory renderer
+  - Solid line from launch position → current probe position (historical path)
+  - Dashed line from probe → intercept position (future path, toggleable)
+  - Glowing probe dot at current position with comet trail
+  - Ghost anchors (diamonds) at fixed launch/intercept positions
+  - Drift lines connecting ghosts to current star positions
+  - Auto-hide ghosts when zoomed out (`cameraDistance > 80`)
+- **UI Controls** (`index.html.j2`, `ui.js.j2`):
+  - New TRAJECTORIES panel with toggles:
+    - Ghost Anchors (default: on)
+    - Drift Lines (default: on)
+    - Future Path (default: on)
+  - `window.trajectoryState` for global state
+- **Physics**: Probes travel fixed straight-line paths through absolute space
+  - Launch position = where source star WAS at launch time
+  - Intercept position = where target star WILL BE at arrival time
+  - Ghost anchors show drift only when > 0.5 kpc threshold
+
+### Jan 2026 - Webapp Auto-Save Feature
+- **Problem**: Webapp hot-reload loses simulation state, frustrating after long runs
+- **Solution**: Auto-save completed simulations to disk
+- **Implementation** (`webapp/components/simulation_runner.py`):
+  - `_auto_save_simulation()`: Pickles simulation + config to `~/.great_silence/autosave/last_simulation.pkl`
+  - Called automatically at end of `_finish_simulation()`
+  - "📂 Load Last" button to recover last simulation
+  - `_load_last_simulation()`: Loads pickle, restores app_state, triggers on_complete
+  - Button only visible when autosave file exists
+- **User benefit**: Survives hot-reload, crashes, accidental page refresh

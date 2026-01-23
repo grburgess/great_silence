@@ -88,6 +88,7 @@ def _extract_civ_list(snap, galaxy_positions=None):
             
             civs.append({
                 'civ_id': c.civ_id,
+                'star_idx': c.parent_star_idx,
                 'position': pos,
                 'kardashev': c.kardashev_scale,
                 'age': (snap.time_myr - c.birth_time_myr) / 1000.0 
@@ -106,15 +107,20 @@ def _extract_civ_list(snap, galaxy_positions=None):
 def _extract_probe_list(snap):
     """Extract probe list from snapshot."""
     if hasattr(snap, 'active_probes_in_flight'):
-        return [
-            {
+        probes = []
+        for p in snap.active_probes_in_flight:
+            probe_data = {
                 'probe_id': p.probe_id,
                 'position': p.current_position.tolist(),
                 'civ_id': p.civ_id,
                 'progress': p.progress_fraction
             }
-            for p in snap.active_probes_in_flight
-        ]
+            if hasattr(p, 'launch_star_idx'):
+                probe_data['launch_star_idx'] = p.launch_star_idx
+            if hasattr(p, 'target_star_idx'):
+                probe_data['target_star_idx'] = p.target_star_idx
+            probes.append(probe_data)
+        return probes
     elif hasattr(snap, 'probes'):
         return snap.probes.copy()
     else:
@@ -151,8 +157,17 @@ def _extract_hazard_list(snap):
         return []
 
 
-def _extract_expansion_trajectories(snap):
-    """Extract expansion trajectories from archived probes and colonies with timing."""
+def _extract_expansion_trajectories(snap, initial_positions=None, velocities=None):
+    """Extract expansion trajectories using actual star positions from snapshot.
+    
+    Uses current snapshot positions for simplicity - the positions will be
+    close to the actual launch/arrival positions for reasonable time spans.
+    
+    Args:
+        snap: Simulation snapshot
+        initial_positions: Not used (kept for API compatibility)
+        velocities: Not used (kept for API compatibility)
+    """
     trajectories = []
     
     if not hasattr(snap, 'civilization_states') or not hasattr(snap, 'stellar_positions'):
@@ -162,14 +177,15 @@ def _extract_expansion_trajectories(snap):
     if stellar_positions is None or len(stellar_positions) == 0:
         return trajectories
     
+    n_stars = len(stellar_positions)
     current_time = snap.time_myr if hasattr(snap, 'time_myr') else 0
     seen_edges = set()
     
     for civ in snap.civilization_states:
         home_idx = civ.parent_star_idx
-        home_pos = stellar_positions[home_idx].tolist() if home_idx < len(stellar_positions) else [0, 0, 0]
+        if home_idx >= n_stars:
+            continue
         
-        # Prefer archived_probes (actual probe paths) over colonized_stars (starburst from home)
         has_archived_probes = False
         if hasattr(civ, 'archived_probes') and civ.archived_probes:
             has_archived_probes = True
@@ -178,34 +194,45 @@ def _extract_expansion_trajectories(snap):
                 target_idx = probe.target_star_idx
                 edge_key = (civ.civ_id, launch_idx, target_idx)
                 
-                if edge_key not in seen_edges and launch_idx < len(stellar_positions) and target_idx < len(stellar_positions):
+                if edge_key not in seen_edges and launch_idx < n_stars and target_idx < n_stars:
                     seen_edges.add(edge_key)
-                    start_pos = stellar_positions[launch_idx].tolist()
-                    end_pos = stellar_positions[target_idx].tolist()
                     
                     arrival_time = probe.arrival_time_myr if hasattr(probe, 'arrival_time_myr') else current_time
+                    launch_time = probe.launch_time_myr if hasattr(probe, 'launch_time_myr') else (arrival_time - 100)
+                    
+                    launch_pos = stellar_positions[launch_idx].tolist()
+                    intercept_pos = stellar_positions[target_idx].tolist()
                     
                     trajectories.append({
-                        'start': start_pos,
-                        'end': end_pos,
+                        'launch_position': launch_pos,
+                        'intercept_position': intercept_pos,
+                        'launch_star_idx': launch_idx,
+                        'target_star_idx': target_idx,
                         'civ_id': civ.civ_id,
                         'generation': probe.generation if hasattr(probe, 'generation') else 0,
-                        'time_myr': arrival_time
+                        'time_myr': arrival_time,
+                        'launch_time_myr': launch_time,
                     })
         
-        # Only use colonized_stars as fallback if no archived probes
         if not has_archived_probes and hasattr(civ, 'colonized_stars') and civ.colonized_stars:
             for colony_idx in civ.colonized_stars:
                 edge_key = (civ.civ_id, home_idx, colony_idx)
-                if edge_key not in seen_edges and colony_idx != home_idx and colony_idx < len(stellar_positions):
+                if edge_key not in seen_edges and colony_idx != home_idx and colony_idx < n_stars:
                     seen_edges.add(edge_key)
-                    colony_pos = stellar_positions[colony_idx].tolist()
+                    fallback_launch_time = current_time - 100
+                    
+                    launch_pos = stellar_positions[home_idx].tolist()
+                    intercept_pos = stellar_positions[colony_idx].tolist()
+                    
                     trajectories.append({
-                        'start': home_pos,
-                        'end': colony_pos,
+                        'launch_position': launch_pos,
+                        'intercept_position': intercept_pos,
+                        'launch_star_idx': home_idx,
+                        'target_star_idx': colony_idx,
                         'civ_id': civ.civ_id,
                         'generation': 0,
-                        'time_myr': current_time
+                        'time_myr': current_time,
+                        'launch_time_myr': fallback_launch_time,
                     })
     
     return trajectories
@@ -304,10 +331,10 @@ class SimulationDataExtractor:
                 self.simulation_data["stellar_velocities"] = self.source.galaxy.velocities.copy()
 
         if hasattr(self.source, "snapshots"):
-            # Get galaxy positions as fallback for delta-compressed snapshots
             galaxy_pos = self.simulation_data.get("galaxy_positions", None)
+            initial_pos = self.simulation_data.get("initial_positions", galaxy_pos)
+            velocities = self.simulation_data.get("stellar_velocities", None)
             
-            # Check if stellar motion is enabled (positions change per snapshot)
             stellar_motion_enabled = False
             if hasattr(self.source, 'config') and hasattr(self.source.config, 'simulation'):
                 stellar_motion_enabled = getattr(self.source.config.simulation, 'enable_stellar_motion', False)
@@ -320,7 +347,7 @@ class SimulationDataExtractor:
                     "civilizations": _extract_civ_list(snap, galaxy_pos),
                     "probes": _extract_probe_list(snap),
                     "hazards": _extract_hazard_list(snap),
-                    "trajectories": _extract_expansion_trajectories(snap),
+                    "trajectories": _extract_expansion_trajectories(snap, initial_pos, velocities),
                     "stellar_ages": snap.stellar_ages.tolist() if hasattr(snap, 'stellar_ages') and snap.stellar_ages is not None else None,
                     "use_delta_compression": getattr(snap, 'use_delta_compression', False),
                 }
@@ -1162,10 +1189,13 @@ class SimulationDataExtractor:
     ) -> EventData:
         """Extract sparse event data from all snapshots.
         
-        IMPORTANT: For trajectories, we use INITIAL positions (first snapshot)
-        to ensure consistency with the Hermite-interpolated star display.
-        This prevents trajectories from pointing to evolved positions while
-        stars are shown at interpolated positions.
+        IMPORTANT: For trajectories, we calculate FIXED worldline positions:
+        - launch_position: where source star WAS at launch time
+        - intercept_position: where target star WILL BE at arrival time
+        
+        This ensures physically accurate trajectory visualization even when
+        stars are moving. The trajectory line represents the probe's actual
+        path through absolute space.
         """
         events = EventData()
         
@@ -1174,13 +1204,29 @@ class SimulationDataExtractor:
         
         galaxy_pos = self.simulation_data.get("galaxy_positions", np.array([]))
         
-        # Get INITIAL positions for trajectory consistency
-        # Use first snapshot's positions so trajectories match displayed stars
         initial_positions = None
         if snapshots and hasattr(snapshots[0], 'stellar_positions'):
             initial_positions = snapshots[0].stellar_positions
         elif len(galaxy_pos) > 0:
             initial_positions = galaxy_pos
+        
+        snapshot_positions_by_time = {}
+        for snap in snapshots:
+            if hasattr(snap, 'time_myr') and hasattr(snap, 'stellar_positions') and snap.stellar_positions is not None:
+                snapshot_positions_by_time[snap.time_myr] = snap.stellar_positions
+        
+        def get_position_at_time(star_idx, time_myr, positions_by_time, fallback_positions):
+            """Get star position at given time from nearest snapshot."""
+            if not positions_by_time:
+                if fallback_positions is not None and star_idx < len(fallback_positions):
+                    return fallback_positions[star_idx]
+                return None
+            
+            closest_time = min(positions_by_time.keys(), key=lambda t: abs(t - time_myr))
+            positions = positions_by_time[closest_time]
+            if star_idx < len(positions):
+                return positions[star_idx]
+            return None
         
         for i, snap in enumerate(snapshots):
             if hasattr(snap, 'time_myr'):
@@ -1301,7 +1347,6 @@ class SimulationDataExtractor:
                             continue
                         home_pos = initial_positions[home_idx].tolist()
                         
-                        # Extract from archived probes (proper launch→target paths)
                         has_archived_probes = False
                         if hasattr(civ, 'archived_probes') and civ.archived_probes:
                             has_archived_probes = True
@@ -1311,33 +1356,82 @@ class SimulationDataExtractor:
                                     target_idx = probe.target_star_idx
                                     if launch_idx < n_stars and target_idx < n_stars:
                                         arrival_time = probe.arrival_time_myr if hasattr(probe, 'arrival_time_myr') else time_myr
+                                        launch_time = probe.launch_time_myr if hasattr(probe, 'launch_time_myr') else (arrival_time - 100)
+                                        
+                                        launch_pos_arr = get_position_at_time(launch_idx, launch_time, snapshot_positions_by_time, initial_positions)
+                                        intercept_pos_arr = get_position_at_time(target_idx, arrival_time, snapshot_positions_by_time, initial_positions)
+                                        
+                                        if launch_pos_arr is None or intercept_pos_arr is None:
+                                            continue
+                                        
+                                        launch_pos = launch_pos_arr.tolist() if hasattr(launch_pos_arr, 'tolist') else list(launch_pos_arr)
+                                        intercept_pos = intercept_pos_arr.tolist() if hasattr(intercept_pos_arr, 'tolist') else list(intercept_pos_arr)
+                                        
                                         events.trajectories.append({
                                             'time_myr': arrival_time,
-                                            'start': initial_positions[launch_idx].tolist(),
-                                            'end': initial_positions[target_idx].tolist(),
+                                            'launch_time_myr': launch_time,
+                                            'launch_position': launch_pos,
+                                            'intercept_position': intercept_pos,
+                                            'launch_star_idx': launch_idx,
+                                            'target_star_idx': target_idx,
                                             'civ_id': civ.civ_id,
                                             'generation': probe.generation if hasattr(probe, 'generation') else 0,
                                         })
                         
-                        # Only use colonized_stars as fallback if no archived probes
-                        # (archived_probes shows actual probe paths, colonized_stars shows home→colony starburst)
                         if not has_archived_probes and hasattr(civ, 'colonized_stars') and civ.colonized_stars:
                             for colony_idx in civ.colonized_stars:
                                 if colony_idx != home_idx and colony_idx < n_stars:
+                                    fallback_launch_time = time_myr - 100
+                                    
+                                    launch_pos_arr = get_position_at_time(home_idx, fallback_launch_time, snapshot_positions_by_time, initial_positions)
+                                    intercept_pos_arr = get_position_at_time(colony_idx, time_myr, snapshot_positions_by_time, initial_positions)
+                                    
+                                    if launch_pos_arr is None or intercept_pos_arr is None:
+                                        continue
+                                    
+                                    launch_pos = launch_pos_arr.tolist() if hasattr(launch_pos_arr, 'tolist') else list(launch_pos_arr)
+                                    intercept_pos = intercept_pos_arr.tolist() if hasattr(intercept_pos_arr, 'tolist') else list(intercept_pos_arr)
+                                    
                                     events.trajectories.append({
                                         'time_myr': time_myr,
-                                        'start': home_pos,
-                                        'end': initial_positions[colony_idx].tolist(),
+                                        'launch_time_myr': fallback_launch_time,
+                                        'launch_position': launch_pos,
+                                        'intercept_position': intercept_pos,
+                                        'launch_star_idx': home_idx,
+                                        'target_star_idx': colony_idx,
                                         'civ_id': civ.civ_id,
                                         'generation': 0,
                                     })
             elif isinstance(snap, dict) and 'trajectories' in snap:
                 trajs = snap.get('trajectories', [])
                 for t in trajs:
+                    arrival_time = t.get('time_myr', time_myr)
+                    launch_time = t.get('launch_time_myr', arrival_time - 100)
+                    
+                    if 'launch_position' in t and 'intercept_position' in t:
+                        launch_pos = t['launch_position']
+                        intercept_pos = t['intercept_position']
+                    else:
+                        launch_idx = t.get('launch_star_idx')
+                        target_idx = t.get('target_star_idx')
+                        if launch_idx is not None and target_idx is not None:
+                            launch_pos_arr = get_position_at_time(launch_idx, launch_time, snapshot_positions_by_time, initial_positions)
+                            intercept_pos_arr = get_position_at_time(target_idx, arrival_time, snapshot_positions_by_time, initial_positions)
+                            if launch_pos_arr is None or intercept_pos_arr is None:
+                                continue
+                            launch_pos = launch_pos_arr.tolist() if hasattr(launch_pos_arr, 'tolist') else list(launch_pos_arr)
+                            intercept_pos = intercept_pos_arr.tolist() if hasattr(intercept_pos_arr, 'tolist') else list(intercept_pos_arr)
+                        else:
+                            launch_pos = t.get('start', [0, 0, 0])
+                            intercept_pos = t.get('end', [0, 0, 0])
+                    
                     events.trajectories.append({
-                        'time_myr': t.get('time_myr', time_myr),
-                        'start': t.get('start', [0, 0, 0]),
-                        'end': t.get('end', [0, 0, 0]),
+                        'time_myr': arrival_time,
+                        'launch_time_myr': launch_time,
+                        'launch_position': launch_pos,
+                        'intercept_position': intercept_pos,
+                        'launch_star_idx': t.get('launch_star_idx'),
+                        'target_star_idx': t.get('target_star_idx'),
                         'civ_id': t.get('civ_id', -1),
                         'generation': t.get('generation', 0),
                     })

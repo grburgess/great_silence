@@ -251,18 +251,34 @@ function setCivVisibility(visible) {
     });
 }
 
-function createProbeTrail(probeData) {
+function createProbeTrail(probeData, timeMyr) {
     const positions = [];
     const colors = [];
+    
+    let currentPos = probeData.position;
+    let launchPos = [0, 0, 0];
+    
+    if (probeData.launch_star_idx !== undefined && probeData.target_star_idx !== undefined && timeMyr !== undefined) {
+        launchPos = getStarPositionAtTime(probeData.launch_star_idx, timeMyr);
+        const targetPos = getStarPositionAtTime(probeData.target_star_idx, timeMyr);
+        const progress = probeData.progress || 0;
+        currentPos = [
+            launchPos[0] + (targetPos[0] - launchPos[0]) * progress,
+            launchPos[1] + (targetPos[1] - launchPos[1]) * progress,
+            launchPos[2] + (targetPos[2] - launchPos[2]) * progress
+        ];
+    }
 
-    for (let i = 0; i < 10; i++) {
-        const t = i / 9;
-        const x = probeData.position[0] * (1 - t);
-        const y = probeData.position[1] * (1 - t);
-        const z = probeData.position[2] * (1 - t);
+    const trailLength = 10;
+    for (let i = 0; i < trailLength; i++) {
+        const t = i / (trailLength - 1);
+        const x = launchPos[0] + (currentPos[0] - launchPos[0]) * (1 - t * 0.3);
+        const y = launchPos[1] + (currentPos[1] - launchPos[1]) * (1 - t * 0.3);
+        const z = launchPos[2] + (currentPos[2] - launchPos[2]) * (1 - t * 0.3);
 
         positions.push(x, y, z);
-        colors.push(0, 1, 1);
+        const alpha = 1.0 - t * 0.7;
+        colors.push(0, alpha, alpha);
     }
 
     const geometry = new THREE.BufferGeometry();
@@ -283,12 +299,12 @@ function createProbeTrail(probeData) {
     return line;
 }
 
-function updateProbes(probes) {
+function updateProbes(probes, timeMyr) {
     probeLines.forEach(line => scene.remove(line));
     probeLines = [];
 
     probes.forEach(probe => {
-        const line = createProbeTrail(probe);
+        const line = createProbeTrail(probe, timeMyr);
         line.visible = showProbeSprites;
         probeLines.push(line);
         scene.add(line);
@@ -373,56 +389,273 @@ function setHazardVisibility(visible) {
 let trajectoryLines = [];
 let showTrajectoryLines = true;
 
-function createExpansionLine(trajectory) {
-    const start = trajectory.start;
-    const end = trajectory.end;
-    
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-        start[0], start[1], start[2],
-        end[0], end[1], end[2]
-    ], 3));
+window.trajectoryState = {
+    showGhostAnchors: true,
+    showDriftLines: true,
+    showFuturePath: true,
+    showCompletedTrajectories: false,
+    trailLengthMyr: 0.05,
+    ghostDriftThreshold: 0.5,
+    completedOpacity: 0.15,
+    maxVisibleTrajectories: 500,
+};
 
+function getTrajectoryPositions(traj) {
+    const launchPos = traj.launch_position || traj.start || [0, 0, 0];
+    const interceptPos = traj.intercept_position || traj.end || [0, 0, 0];
+    return { launchPos, interceptPos };
+}
+
+function createWorldlineTrajectory(trajectory, progress, currentTimeMyr) {
+    const group = new THREE.Group();
+    
     const civId = trajectory.civ_id || 0;
     const hue = (civId * 0.618033988749895) % 1.0;
-    const color = new THREE.Color().setHSL(hue, 1.0, 0.65);
-
-    const material = new THREE.LineBasicMaterial({
+    const color = new THREE.Color().setHSL(hue, 0.9, 0.6);
+    const ghostColor = 0x888888;
+    
+    const { launchPos, interceptPos } = getTrajectoryPositions(trajectory);
+    
+    if (!launchPos || !interceptPos || 
+        (launchPos[0] === 0 && launchPos[1] === 0 && launchPos[2] === 0) ||
+        (interceptPos[0] === 0 && interceptPos[1] === 0 && interceptPos[2] === 0)) {
+        return group;
+    }
+    
+    const arrivalTimeMyr = trajectory.time_myr || 0;
+    const launchTimeMyr = trajectory.launch_time_myr || (arrivalTimeMyr - 100);
+    const travelTime = arrivalTimeMyr - launchTimeMyr;
+    const isInFlight = progress !== undefined && progress < 1.0 && progress > 0;
+    const isCompleted = progress >= 1.0;
+    
+    if (isCompleted && !window.trajectoryState.showCompletedTrajectories) {
+        return group;
+    }
+    
+    const baseOpacity = isCompleted ? window.trajectoryState.completedOpacity : 0.7;
+    
+    const currentProbePos = isInFlight ? [
+        launchPos[0] + (interceptPos[0] - launchPos[0]) * progress,
+        launchPos[1] + (interceptPos[1] - launchPos[1]) * progress,
+        launchPos[2] + (interceptPos[2] - launchPos[2]) * progress
+    ] : (isCompleted ? interceptPos : launchPos);
+    
+    const trailLineGeom = new THREE.BufferGeometry();
+    trailLineGeom.setAttribute('position', new THREE.Float32BufferAttribute([
+        launchPos[0], launchPos[1], launchPos[2],
+        currentProbePos[0], currentProbePos[1], currentProbePos[2]
+    ], 3));
+    
+    const trailLineMat = new THREE.LineBasicMaterial({
         color: color,
         transparent: true,
-        opacity: 0.7,
+        opacity: baseOpacity,
         linewidth: 2,
         blending: THREE.AdditiveBlending
     });
-
-    const line = new THREE.Line(geometry, material);
-    line.userData = trajectory;
-
-    return line;
+    
+    const trailLine = new THREE.Line(trailLineGeom, trailLineMat);
+    group.add(trailLine);
+    
+    if (isInFlight && window.trajectoryState.showFuturePath) {
+        const futureLineGeom = new THREE.BufferGeometry();
+        futureLineGeom.setAttribute('position', new THREE.Float32BufferAttribute([
+            currentProbePos[0], currentProbePos[1], currentProbePos[2],
+            interceptPos[0], interceptPos[1], interceptPos[2]
+        ], 3));
+        
+        const futureMat = new THREE.LineDashedMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.25,
+            dashSize: 0.15,
+            gapSize: 0.1,
+            blending: THREE.AdditiveBlending
+        });
+        
+        const futureLine = new THREE.Line(futureLineGeom, futureMat);
+        futureLine.computeLineDistances();
+        group.add(futureLine);
+    }
+    
+    if (isInFlight) {
+        const dotGeom = new THREE.SphereGeometry(0.12, 12, 12);
+        const dotMat = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 1.0,
+            blending: THREE.AdditiveBlending
+        });
+        const probeDot = new THREE.Mesh(dotGeom, dotMat);
+        probeDot.position.set(currentProbePos[0], currentProbePos[1], currentProbePos[2]);
+        group.add(probeDot);
+    }
+    
+    if (isInFlight && window.trajectoryState.showGhostAnchors) {
+        const launchStarIdx = trajectory.launch_star_idx;
+        const targetStarIdx = trajectory.target_star_idx;
+        
+        let currentLaunchStarPos = null;
+        let currentTargetStarPos = null;
+        
+        if (launchStarIdx !== undefined && window.getStarPositionAtTime) {
+            currentLaunchStarPos = window.getStarPositionAtTime(launchStarIdx, currentTimeMyr);
+        }
+        if (targetStarIdx !== undefined && window.getStarPositionAtTime) {
+            currentTargetStarPos = window.getStarPositionAtTime(targetStarIdx, currentTimeMyr);
+        }
+        
+        const launchDrift = currentLaunchStarPos ? Math.sqrt(
+            Math.pow(currentLaunchStarPos[0] - launchPos[0], 2) +
+            Math.pow(currentLaunchStarPos[1] - launchPos[1], 2) +
+            Math.pow(currentLaunchStarPos[2] - launchPos[2], 2)
+        ) : 0;
+        
+        const targetDrift = currentTargetStarPos ? Math.sqrt(
+            Math.pow(currentTargetStarPos[0] - interceptPos[0], 2) +
+            Math.pow(currentTargetStarPos[1] - interceptPos[1], 2) +
+            Math.pow(currentTargetStarPos[2] - interceptPos[2], 2)
+        ) : 0;
+        
+        const threshold = window.trajectoryState.ghostDriftThreshold;
+        
+        if (launchDrift > threshold) {
+            const ghostGeom = new THREE.OctahedronGeometry(0.08);
+            const ghostMat = new THREE.MeshBasicMaterial({
+                color: ghostColor,
+                transparent: true,
+                opacity: 0.5,
+                blending: THREE.AdditiveBlending
+            });
+            const launchGhost = new THREE.Mesh(ghostGeom, ghostMat);
+            launchGhost.position.set(launchPos[0], launchPos[1], launchPos[2]);
+            group.add(launchGhost);
+            
+            if (window.trajectoryState.showDriftLines && currentLaunchStarPos) {
+                const driftLineGeom = new THREE.BufferGeometry();
+                driftLineGeom.setAttribute('position', new THREE.Float32BufferAttribute([
+                    launchPos[0], launchPos[1], launchPos[2],
+                    currentLaunchStarPos[0], currentLaunchStarPos[1], currentLaunchStarPos[2]
+                ], 3));
+                
+                const driftMat = new THREE.LineDashedMaterial({
+                    color: ghostColor,
+                    transparent: true,
+                    opacity: 0.25,
+                    dashSize: 0.08,
+                    gapSize: 0.08,
+                });
+                
+                const driftLine = new THREE.Line(driftLineGeom, driftMat);
+                driftLine.computeLineDistances();
+                group.add(driftLine);
+            }
+        }
+        
+        if (targetDrift > threshold) {
+            const ghostGeom = new THREE.OctahedronGeometry(0.08);
+            const ghostMat = new THREE.MeshBasicMaterial({
+                color: ghostColor,
+                transparent: true,
+                opacity: 0.5,
+                blending: THREE.AdditiveBlending
+            });
+            const targetGhost = new THREE.Mesh(ghostGeom, ghostMat);
+            targetGhost.position.set(interceptPos[0], interceptPos[1], interceptPos[2]);
+            group.add(targetGhost);
+            
+            if (window.trajectoryState.showDriftLines && currentTargetStarPos) {
+                const driftLineGeom = new THREE.BufferGeometry();
+                driftLineGeom.setAttribute('position', new THREE.Float32BufferAttribute([
+                    interceptPos[0], interceptPos[1], interceptPos[2],
+                    currentTargetStarPos[0], currentTargetStarPos[1], currentTargetStarPos[2]
+                ], 3));
+                
+                const driftMat = new THREE.LineDashedMaterial({
+                    color: ghostColor,
+                    transparent: true,
+                    opacity: 0.25,
+                    dashSize: 0.08,
+                    gapSize: 0.08,
+                });
+                
+                const driftLine = new THREE.Line(driftLineGeom, driftMat);
+                driftLine.computeLineDistances();
+                group.add(driftLine);
+            }
+        }
+    }
+    
+    group.userData = trajectory;
+    return group;
 }
 
 function updateTrajectories(trajectories, currentTimeGyr) {
-    // Clear existing trajectories
     trajectoryLines.forEach(obj => scene.remove(obj));
     trajectoryLines = [];
 
-    // Skip trajectory rendering if hidden, but don't skip stellar motion
-    // (stellar motion is now handled by updateFrame calling updateStellarTime)
     if (!showTrajectoryLines) return;
     if (!trajectories || !Array.isArray(trajectories)) return;
 
     const currentTimeMyr = (currentTimeGyr || 0) * 1000;
-
+    
+    const cameraDistance = camera ? camera.position.length() : 50;
+    const isZoomedOut = cameraDistance > 80;
+    
+    const inFlightTrajs = [];
+    const completedTrajs = [];
+    
     trajectories.forEach(traj => {
-        if (traj.start && traj.end) {
-            const trajTimeMyr = traj.time_myr || 0;
-            if (trajTimeMyr <= currentTimeMyr) {
-                const obj = createExpansionLine(traj);
-                trajectoryLines.push(obj);
-                scene.add(obj);
+        const { launchPos, interceptPos } = getTrajectoryPositions(traj);
+        if (!launchPos || !interceptPos) return;
+        if (launchPos[0] === 0 && launchPos[1] === 0 && launchPos[2] === 0) return;
+        if (interceptPos[0] === 0 && interceptPos[1] === 0 && interceptPos[2] === 0) return;
+        
+        const arrivalTimeMyr = traj.time_myr || 0;
+        const launchTimeMyr = traj.launch_time_myr || (arrivalTimeMyr - 100);
+        const travelTime = arrivalTimeMyr - launchTimeMyr;
+        
+        if (currentTimeMyr >= launchTimeMyr) {
+            let progress;
+            if (currentTimeMyr < arrivalTimeMyr && travelTime > 0) {
+                progress = Math.min(1.0, (currentTimeMyr - launchTimeMyr) / travelTime);
+                inFlightTrajs.push({ traj, progress });
+            } else {
+                progress = 1.0;
+                completedTrajs.push({ traj, progress });
             }
         }
     });
+    
+    const maxVisible = window.trajectoryState.maxVisibleTrajectories || 500;
+    
+    const prevShowGhosts = window.trajectoryState.showGhostAnchors;
+    if (isZoomedOut) {
+        window.trajectoryState.showGhostAnchors = false;
+    }
+    
+    inFlightTrajs.forEach(({ traj, progress }) => {
+        const obj = createWorldlineTrajectory(traj, progress, currentTimeMyr);
+        if (obj && obj.children.length > 0) {
+            trajectoryLines.push(obj);
+            scene.add(obj);
+        }
+    });
+    
+    if (window.trajectoryState.showCompletedTrajectories) {
+        const remainingSlots = Math.max(0, maxVisible - inFlightTrajs.length);
+        const completedToShow = completedTrajs.slice(0, remainingSlots);
+        
+        completedToShow.forEach(({ traj, progress }) => {
+            const obj = createWorldlineTrajectory(traj, progress, currentTimeMyr);
+            if (obj && obj.children.length > 0) {
+                trajectoryLines.push(obj);
+                scene.add(obj);
+            }
+        });
+    }
+    
+    window.trajectoryState.showGhostAnchors = prevShowGhosts;
 }
 
 function setTrajectoryVisibility(visible) {
@@ -430,6 +663,18 @@ function setTrajectoryVisibility(visible) {
     trajectoryLines.forEach(obj => {
         obj.visible = visible;
     });
+}
+
+function setTrajectoryGhostAnchors(show) {
+    window.trajectoryState.showGhostAnchors = show;
+}
+
+function setTrajectoryDriftLines(show) {
+    window.trajectoryState.showDriftLines = show;
+}
+
+function setTrajectoryFuturePath(show) {
+    window.trajectoryState.showFuturePath = show;
 }
 
 function updateCivilizationDisplay(percent) {
@@ -453,8 +698,11 @@ window.createHazardMarker = createHazardMarker;
 window.updateHazards = updateHazards;
 window.setHazardVisibility = setHazardVisibility;
 window.updateCivilizationDisplay = updateCivilizationDisplay;
-window.createExpansionLine = createExpansionLine;
+window.createWorldlineTrajectory = createWorldlineTrajectory;
 window.updateTrajectories = updateTrajectories;
 window.setTrajectoryVisibility = setTrajectoryVisibility;
+window.setTrajectoryGhostAnchors = setTrajectoryGhostAnchors;
+window.setTrajectoryDriftLines = setTrajectoryDriftLines;
+window.setTrajectoryFuturePath = setTrajectoryFuturePath;
 window.hermiteInterpolateCPU = hermiteInterpolateCPU;
 window.getStarPositionAtTime = getStarPositionAtTime;

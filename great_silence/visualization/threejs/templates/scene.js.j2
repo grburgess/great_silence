@@ -64,10 +64,15 @@ function initScene() {
 
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = window.config.enable_damping !== false;
-    controls.dampingFactor = window.config.damping_factor || 0.05;
+    controls.dampingFactor = window.config.damping_factor || 0.08;
     controls.enableZoom = window.config.enable_zoom !== false;
     controls.autoRotate = window.config.auto_rotate || false;
     controls.autoRotateSpeed = window.config.auto_rotate_speed || 2.0;
+    controls.rotateSpeed = 0.8;
+    controls.zoomSpeed = 1.2;
+    controls.panSpeed = 0.8;
+    controls.screenSpacePanning = true;
+    controls.enablePan = true;
 
     window.addEventListener('resize', onWindowResize);
 

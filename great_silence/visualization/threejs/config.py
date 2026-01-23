@@ -19,11 +19,11 @@ class ThreeJSConfig:
     auto_rotate: bool = False
     auto_rotate_speed: float = 2.0
 
-    camera_min_distance: float = 5.0
-    camera_max_distance: float = 100.0
-    camera_min_polar_angle: float = 10.0
-    camera_max_polar_angle: float = 170.0
-    camera_max_pan: float = 30.0
+    camera_min_distance: float = 2.0
+    camera_max_distance: float = 150.0
+    camera_min_polar_angle: float = 5.0
+    camera_max_polar_angle: float = 175.0
+    camera_max_pan: float = 50.0
 
     default_loop_mode: str = "repeat"
     fly_move_speed: float = 0.5

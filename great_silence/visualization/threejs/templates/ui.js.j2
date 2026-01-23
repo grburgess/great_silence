@@ -205,6 +205,66 @@ function initLayerControls() {
             }
         });
     }
+    
+    const trajCompletedToggle = document.getElementById('traj-completed-toggle');
+    if (trajCompletedToggle) {
+        trajCompletedToggle.addEventListener('change', (e) => {
+            if (window.trajectoryState) {
+                window.trajectoryState.showCompletedTrajectories = e.target.checked;
+            }
+            if (window.animationData && window.animationData.frames && window.animationData.frames[window.currentFrame]) {
+                const frame = window.animationData.frames[window.currentFrame];
+                if (window.updateTrajectories) {
+                    window.updateTrajectories(frame.trajectories, frame.time);
+                }
+            }
+        });
+    }
+    
+    const trajGhostToggle = document.getElementById('traj-ghost-toggle');
+    if (trajGhostToggle) {
+        trajGhostToggle.addEventListener('change', (e) => {
+            if (window.setTrajectoryGhostAnchors) {
+                window.setTrajectoryGhostAnchors(e.target.checked);
+            }
+            if (window.animationData && window.animationData.frames && window.animationData.frames[window.currentFrame]) {
+                const frame = window.animationData.frames[window.currentFrame];
+                if (window.updateTrajectories) {
+                    window.updateTrajectories(frame.trajectories, frame.time);
+                }
+            }
+        });
+    }
+    
+    const trajDriftToggle = document.getElementById('traj-drift-toggle');
+    if (trajDriftToggle) {
+        trajDriftToggle.addEventListener('change', (e) => {
+            if (window.setTrajectoryDriftLines) {
+                window.setTrajectoryDriftLines(e.target.checked);
+            }
+            if (window.animationData && window.animationData.frames && window.animationData.frames[window.currentFrame]) {
+                const frame = window.animationData.frames[window.currentFrame];
+                if (window.updateTrajectories) {
+                    window.updateTrajectories(frame.trajectories, frame.time);
+                }
+            }
+        });
+    }
+    
+    const trajFutureToggle = document.getElementById('traj-future-toggle');
+    if (trajFutureToggle) {
+        trajFutureToggle.addEventListener('change', (e) => {
+            if (window.setTrajectoryFuturePath) {
+                window.setTrajectoryFuturePath(e.target.checked);
+            }
+            if (window.animationData && window.animationData.frames && window.animationData.frames[window.currentFrame]) {
+                const frame = window.animationData.frames[window.currentFrame];
+                if (window.updateTrajectories) {
+                    window.updateTrajectories(frame.trajectories, frame.time);
+                }
+            }
+        });
+    }
 
     document.getElementById('btn-postprocess').addEventListener('click', (e) => {
         usePostProcessing = !usePostProcessing;
@@ -621,6 +681,44 @@ function initRaycaster() {
             }
         }
     });
+
+    renderer.domElement.addEventListener('dblclick', (event) => {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+
+        if (civSprites.length > 0) {
+            const intersects = raycaster.intersectObjects(civSprites);
+            if (intersects.length > 0) {
+                const civData = intersects[0].object.userData;
+                const pos = intersects[0].object.position;
+                if (window.transitionToPoint) {
+                    window.transitionToPoint(
+                        new THREE.Vector3(pos.x, pos.y, pos.z),
+                        0.4,
+                        1.0
+                    );
+                }
+                return;
+            }
+        }
+
+        if (starPoints) {
+            const intersects = raycaster.intersectObject(starPoints);
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+                if (window.transitionToPoint) {
+                    window.transitionToPoint(point, 0.5, 1.0);
+                }
+                return;
+            }
+        }
+
+        if (window.zoomTowardDirection) {
+            window.zoomTowardDirection(raycaster, 0.3);
+        }
+    });
 }
 
 function initMiniMap() {
@@ -820,11 +918,11 @@ function updateFrame(frameIndex) {
     }
 
     if (window.updateCivilizations) {
-        window.updateCivilizations(frame.civilizations);
+        window.updateCivilizations(frame.civilizations, timeMyr);
     }
 
     if (window.updateProbes) {
-        window.updateProbes(frame.probes);
+        window.updateProbes(frame.probes, timeMyr);
     }
 
     if (window.updateHazards) {
@@ -832,7 +930,10 @@ function updateFrame(frameIndex) {
     }
 
     if (window.updateTrajectories) {
-        window.updateTrajectories(frame.trajectories || [], frame.time);
+        const trajectories = (window.keyframeData && window.keyframeData.events && window.keyframeData.events.trajectories) 
+            ? window.keyframeData.events.trajectories 
+            : (frame.trajectories || []);
+        window.updateTrajectories(trajectories, frame.time);
     }
     
     // Update enhanced disaster visualization

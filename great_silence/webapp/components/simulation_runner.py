@@ -47,6 +47,14 @@ class SimulationRunner:
                     .props("size=lg")
                 )
                 self._cancel_button.visible = False
+                
+                self._load_button = (
+                    ui.button("📂 Load Last", on_click=self._load_last_simulation)
+                    .classes("bg-blue-700 hover:bg-blue-600 text-white")
+                    .props("size=lg")
+                    .tooltip("Load last auto-saved simulation")
+                )
+                self._check_autosave_exists()
 
             with ui.column().classes("w-full gap-2 mt-4") as progress_section:
                 self._progress_section = progress_section
@@ -240,11 +248,41 @@ class SimulationRunner:
         self._run_button.visible = True
         self._cancel_button.visible = False
 
+        if self._sim and not self._simulation_error and not self._is_cancelled:
+            self._auto_save_simulation()
+
         if self.on_complete and not self._simulation_error and not self._is_cancelled:
             try:
                 self.on_complete()
             except Exception:
                 pass
+
+    def _auto_save_simulation(self) -> None:
+        """Auto-save simulation to user's home directory for recovery."""
+        try:
+            from pathlib import Path
+            import pickle
+            
+            save_dir = Path.home() / ".great_silence" / "autosave"
+            save_dir.mkdir(parents=True, exist_ok=True)
+            
+            save_path = save_dir / "last_simulation.pkl"
+            
+            with open(save_path, 'wb') as f:
+                pickle.dump({
+                    'simulation': self._sim,
+                    'config': app_state.config,
+                    'timestamp': time.time(),
+                }, f)
+            
+            self._add_event(
+                self._sim.current_time_myr / 1000.0 if hasattr(self._sim, 'current_time_myr') else 0,
+                "init",
+                f"💾 Auto-saved to {save_path}"
+            )
+            self._render_new_events()
+        except Exception as e:
+            print(f"Auto-save failed: {e}")
 
     def _cancel_simulation(self) -> None:
         """Cancel the simulation and reset UI."""
@@ -268,6 +306,66 @@ class SimulationRunner:
         self._cancel_button.visible = False
         
         ui.notify("Simulation cancelled", type="warning")
+
+    def _check_autosave_exists(self) -> None:
+        """Check if an auto-saved simulation exists and update button visibility."""
+        from pathlib import Path
+        save_path = Path.home() / ".great_silence" / "autosave" / "last_simulation.pkl"
+        self._load_button.visible = save_path.exists()
+
+    def _load_last_simulation(self) -> None:
+        """Load the last auto-saved simulation."""
+        from pathlib import Path
+        import pickle
+        
+        save_path = Path.home() / ".great_silence" / "autosave" / "last_simulation.pkl"
+        
+        if not save_path.exists():
+            ui.notify("No auto-saved simulation found", type="warning")
+            return
+        
+        try:
+            with open(save_path, 'rb') as f:
+                data = pickle.load(f)
+            
+            self._sim = data['simulation']
+            app_state.simulation = self._sim
+            app_state.config = data['config']
+            
+            save_time = data.get('timestamp', 0)
+            import datetime
+            save_str = datetime.datetime.fromtimestamp(save_time).strftime('%H:%M:%S')
+            
+            total = len(self._sim.civilizations) if self._sim else 0
+            active = len([c for c in self._sim.civilizations if c.is_active]) if self._sim else 0
+            stars = len(self._sim.galaxy.positions) if self._sim and hasattr(self._sim, 'galaxy') else 0
+            
+            app_state.results = {
+                "simulation": self._sim,
+                "total_civilizations": total,
+                "active_civilizations": active,
+                "elapsed_time": 0,
+            }
+            
+            self._stats_card.visible = True
+            self._active_civs_label.text = str(active)
+            self._total_civs_label.text = str(total)
+            self._extinctions_label.text = str(total - active)
+            
+            ui.notify(
+                f"✅ Loaded simulation from {save_str}: {stars:,} stars, {total} civs",
+                type="positive",
+                timeout=5000
+            )
+            
+            if self.on_complete:
+                try:
+                    self.on_complete()
+                except Exception:
+                    pass
+                    
+        except Exception as e:
+            ui.notify(f"Failed to load simulation: {e}", type="negative")
 
     def _add_event(self, time_gyr: float, event_type: str, description: str) -> None:
         colors = {

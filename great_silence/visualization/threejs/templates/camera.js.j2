@@ -704,9 +704,64 @@ function resetCamera() {
     transitionToPreset(0);
 }
 
+function transitionToPoint(targetPoint, zoomFactor = 0.5, duration = 1.0) {
+    const currentDistance = camera.position.distanceTo(controls.target);
+    const newDistance = currentDistance * zoomFactor;
+    
+    const direction = new THREE.Vector3()
+        .subVectors(targetPoint, camera.position)
+        .normalize();
+    
+    const newCamPos = new THREE.Vector3()
+        .copy(targetPoint)
+        .sub(direction.multiplyScalar(newDistance));
+    
+    new TWEEN.Tween(camera.position)
+        .to({
+            x: newCamPos.x,
+            y: newCamPos.y,
+            z: newCamPos.z
+        }, duration * 1000)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .start();
+
+    new TWEEN.Tween(controls.target)
+        .to({
+            x: targetPoint.x,
+            y: targetPoint.y,
+            z: targetPoint.z
+        }, duration * 1000)
+        .easing(TWEEN.Easing.Cubic.InOut)
+        .start();
+}
+
+function zoomTowardDirection(raycaster, zoomAmount = 0.3) {
+    const direction = raycaster.ray.direction.clone();
+    const currentTarget = controls.target.clone();
+    const distToTarget = camera.position.distanceTo(currentTarget);
+    
+    const moveDistance = distToTarget * zoomAmount;
+    const newTarget = currentTarget.add(direction.multiplyScalar(moveDistance));
+    
+    const newCamPos = camera.position.clone()
+        .add(raycaster.ray.direction.clone().multiplyScalar(moveDistance));
+    
+    new TWEEN.Tween(camera.position)
+        .to({ x: newCamPos.x, y: newCamPos.y, z: newCamPos.z }, 500)
+        .easing(TWEEN.Easing.Cubic.Out)
+        .start();
+    
+    new TWEEN.Tween(controls.target)
+        .to({ x: newTarget.x, y: newTarget.y, z: newTarget.z }, 500)
+        .easing(TWEEN.Easing.Cubic.Out)
+        .start();
+}
+
 window.initCamera = initCamera;
 window.transitionToPreset = transitionToPreset;
 window.transitionToPosition = transitionToPosition;
+window.transitionToPoint = transitionToPoint;
+window.zoomTowardDirection = zoomTowardDirection;
 window.toggleAutoRotate = toggleAutoRotate;
 window.followCivilization = followCivilization;
 window.followHazard = followHazard;

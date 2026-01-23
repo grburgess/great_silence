@@ -186,61 +186,65 @@ class ThreeJSRenderer:
                 "civ_stats": civ_stats,
             }
     
-    def _create_frames_from_events(self, event_data: EventData, time_range: list) -> list:
+    def _create_frames_from_events(self, event_data: EventData, time_range: list, max_frames: int = 100) -> list:
         """Create animation frames from sparse event data.
         
         This generates frames at regular intervals, populating them with
         civilization and disaster states derived from the event timeline.
+        
+        Args:
+            event_data: Sparse event data from keyframe extraction
+            time_range: [start_gyr, end_gyr] time range
+            max_frames: Maximum number of frames to generate (default 100)
         """
         frames = []
         
-        # Collect all unique times from events
-        all_times = set()
-        for birth in event_data.civ_births:
-            all_times.add(birth['time_myr'])
-        for death in event_data.civ_deaths:
-            all_times.add(death['time_myr'])
-        for disaster in event_data.disasters:
-            all_times.add(disaster['time_myr'])
-        for update in event_data.civ_updates:
-            all_times.add(update['time_myr'])
-        
-        # Add start and end times
         time_range_myr = [time_range[0] * 1000, time_range[1] * 1000]
-        all_times.add(time_range_myr[0])
-        all_times.add(time_range_myr[1])
+        duration_myr = time_range_myr[1] - time_range_myr[0]
         
-        # Generate frames at key times
-        sorted_times = sorted(all_times)
+        if duration_myr <= 0:
+            return frames
         
-        # Track civilization states
-        active_civs = {}  # civ_id -> {star_idx, kardashev, birth_time}
+        frame_interval_myr = duration_myr / max_frames
+        frame_times = [time_range_myr[0] + i * frame_interval_myr for i in range(max_frames + 1)]
+        
+        active_civs = {}
         dead_civs = set()
         
-        for time_myr in sorted_times:
+        birth_idx = 0
+        death_idx = 0
+        update_idx = 0
+        
+        sorted_births = sorted(event_data.civ_births, key=lambda x: x['time_myr'])
+        sorted_deaths = sorted(event_data.civ_deaths, key=lambda x: x['time_myr'])
+        sorted_updates = sorted(event_data.civ_updates, key=lambda x: x['time_myr'])
+        
+        for time_myr in frame_times:
             time_gyr = time_myr / 1000.0
             
-            # Process births up to this time
-            for birth in event_data.civ_births:
-                if birth['time_myr'] <= time_myr and birth['civ_id'] not in active_civs and birth['civ_id'] not in dead_civs:
+            while birth_idx < len(sorted_births) and sorted_births[birth_idx]['time_myr'] <= time_myr:
+                birth = sorted_births[birth_idx]
+                if birth['civ_id'] not in active_civs and birth['civ_id'] not in dead_civs:
                     active_civs[birth['civ_id']] = {
                         'star_idx': birth['star_idx'],
                         'kardashev': birth['kardashev'],
                         'birth_time': birth['time_myr'],
                     }
+                birth_idx += 1
             
-            # Update kardashev values from updates
-            for update in event_data.civ_updates:
-                if update['civ_id'] in active_civs and update['time_myr'] <= time_myr:
+            while update_idx < len(sorted_updates) and sorted_updates[update_idx]['time_myr'] <= time_myr:
+                update = sorted_updates[update_idx]
+                if update['civ_id'] in active_civs:
                     active_civs[update['civ_id']]['kardashev'] = update['kardashev']
+                update_idx += 1
             
-            # Process deaths up to this time
-            for death in event_data.civ_deaths:
-                if death['time_myr'] <= time_myr and death['civ_id'] in active_civs:
+            while death_idx < len(sorted_deaths) and sorted_deaths[death_idx]['time_myr'] <= time_myr:
+                death = sorted_deaths[death_idx]
+                if death['civ_id'] in active_civs:
                     dead_civs.add(death['civ_id'])
                     del active_civs[death['civ_id']]
+                death_idx += 1
             
-            # Build civilization list for this frame
             civs = []
             for civ_id, state in active_civs.items():
                 civs.append({
@@ -249,15 +253,14 @@ class ThreeJSRenderer:
                     'kardashev': state['kardashev'],
                     'is_active': True,
                     'age': (time_myr - state['birth_time']) / 1000.0,
-                    'position': [0, 0, 0],  # Will be computed via Hermite
+                    'position': [0, 0, 0],
                 })
             
-            # Collect hazards at this time and convert field names for UI compatibility
             hazards = []
             for h in event_data.disasters:
                 if abs(h['time_myr'] - time_myr) < 50:
                     hazards.append({
-                        'time': h['time_myr'] / 1000.0,  # Convert to Gyr for UI
+                        'time': h['time_myr'] / 1000.0,
                         'type': h.get('type', 'unknown'),
                         'position': h.get('position', [0, 0, 0]),
                         'lethal_radius': h.get('lethal_radius_kpc', h.get('lethal_radius', 0.01)),
@@ -268,11 +271,7 @@ class ThreeJSRenderer:
                         'affected_civs': h.get('affected_civs', []),
                     })
             
-            # Collect probes at this time
-            probes = [p for p in event_data.probes if abs(p['time_myr'] - time_myr) < 50]
-            
-            # Collect trajectories up to this time
-            trajectories = [t for t in event_data.trajectories if t['time_myr'] <= time_myr]
+            probes = [p for p in event_data.probes if abs(p['time_myr'] - time_myr) < frame_interval_myr]
             
             frames.append({
                 'time': time_gyr,
@@ -280,7 +279,7 @@ class ThreeJSRenderer:
                 'civilizations': civs,
                 'hazards': hazards,
                 'probes': probes,
-                'trajectories': trajectories,
+                'trajectories': [],
             })
         
         return frames

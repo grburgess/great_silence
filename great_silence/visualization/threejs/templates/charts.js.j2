@@ -573,6 +573,10 @@ function renderColonyExpansion(frameIndex) {
     let totalColonies = 0;
     let expandingCivs = 0;
     
+    const allTrajectories = (window.keyframeData && window.keyframeData.events && window.keyframeData.events.trajectories) 
+        ? window.keyframeData.events.trajectories 
+        : [];
+    
     for (let i = 0; i <= currentIdx; i++) {
         const frame = frames[i];
         times.push(frame.time);
@@ -580,9 +584,12 @@ function renderColonyExpansion(frameIndex) {
         let frameColonies = 0;
         const civColonyCounts = {};
         
-        if (frame.trajectories) {
+        const frameTimeMyr = (frame.time || 0) * 1000;
+        const trajectories = allTrajectories.filter(t => t.time_myr <= frameTimeMyr);
+        
+        if (trajectories.length > 0) {
             const civColonies = {};
-            frame.trajectories.forEach(t => {
+            trajectories.forEach(t => {
                 if (!civColonies[t.civ_id]) civColonies[t.civ_id] = new Set();
                 civColonies[t.civ_id].add(JSON.stringify(t.end));
             });
