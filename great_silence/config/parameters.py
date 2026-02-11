@@ -275,6 +275,7 @@ class SimulationParameters:
     stellar_motion_min_dt_myr: float = 0.05  # Minimum timestep for adaptive mode (Myr)
     stellar_motion_max_dt_myr: float = 2.0  # Maximum timestep for adaptive mode (Myr)
     stellar_motion_use_numba: bool = True  # Use Numba kernels for position evolution
+    stellar_motion_use_yoshida: bool = True  # Use Yoshida 4th-order integrator (4-8x larger timesteps)
     probe_intercept_enabled: bool = True  # Probes calculate intercept position for moving targets
     disaster_track_parent_star: bool = True  # Disasters occur at parent star's current position
     enable_star_formation: bool = True  # Enable continuous star formation during simulation

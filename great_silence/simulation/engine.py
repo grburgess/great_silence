@@ -760,6 +760,7 @@ class GalaxySimulation:
                 self.galaxy.evolve_positions_adaptive(
                     dt_myr,
                     use_numba=self.config.simulation.stellar_motion_use_numba,
+                    use_yoshida=self.config.simulation.stellar_motion_use_yoshida,
                 )
             else:
                 # Legacy sub-cycling mode (slower but simpler)
