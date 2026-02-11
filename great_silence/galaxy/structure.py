@@ -983,17 +983,21 @@ class GalaxyModel:
             min_dt: Minimum allowed timestep in Myr
             max_dt: Maximum allowed timestep in Myr
         """
-        if self.positions is None:
+        if self._pos_x is None:
             raise ValueError("Must generate positions first")
-        
-        n_stars = len(self.positions)
-        
-        # Compute accelerations
-        self.stellar_accelerations = self._compute_gravitational_acceleration(self.positions)
+
+        n_stars = len(self._pos_x)
+        pos = self.positions
+
+        # Compute accelerations (use Numba if available)
+        try:
+            self.stellar_accelerations = self._compute_accel_numba(pos)
+        except (ImportError, AttributeError):
+            self.stellar_accelerations = self._compute_gravitational_acceleration(pos)
         a_mag = np.linalg.norm(self.stellar_accelerations, axis=1)
-        
+
         # Compute galactocentric radius
-        r = np.sqrt(self.positions[:, 0]**2 + self.positions[:, 1]**2 + self.positions[:, 2]**2)
+        r = np.sqrt(self._pos_x**2 + self._pos_y**2 + self._pos_z**2)
         
         # Compute individual timesteps: dt = η × sqrt(r / |a|)
         # This gives approximately dt ~ T_orbit / (2π/η) where T_orbit is orbital period
@@ -1013,81 +1017,131 @@ class GalaxyModel:
         self.stellar_timesteps = min_dt * (2.0 ** block_levels)
         self.time_until_update = self.stellar_timesteps.copy()
         
+    def _get_potential_params(self) -> tuple:
+        """Precompute and cache gravitational potential parameters for Numba kernel."""
+        if not hasattr(self, '_potential_params') or self._potential_params is None:
+            v_circ = self.params.rotation_velocity_km_s
+            G_kpc_msun = 4.498e-12
+            R_char = 8.0
+
+            disk_a = self.params.scale_length_kpc
+            disk_b = self.params.disk_height_kpc
+            v_disk = 0.72 * v_circ * 0.001022
+            disk_G_M = v_disk**2 * R_char
+
+            bulge_a = self.params.bulge_radius_kpc
+            v_bulge = 0.38 * v_circ * 0.001022
+            bulge_G_M = v_bulge**2 * R_char
+
+            v_halo = 0.58 * v_circ * 0.001022
+            halo_v_sq = v_halo**2
+
+            include_bulge = self.params.include_bulge
+
+            self._potential_params = (
+                disk_a, disk_b, disk_G_M,
+                bulge_a, bulge_G_M,
+                halo_v_sq, include_bulge
+            )
+        return self._potential_params
+
+    def _compute_accel_numba(self, positions: np.ndarray) -> np.ndarray:
+        """Compute gravitational acceleration using Numba kernel."""
+        from ..utils.numba_kernels import compute_total_acceleration_kernel
+
+        disk_a, disk_b, disk_G_M, bulge_a, bulge_G_M, halo_v_sq, include_bulge = (
+            self._get_potential_params()
+        )
+        out = np.empty_like(positions, dtype=np.float64)
+        compute_total_acceleration_kernel(
+            np.ascontiguousarray(positions, dtype=np.float64), out,
+            disk_a, disk_b, disk_G_M,
+            bulge_a, bulge_G_M,
+            halo_v_sq, include_bulge
+        )
+        return out
+
     def evolve_positions_adaptive(
-        self, 
-        dt_myr: float, 
+        self,
+        dt_myr: float,
         use_numba: bool = True
     ) -> None:
         """
         Evolve stellar positions using adaptive individual timesteps.
-        
+
         Only stars whose time_until_update <= 0 are integrated.
         This provides major speedup since outer disk stars (80%+) use
         much larger timesteps than inner bulge stars.
-        
+
         Args:
             dt_myr: Global simulation timestep in Myr
             use_numba: Use Numba kernels for acceleration
         """
-        if self.positions is None or self.velocities is None:
+        if self._pos_x is None or self.velocities is None:
             raise ValueError("Must generate positions and velocities first")
-        
+
         if self.stellar_timesteps is None:
             self.initialize_adaptive_timesteps()
-        
-        # Decrement time until update
+
         self.time_until_update -= dt_myr
-        
-        # Find stars that need updating
+
         needs_update = self.time_until_update <= 0
         update_indices = np.where(needs_update)[0]
-        
+
         if len(update_indices) == 0:
             return
-        
-        # Get positions and velocities of stars to update
-        pos_update = self.positions[update_indices]
+
+        pos_update = np.column_stack([
+            self._pos_x[update_indices],
+            self._pos_y[update_indices],
+            self._pos_z[update_indices]
+        ])
         vel_update = self.velocities[update_indices]
         dt_update = self.stellar_timesteps[update_indices]
-        
-        # Compute accelerations at current positions
-        a_current = self._compute_gravitational_acceleration(pos_update)
-        
-        # Leapfrog integration for each star with its own timestep
+        dt_col = dt_update[:, np.newaxis]
+
+        if use_numba:
+            try:
+                a_current = self._compute_accel_numba(pos_update)
+            except ImportError:
+                a_current = self._compute_gravitational_acceleration(pos_update)
+        else:
+            a_current = self._compute_gravitational_acceleration(pos_update)
+
         v_kpc_myr = vel_update * 0.001022
-        
-        # Position update: r' = r + v*dt + 0.5*a*dt²
-        pos_new = pos_update + v_kpc_myr * dt_update[:, np.newaxis] + \
-                  0.5 * a_current * (dt_update[:, np.newaxis] ** 2)
-        
-        # Compute acceleration at new positions
-        a_new = self._compute_gravitational_acceleration(pos_new)
-        
-        # Velocity update: v' = v + 0.5*(a + a')*dt
-        v_kpc_myr_new = v_kpc_myr + 0.5 * (a_current + a_new) * dt_update[:, np.newaxis]
-        
-        # Write back
-        self.positions[update_indices] = pos_new
+        pos_new = pos_update + v_kpc_myr * dt_col + 0.5 * a_current * (dt_col ** 2)
+
+        if use_numba:
+            try:
+                a_new = self._compute_accel_numba(pos_new)
+            except ImportError:
+                a_new = self._compute_gravitational_acceleration(pos_new)
+        else:
+            a_new = self._compute_gravitational_acceleration(pos_new)
+
+        v_kpc_myr_new = v_kpc_myr + 0.5 * (a_current + a_new) * dt_col
+
+        self._pos_x[update_indices] = pos_new[:, 0]
+        self._pos_y[update_indices] = pos_new[:, 1]
+        self._pos_z[update_indices] = pos_new[:, 2]
         self.velocities[update_indices] = v_kpc_myr_new / 0.001022
-        
-        # Reset timers for updated stars and recompute their timesteps
-        # (timestep may change as star moves to different radius)
+
         a_mag_new = np.linalg.norm(a_new, axis=1)
         r_new = np.sqrt(pos_new[:, 0]**2 + pos_new[:, 1]**2 + pos_new[:, 2]**2)
-        
+
         eta = 0.02
         min_dt = self.stellar_timesteps.min()
         max_dt = self.stellar_timesteps.max()
-        
+
         with np.errstate(divide='ignore', invalid='ignore'):
             dt_ideal = eta * np.sqrt(r_new / (a_mag_new + 1e-30))
         dt_clamped = np.clip(dt_ideal, min_dt, max_dt)
-        
+
         block_levels = np.floor(np.log2(dt_clamped / min_dt)).astype(int)
         block_levels = np.maximum(block_levels, 0)
         max_level = int(np.log2(max_dt / min_dt))
         block_levels = np.minimum(block_levels, max_level)
-        
+
         new_timesteps = min_dt * (2.0 ** block_levels)
         self.stellar_timesteps[update_indices] = new_timesteps
         self.time_until_update[update_indices] = new_timesteps
