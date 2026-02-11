@@ -1096,11 +1096,11 @@ def leapfrog_integrate_velocities_kernel(
 ) -> None:
     """
     Perform leapfrog velocity update step (in-place).
-    
+
     v(t+dt) = v(t) + 0.5×(a(t) + a(t+dt))×dt
-    
+
     Accelerations in kpc/Myr², velocities in km/s.
-    
+
     Args:
         velocities: (N, 3) velocities in km/s (modified in-place)
         accel_old: (N, 3) accelerations at t in kpc/Myr²
@@ -1110,11 +1110,117 @@ def leapfrog_integrate_velocities_kernel(
     n_stars = len(velocities)
     v_conv_inv = 1.0 / 0.001022  # kpc/Myr to km/s
     half_dt = 0.5 * dt_myr
-    
+
     for i in numba.prange(n_stars):
         velocities[i, 0] += (accel_old[i, 0] + accel_new[i, 0]) * half_dt * v_conv_inv
         velocities[i, 1] += (accel_old[i, 1] + accel_new[i, 1]) * half_dt * v_conv_inv
         velocities[i, 2] += (accel_old[i, 2] + accel_new[i, 2]) * half_dt * v_conv_inv
+
+
+@numba.jit(nopython=True, parallel=True, fastmath=True, cache=True)
+def yoshida_integrate_step_kernel(
+    positions: np.ndarray,
+    velocities: np.ndarray,
+    accelerations: np.ndarray,
+    dt_myr: float,
+    accel_func,
+    *accel_args
+) -> None:
+    """
+    Perform Yoshida 4th-order symplectic integration step.
+
+    Yoshida (1990) 4th-order symplectic integrator uses 3 sub-steps with
+    special coefficients. Provides same accuracy as leapfrog with 4-8x larger dt.
+    Still symplectic (energy conserving over 10+ Gyr).
+
+    Coefficients:
+        w0 = -2^(1/3) / (2 - 2^(1/3))
+        w1 = 1 / (2 - 2^(1/3))
+        c1 = c4 = w1 / 2
+        c2 = c3 = (w0 + w1) / 2
+        d1 = d3 = w1
+        d2 = w0
+
+    Integration sequence (3 sub-steps):
+        1. x += c1 * v * dt
+        2. v += d1 * a(x) * dt
+        3. x += c2 * v * dt
+        4. v += d2 * a(x) * dt
+        5. x += c3 * v * dt
+        6. v += d3 * a(x) * dt
+        7. x += c4 * v * dt
+
+    Args:
+        positions: (N, 3) positions in kpc (modified in-place)
+        velocities: (N, 3) velocities in km/s (modified in-place)
+        accelerations: (N, 3) scratch array for accelerations (overwritten)
+        dt_myr: Time step in Myr
+        accel_func: Acceleration computation function
+        *accel_args: Arguments to pass to accel_func
+
+    References:
+        Yoshida (1990): https://doi.org/10.1007/BF00048986
+        Rein & Tamayo (2019): https://doi.org/10.1093/mnras/stz2503
+    """
+    # Yoshida 4th-order coefficients
+    cbrt_2 = 1.259921049894873  # 2^(1/3)
+    w0 = -cbrt_2 / (2.0 - cbrt_2)
+    w1 = 1.0 / (2.0 - cbrt_2)
+
+    c1 = c4 = w1 / 2.0
+    c2 = c3 = (w0 + w1) / 2.0
+    d1 = d3 = w1
+    d2 = w0
+
+    v_conv = 0.001022  # km/s to kpc/Myr
+    v_conv_inv = 1.0 / v_conv
+
+    n_stars = len(positions)
+
+    # Sub-step 1: drift + kick
+    for i in numba.prange(n_stars):
+        positions[i, 0] += velocities[i, 0] * v_conv * c1 * dt_myr
+        positions[i, 1] += velocities[i, 1] * v_conv * c1 * dt_myr
+        positions[i, 2] += velocities[i, 2] * v_conv * c1 * dt_myr
+
+    accel_func(positions, accelerations, *accel_args)
+
+    for i in numba.prange(n_stars):
+        velocities[i, 0] += accelerations[i, 0] * d1 * dt_myr * v_conv_inv
+        velocities[i, 1] += accelerations[i, 1] * d1 * dt_myr * v_conv_inv
+        velocities[i, 2] += accelerations[i, 2] * d1 * dt_myr * v_conv_inv
+
+    # Sub-step 2: drift + kick
+    for i in numba.prange(n_stars):
+        positions[i, 0] += velocities[i, 0] * v_conv * c2 * dt_myr
+        positions[i, 1] += velocities[i, 1] * v_conv * c2 * dt_myr
+        positions[i, 2] += velocities[i, 2] * v_conv * c2 * dt_myr
+
+    accel_func(positions, accelerations, *accel_args)
+
+    for i in numba.prange(n_stars):
+        velocities[i, 0] += accelerations[i, 0] * d2 * dt_myr * v_conv_inv
+        velocities[i, 1] += accelerations[i, 1] * d2 * dt_myr * v_conv_inv
+        velocities[i, 2] += accelerations[i, 2] * d2 * dt_myr * v_conv_inv
+
+    # Sub-step 3: drift + kick
+    for i in numba.prange(n_stars):
+        positions[i, 0] += velocities[i, 0] * v_conv * c3 * dt_myr
+        positions[i, 1] += velocities[i, 1] * v_conv * c3 * dt_myr
+        positions[i, 2] += velocities[i, 2] * v_conv * c3 * dt_myr
+
+    accel_func(positions, accelerations, *accel_args)
+
+    for i in numba.prange(n_stars):
+        velocities[i, 0] += accelerations[i, 0] * d3 * dt_myr * v_conv_inv
+        velocities[i, 1] += accelerations[i, 1] * d3 * dt_myr * v_conv_inv
+        velocities[i, 2] += accelerations[i, 2] * d3 * dt_myr * v_conv_inv
+
+    # Final drift
+    for i in numba.prange(n_stars):
+        positions[i, 0] += velocities[i, 0] * v_conv * c4 * dt_myr
+        positions[i, 1] += velocities[i, 1] * v_conv * c4 * dt_myr
+        positions[i, 2] += velocities[i, 2] * v_conv * c4 * dt_myr
 
 
 @numba.jit(nopython=True, parallel=True, fastmath=True, cache=True)
