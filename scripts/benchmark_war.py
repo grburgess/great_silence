@@ -89,10 +89,10 @@ def run_benchmark():
     stats = sim.get_statistics()
 
     print(f"Total civilizations: {stats['total_civilizations']}")
-    print(f"Currently active: {stats['currently_active_civilizations']}")
-    print(f"Max concurrent: {stats['max_concurrent_civilizations']}")
-    print(f"Self-destructed: {stats['self_destructed_civilizations']}")
-    print(f"Destroyed by hazards: {stats['destroyed_by_hazards']}")
+    print(f"Active civilizations: {stats['active_civilizations']}")
+    print(f"Extinct civilizations: {stats['extinct_civilizations']}")
+    print(f"Total colonized systems: {stats['total_colonized_systems']}")
+    print(f"Snapshots saved: {stats['snapshots_saved']}")
 
     # War statistics
     if hasattr(sim, '_war_count'):
@@ -129,7 +129,7 @@ def run_benchmark():
     print(f"  - Init: {t_init:.2f}s ({100 * t_init / (t_init + t_run):.1f}%)")
     print(f"  - Run:  {t_run:.2f}s ({100 * t_run / (t_init + t_run):.1f}%)")
     print(f"Peak memory: {mem_peak:.1f} MB")
-    print(f"Civilizations: {stats['total_civilizations']} total, {stats['max_concurrent_civilizations']} max concurrent")
+    print(f"Civilizations: {stats['total_civilizations']} total, {stats['active_civilizations']} active, {stats['extinct_civilizations']} extinct")
 
     # Write results to file
     output_path = Path("claude_comments/benchmark_results.md")
@@ -154,10 +154,10 @@ def run_benchmark():
 
         f.write("## Simulation Statistics\n\n")
         f.write(f"- Total civilizations: {stats['total_civilizations']}\n")
-        f.write(f"- Currently active: {stats['currently_active_civilizations']}\n")
-        f.write(f"- Max concurrent: {stats['max_concurrent_civilizations']}\n")
-        f.write(f"- Self-destructed: {stats['self_destructed_civilizations']}\n")
-        f.write(f"- Destroyed by hazards: {stats['destroyed_by_hazards']}\n\n")
+        f.write(f"- Active civilizations: {stats['active_civilizations']}\n")
+        f.write(f"- Extinct civilizations: {stats['extinct_civilizations']}\n")
+        f.write(f"- Total colonized systems: {stats['total_colonized_systems']}\n")
+        f.write(f"- Snapshots saved: {stats['snapshots_saved']}\n\n")
 
         if sim.snapshots:
             f.write("## Snapshot Statistics\n\n")
