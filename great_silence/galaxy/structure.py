@@ -27,20 +27,73 @@ class GalaxyModel:
         self.rng = np.random.default_rng(seed)
         self.use_numba = use_numba
 
-        # Store stellar positions and properties
-        self.positions: Optional[np.ndarray] = None  # (N, 3) in kpc
+        # Struct-of-Arrays (SoA) layout for SIMD optimization
+        # Separate x, y, z arrays enable full Apple Silicon NEON utilization
+        self._pos_x: Optional[np.ndarray] = None  # X coordinates in kpc
+        self._pos_y: Optional[np.ndarray] = None  # Y coordinates in kpc
+        self._pos_z: Optional[np.ndarray] = None  # Z coordinates in kpc
+
+        # AoS compatibility view (property, computed on demand)
+        self._positions_aos: Optional[np.ndarray] = None  # Cached (N, 3) view
+
+        # Velocities and initial positions (keep AoS for now, less critical)
         self.initial_positions: Optional[np.ndarray] = None  # (N, 3) in kpc - for delta compression
         self.velocities: Optional[np.ndarray] = None  # (N, 3) in km/s
+
+        # Stellar properties
         self.ages: Optional[np.ndarray] = None  # in Gyr
         self.masses: Optional[np.ndarray] = None  # in solar masses
         self.metallicities: Optional[np.ndarray] = None  # [Fe/H] in dex
         self.stellar_types: Optional[np.ndarray] = None
         self.component_type: Optional[np.ndarray] = None  # 0=bulge, 1=thin disk, 2=thick disk
-        
+
         # Adaptive timestep arrays (for efficient stellar motion)
         self.stellar_timesteps: Optional[np.ndarray] = None  # Individual dt for each star (Myr)
         self.time_until_update: Optional[np.ndarray] = None  # Time remaining until next update (Myr)
         self.stellar_accelerations: Optional[np.ndarray] = None  # Cached accelerations (kpc/Myr²)
+
+    @property
+    def positions(self) -> Optional[np.ndarray]:
+        """
+        Get positions as (N, 3) array (AoS layout) for compatibility.
+
+        This is a view that combines the SoA arrays (pos_x, pos_y, pos_z).
+        Modifications to this array will update the underlying SoA arrays.
+        """
+        if self._pos_x is None:
+            return None
+        # Return column_stack view for compatibility
+        return np.column_stack([self._pos_x, self._pos_y, self._pos_z])
+
+    @positions.setter
+    def positions(self, value: np.ndarray) -> None:
+        """
+        Set positions from (N, 3) array, updating SoA storage.
+
+        Args:
+            value: Array of shape (N, 3) with (x, y, z) positions
+        """
+        if value is None:
+            self._pos_x = None
+            self._pos_y = None
+            self._pos_z = None
+            self._positions_aos = None
+            return
+
+        # Split into SoA layout
+        self._pos_x = np.ascontiguousarray(value[:, 0])
+        self._pos_y = np.ascontiguousarray(value[:, 1])
+        self._pos_z = np.ascontiguousarray(value[:, 2])
+        self._positions_aos = None  # Invalidate cache
+
+    def get_positions_soa(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Get positions as separate x, y, z arrays (SoA layout) for kernels.
+
+        Returns:
+            Tuple of (pos_x, pos_y, pos_z) arrays for SIMD-optimized kernels
+        """
+        return self._pos_x, self._pos_y, self._pos_z
 
     def generate_stellar_population(self) -> None:
         """
