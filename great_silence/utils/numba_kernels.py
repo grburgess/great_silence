@@ -557,43 +557,49 @@ def evaluate_sn_effect_on_civs_kernel(
     random_values: np.ndarray
 ) -> np.ndarray:
     """
-    Evaluate supernova effect on multiple civilizations.
-    
+    Evaluate supernova effect on multiple civilizations (BRANCHLESS).
+
+    Uses arithmetic masks instead of if branches for SIMD vectorization.
+
     Args:
         civ_positions: (C, 3) civilization positions in kpc
         disaster_position: (3,) disaster position in kpc
         lethal_range_pc: Instant death range in pc
         sterilization_range_pc: Partial sterilization range in pc
         random_values: (C,) random values for stochastic evaluation
-        
+
     Returns:
         (C,) int array: 0=survived, 1=destroyed
     """
     n_civs = len(civ_positions)
     results = np.zeros(n_civs, dtype=np.int32)
-    
+
     lethal_kpc = lethal_range_pc / 1000.0
     sterilization_kpc = sterilization_range_pc / 1000.0
-    
+
     for c in range(n_civs):
         dx = civ_positions[c, 0] - disaster_position[0]
         dy = civ_positions[c, 1] - disaster_position[1]
         dz = civ_positions[c, 2] - disaster_position[2]
         dist_kpc = np.sqrt(dx*dx + dy*dy + dz*dz)
-        
-        if dist_kpc > sterilization_kpc:
-            continue
-        
+
         dist_pc = dist_kpc * 1000.0
-        
-        if dist_pc < lethal_range_pc:
-            results[c] = 1
-        else:
-            r = (dist_pc - lethal_range_pc) / (sterilization_range_pc - lethal_range_pc)
-            p_sterilize = np.exp(-3.0 * r)
-            if random_values[c] < p_sterilize:
-                results[c] = 1
-    
+
+        # Branchless: compute all cases, blend with masks
+        # Use comparisons directly (return 0 or 1 in arithmetic context)
+        in_range = (dist_kpc <= sterilization_kpc) * 1.0
+        in_lethal = (dist_pc < lethal_range_pc) * 1.0
+
+        # Probabilistic sterilization calculation (always computed)
+        r = (dist_pc - lethal_range_pc) / (sterilization_range_pc - lethal_range_pc + 1e-10)
+        p_sterilize = np.exp(-3.0 * r)
+        in_probabilistic = (random_values[c] < p_sterilize) * 1.0
+
+        # Blend: lethal takes precedence, then probabilistic, only if in range
+        destroyed = in_range * (in_lethal + (1.0 - in_lethal) * in_probabilistic)
+
+        results[c] = int(destroyed)
+
     return results
 
 
@@ -607,8 +613,10 @@ def evaluate_grb_effect_on_civs_kernel(
     lethal_range_kpc: float
 ) -> np.ndarray:
     """
-    Evaluate GRB effect on multiple civilizations.
-    
+    Evaluate GRB effect on multiple civilizations (BRANCHLESS).
+
+    Uses arithmetic masks for SIMD vectorization.
+
     Args:
         civ_positions: (C, 3) civilization positions in kpc
         disaster_position: (3,) GRB position in kpc
@@ -616,45 +624,48 @@ def evaluate_grb_effect_on_civs_kernel(
         jet_phi: Jet azimuthal angle (radians)
         beaming_angle_deg: Beaming half-angle (degrees)
         lethal_range_kpc: Lethal distance in kpc
-        
+
     Returns:
         (C,) int array: 0=survived, 1=destroyed
     """
     n_civs = len(civ_positions)
     results = np.zeros(n_civs, dtype=np.int32)
-    
+
     jet_dir = np.array([
         np.sin(jet_theta) * np.cos(jet_phi),
         np.sin(jet_theta) * np.sin(jet_phi),
         np.cos(jet_theta)
     ])
-    
+
     beaming_rad = beaming_angle_deg * 3.14159265358979 / 180.0
     cos_beaming = np.cos(beaming_rad)
-    
+
     for c in range(n_civs):
         dx = civ_positions[c, 0] - disaster_position[0]
         dy = civ_positions[c, 1] - disaster_position[1]
         dz = civ_positions[c, 2] - disaster_position[2]
         dist_kpc = np.sqrt(dx*dx + dy*dy + dz*dz)
-        
-        if dist_kpc < 1e-10 or dist_kpc > lethal_range_kpc:
-            continue
-        
-        to_civ_x = dx / dist_kpc
-        to_civ_y = dy / dist_kpc
-        to_civ_z = dz / dist_kpc
-        
+
+        # Branchless: check distance range
+        in_range = ((dist_kpc >= 1e-10) * (dist_kpc <= lethal_range_kpc)) * 1.0
+
+        # Always compute normalized direction (safe with small dist guard)
+        dist_safe = dist_kpc + 1e-10
+        to_civ_x = dx / dist_safe
+        to_civ_y = dy / dist_safe
+        to_civ_z = dz / dist_safe
+
         cos_angle = jet_dir[0]*to_civ_x + jet_dir[1]*to_civ_y + jet_dir[2]*to_civ_z
-        
-        if cos_angle > cos_beaming:
-            results[c] = 1
-            continue
-        
-        cos_angle_opp = -cos_angle
-        if cos_angle_opp > cos_beaming:
-            results[c] = 1
-    
+
+        # Check if in beam (either direction)
+        in_beam_forward = (cos_angle > cos_beaming) * 1.0
+        in_beam_backward = (-cos_angle > cos_beaming) * 1.0
+
+        # Destroyed if in range AND in either beam direction
+        destroyed = in_range * (in_beam_forward + in_beam_backward)
+
+        results[c] = int(destroyed)
+
     return results
 
 
@@ -703,32 +714,44 @@ def evaluate_ns_merger_effect_on_civs_kernel(
     
     kilonova_lethal_kpc = kilonova_lethal_range_pc / 1000.0
     kilonova_sterilization_kpc = kilonova_sterilization_range_pc / 1000.0
-    
+
     for c in range(n_civs):
         dx = civ_positions[c, 0] - disaster_position[0]
         dy = civ_positions[c, 1] - disaster_position[1]
         dz = civ_positions[c, 2] - disaster_position[2]
         dist_kpc = np.sqrt(dx*dx + dy*dy + dz*dz)
-        
-        if dist_kpc > 1e-10 and dist_kpc < sgrb_lethal_range_kpc:
-            to_civ_x = dx / dist_kpc
-            to_civ_y = dy / dist_kpc
-            to_civ_z = dz / dist_kpc
-            
-            cos_angle = jet_dir[0]*to_civ_x + jet_dir[1]*to_civ_y + jet_dir[2]*to_civ_z
-            
-            if cos_angle > cos_beaming or (-cos_angle) > cos_beaming:
-                results[c] = 1
-                continue
-        
-        if dist_kpc < kilonova_lethal_kpc:
-            results[c] = 2
-        elif dist_kpc < kilonova_sterilization_kpc:
-            r = (dist_kpc - kilonova_lethal_kpc) / (kilonova_sterilization_kpc - kilonova_lethal_kpc)
-            p_sterilize = np.exp(-3.0 * r)
-            if random_values[c] < p_sterilize:
-                results[c] = 2
-    
+
+        # Branchless sGRB check
+        in_sgrb_range = ((dist_kpc > 1e-10) * (dist_kpc < sgrb_lethal_range_kpc)) * 1.0
+
+        dist_safe = dist_kpc + 1e-10
+        to_civ_x = dx / dist_safe
+        to_civ_y = dy / dist_safe
+        to_civ_z = dz / dist_safe
+
+        cos_angle = jet_dir[0]*to_civ_x + jet_dir[1]*to_civ_y + jet_dir[2]*to_civ_z
+        in_beam = ((cos_angle > cos_beaming) + (-cos_angle > cos_beaming)) * 1.0
+
+        destroyed_by_sgrb = in_sgrb_range * in_beam
+
+        # Branchless kilonova check (only if not destroyed by sGRB)
+        in_kilonova_lethal = (dist_kpc < kilonova_lethal_kpc) * 1.0
+        in_kilonova_sterilization = (dist_kpc < kilonova_sterilization_kpc) * 1.0
+
+        # Probabilistic sterilization
+        r = (dist_kpc - kilonova_lethal_kpc) / (kilonova_sterilization_kpc - kilonova_lethal_kpc + 1e-10)
+        p_sterilize = np.exp(-3.0 * r)
+        probabilistic = (random_values[c] < p_sterilize) * 1.0
+
+        # Kilonova destruction (lethal or probabilistic)
+        destroyed_by_kilonova = in_kilonova_lethal + (1.0 - in_kilonova_lethal) * in_kilonova_sterilization * probabilistic
+
+        # Priority: sGRB (1) > kilonova (2) > survived (0)
+        # Use arithmetic to blend: if sGRB, result=1; elif kilonova, result=2; else result=0
+        result = destroyed_by_sgrb * 1.0 + (1.0 - destroyed_by_sgrb) * destroyed_by_kilonova * 2.0
+
+        results[c] = int(result)
+
     return results
 
 
