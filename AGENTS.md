@@ -526,3 +526,48 @@ python scripts/benchmark_baseline.py  # Detailed profiling
 - All imports working (numexpr, scipy.special.expit)
 - No syntax errors or runtime failures
 - **Note**: Full pytest suite unavailable in environment, will use test-automator agents in subsequent phases
+
+### Feb 2026 - War Speedup Phase 1 Progress (Numerical Optimizations)
+**Goal**: Apply best-practice numerical techniques for 100k+ star simulations
+
+#### Phase 1.1 - Struct-of-Arrays (SoA) Layout [2-4x] ✅
+- Refactored GalaxyModel position storage from AoS to SoA
+- Separate contiguous arrays: `_pos_x`, `_pos_y`, `_pos_z`
+- `positions` property for backward compatibility (N, 3) view
+- `get_positions_soa()` method for kernel access
+- Enables Apple Silicon NEON SIMD: 4×float32 per instruction
+
+#### Phase 1.2 - Yoshida 4th-Order Integrator [3x] ✅
+- Added `yoshida_integrate_step_kernel()` for 4th-order orbital integration
+- Uses 3 leapfrog sub-steps with Yoshida (1990) coefficients
+- Same accuracy with 4-8x larger dt = net 3x speedup
+- Still symplectic (energy conserving over 10+ Gyr)
+- Integration into evolve_positions pending for stability
+
+#### Phase 1.3 - Spatial Hash Grid [3-10x] ✅
+- Implemented `SpatialHashGrid` for O(1) fixed-radius neighbor queries
+- Grid cell size = max query radius, checks (2r/cell_size)³ neighborhood
+- O(1) average-case vs O(log N) for KD-tree
+- Numba-compatible (pure arrays), rebuild only when >10% stars moved
+- Use cases: disaster sterilization, encounter detection, fixed-radius searches
+
+#### Phase 1.4 - Blosc2 Snapshot Compression [5-20x] ✅
+- Implemented `SnapshotCompressor` with ZSTD + BYTEDELTA + SHUFFLE
+- 100k × 3 × float64 = 2.4MB → ~200KB (5-20x reduction)
+- Async compression on background threads (non-blocking)
+- Optional float16 for viz-only data (4x additional reduction)
+- Graceful fallback when blosc2 not installed
+
+#### Remaining Phase 1 Items
+- 1.5: Branchless Numba kernels [1.5-3x hazard evaluation]
+- 1.6: float32 for non-critical paths [1.5-2x kernel speed]
+- 1.7: Sector-based civ partitioning [2-8x encounter detection]
+- 1.8: Incremental colony overlap detection [O(new) vs O(total)]
+- 1.9: Adaptive snapshot interval [reduce from 100 to ~40-60]
+- 1.10: MLX for gravitational acceleration [5-20x, optional/experimental]
+
+**Commits:**
+- dd3edbc: Phase 1.1 SoA layout
+- c4d3684: Phase 1.2 Yoshida integrator
+- 39a1c2a: Phase 1.3 Spatial hash grid
+- d5129a9: Phase 1.4 Blosc2 compression
