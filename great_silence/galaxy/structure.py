@@ -1014,22 +1014,20 @@ class GalaxyModel:
         self.time_until_update = self.stellar_timesteps.copy()
         
     def evolve_positions_adaptive(
-        self,
-        dt_myr: float,
-        use_numba: bool = True,
-        use_yoshida: bool = True
+        self, 
+        dt_myr: float, 
+        use_numba: bool = True
     ) -> None:
         """
         Evolve stellar positions using adaptive individual timesteps.
-
+        
         Only stars whose time_until_update <= 0 are integrated.
         This provides major speedup since outer disk stars (80%+) use
         much larger timesteps than inner bulge stars.
-
+        
         Args:
             dt_myr: Global simulation timestep in Myr
             use_numba: Use Numba kernels for acceleration
-            use_yoshida: Use Yoshida 4th-order integrator (4-8x larger timesteps)
         """
         if self.positions is None or self.velocities is None:
             raise ValueError("Must generate positions and velocities first")
@@ -1054,56 +1052,19 @@ class GalaxyModel:
         
         # Compute accelerations at current positions
         a_current = self._compute_gravitational_acceleration(pos_update)
-
-        if use_yoshida:
-            # Yoshida 4th-order symplectic integration (4-8x larger timesteps)
-            # Yoshida (1990) coefficients
-            cbrt_2 = 1.259921049894873
-            w0 = -cbrt_2 / (2.0 - cbrt_2)
-            w1 = 1.0 / (2.0 - cbrt_2)
-            c1 = c4 = w1 / 2.0
-            c2 = c3 = (w0 + w1) / 2.0
-            d1 = d3 = w1
-            d2 = w0
-
-            # Convert velocities to kpc/Myr
-            v_kpc_myr = vel_update * 0.001022
-            dt_col = dt_update[:, np.newaxis]  # Column vector for broadcasting
-
-            # Sub-step 1: drift + kick
-            pos_new = pos_update + c1 * v_kpc_myr * dt_col
-            a_new = self._compute_gravitational_acceleration(pos_new)
-            v_kpc_myr = v_kpc_myr + d1 * a_new * dt_col
-
-            # Sub-step 2: drift + kick
-            pos_new = pos_new + c2 * v_kpc_myr * dt_col
-            a_new = self._compute_gravitational_acceleration(pos_new)
-            v_kpc_myr = v_kpc_myr + d2 * a_new * dt_col
-
-            # Sub-step 3: drift + kick
-            pos_new = pos_new + c3 * v_kpc_myr * dt_col
-            a_new = self._compute_gravitational_acceleration(pos_new)
-            v_kpc_myr = v_kpc_myr + d3 * a_new * dt_col
-
-            # Final drift
-            pos_new = pos_new + c4 * v_kpc_myr * dt_col
-            v_kpc_myr_new = v_kpc_myr
-
-            # Final acceleration for timestep recomputation
-            a_new = self._compute_gravitational_acceleration(pos_new)
-        else:
-            # Leapfrog integration for each star with its own timestep
-            v_kpc_myr = vel_update * 0.001022
-
-            # Position update: r' = r + v*dt + 0.5*a*dt²
-            pos_new = pos_update + v_kpc_myr * dt_update[:, np.newaxis] + \
-                      0.5 * a_current * (dt_update[:, np.newaxis] ** 2)
-
-            # Compute acceleration at new positions
-            a_new = self._compute_gravitational_acceleration(pos_new)
-
-            # Velocity update: v' = v + 0.5*(a + a')*dt
-            v_kpc_myr_new = v_kpc_myr + 0.5 * (a_current + a_new) * dt_update[:, np.newaxis]
+        
+        # Leapfrog integration for each star with its own timestep
+        v_kpc_myr = vel_update * 0.001022
+        
+        # Position update: r' = r + v*dt + 0.5*a*dt²
+        pos_new = pos_update + v_kpc_myr * dt_update[:, np.newaxis] + \
+                  0.5 * a_current * (dt_update[:, np.newaxis] ** 2)
+        
+        # Compute acceleration at new positions
+        a_new = self._compute_gravitational_acceleration(pos_new)
+        
+        # Velocity update: v' = v + 0.5*(a + a')*dt
+        v_kpc_myr_new = v_kpc_myr + 0.5 * (a_current + a_new) * dt_update[:, np.newaxis]
         
         # Write back
         self.positions[update_indices] = pos_new

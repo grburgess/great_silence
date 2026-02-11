@@ -388,15 +388,8 @@ class GalaxySimulation:
         # Colonized stars tracking (for performance)
         self._colonized_mask: Optional[np.ndarray] = None
 
-        # Cached positions array (to avoid repeated column_stack calls)
-        self._cached_positions: Optional[np.ndarray] = None
-
         # Spatial index for civilization territories (O(log N) overlap detection)
         self.civ_spatial_index: Optional[CivilizationSpatialIndex] = None
-
-        # Spatial data structures for fast queries
-        self._spatial_index = None  # KD-tree (O(log N))
-        self._spatial_hash = None  # Hash grid (O(1) for fixed radius)
 
         # Pre-allocated scratch buffers (memory pool optimization)
         self._max_civs_buffer_size = 10000
@@ -495,17 +488,10 @@ class GalaxySimulation:
         if self.config.simulation.use_numba:
             print("Building spatial index for fast queries...")
             from ..utils.spatial import SpatialIndex
-            from ..utils.spatial_hash import SpatialHashGrid
 
             self._spatial_index = SpatialIndex(self.galaxy.positions)
-
-            # Build spatial hash grid for O(1) probe targeting queries
-            # Cell size = typical probe range (10 kpc ~ 10M pc)
-            self._spatial_hash = SpatialHashGrid(cell_size=10.0)  # 10 kpc cells
-            self._spatial_hash.build(self.galaxy.positions)
         else:
             self._spatial_index = None
-            self._spatial_hash = None
 
         # Initialize disaster tracking modules
         print("Initializing disaster tracking...")
@@ -717,19 +703,6 @@ class GalaxySimulation:
         if n_scheduled > 0:
             print(f"  Pre-scheduled emergence events: {n_scheduled}")
 
-    @property
-    def _positions(self) -> np.ndarray:
-        """
-        Get stellar positions (cached during timestep for performance).
-
-        During _step(), positions are cached after stellar motion to avoid
-        repeated column_stack calls (777k calls → 20k calls, saves ~67s).
-        Outside _step(), falls back to fresh positions.
-        """
-        if self._cached_positions is not None:
-            return self._cached_positions
-        return self.galaxy.positions
-
     def _step(self, dt_myr: Optional[float] = None) -> float:
         """
         Execute a single simulation timestep.
@@ -755,9 +728,6 @@ class GalaxySimulation:
         # Check for new civilization emergence (O(log N) with pre-scheduled events)
         self._check_civilization_emergence()
 
-        # Cache positions before stellar motion (for disasters that need old positions)
-        _positions_before_motion = self.galaxy.positions if self.config.simulation.enable_stellar_motion else None
-
         # Evolve stellar positions (independent of civilizations)
         if self.config.simulation.enable_stellar_motion:
             if self.config.simulation.stellar_motion_adaptive:
@@ -772,7 +742,6 @@ class GalaxySimulation:
                 self.galaxy.evolve_positions_adaptive(
                     dt_myr,
                     use_numba=self.config.simulation.stellar_motion_use_numba,
-                    use_yoshida=self.config.simulation.stellar_motion_use_yoshida,
                 )
             else:
                 # Legacy sub-cycling mode (slower but simpler)
@@ -786,17 +755,6 @@ class GalaxySimulation:
                         enable_motion=True,
                     )
                     remaining -= sub_dt
-
-        # PERFORMANCE: Cache positions for this timestep to avoid 777k column_stack calls
-        # Positions only change during stellar motion above, so this cache is valid
-        # for the entire rest of the timestep. Saves ~67s (19% speedup).
-        self._cached_positions = self.galaxy.positions
-
-        # Rebuild spatial hash if positions changed (stellar motion enabled)
-        # Only rebuild every 10 timesteps to amortize cost (positions don't change much)
-        if self._spatial_hash is not None and self.config.simulation.enable_stellar_motion:
-            if self._step_count % 10 == 0:
-                self._spatial_hash.build(self._cached_positions)
 
         # Fast path: skip civilization-related work when no civs exist
         has_active_civs = self._active_civ_count > 0
@@ -1011,7 +969,7 @@ class GalaxySimulation:
         max_causal_distance_kpc = compute_light_travel_distance(self._current_dt_myr)
 
         # Extract civilization positions
-        civ_positions = np.array([self._positions[c.parent_star_idx] for c in active_civs])
+        civ_positions = np.array([self.galaxy.positions[c.parent_star_idx] for c in active_civs])
 
         civ_ids = [c.civ_id for c in active_civs]
 
@@ -1679,7 +1637,7 @@ class GalaxySimulation:
         self, civ: "CivilizationState", buffer: ThreadLocalProbeBuffer
     ) -> None:
         """Launch initial probes from home world (buffered version)."""
-        source_pos = self._positions[civ.parent_star_idx]
+        source_pos = self.galaxy.positions[civ.parent_star_idx]
 
         # Find targets
         targets = self._find_nearest_targets(
@@ -1802,7 +1760,7 @@ class GalaxySimulation:
         Returns:
             Tuple of (intercept_position_kpc, travel_time_myr)
         """
-        target_pos = self._positions[target_idx].copy()
+        target_pos = self.galaxy.positions[target_idx].copy()
         
         # If stellar motion disabled or no velocities, use current position
         if (not self.config.simulation.enable_stellar_motion or 
@@ -1836,7 +1794,7 @@ class GalaxySimulation:
     def _launch_initial_probes(self, civ: CivilizationState) -> None:
         """Launch initial wave of probes from home world."""
         home_idx = civ.parent_star_idx
-        home_pos = self._positions[home_idx]
+        home_pos = self.galaxy.positions[home_idx]
 
         # Find nearest uncolonized stars with sufficient metallicity
         targets = self._find_nearest_targets(
@@ -1886,7 +1844,7 @@ class GalaxySimulation:
     def _launch_offspring_probes(self, civ: CivilizationState, parent_probe: ProbeState) -> None:
         """Launch offspring probes from arrived parent probe."""
         source_idx = parent_probe.target_star_idx
-        source_pos = self._positions[source_idx]
+        source_pos = self.galaxy.positions[source_idx]
 
         # Find nearest uncolonized stars with sufficient metallicity
         targets = self._find_nearest_targets(
@@ -1962,23 +1920,11 @@ class GalaxySimulation:
         Returns:
             List of target star indices (habitable preferred, then metal-rich)
         """
-        # PRIORITY 1A OPTIMIZATION: Use spatial hash (O(1)) or KD-tree (O(log N))
-        max_range_kpc = max_range_pc / 1000.0
-
-        if self._spatial_hash is not None:
-            # Spatial hash grid: O(1) fixed-radius query
-            nearby_indices = self._spatial_hash.query_radius(source_pos, max_range_kpc)
-
-            if len(nearby_indices) == 0:
-                return []
-
-            # Compute distances for filtering
-            distances_kpc = np.linalg.norm(
-                self._positions[nearby_indices] - source_pos, axis=1
-            )
-            distances_pc = distances_kpc * 1000.0
-        elif self._spatial_index is not None:
-            # Fallback to KD-tree: O(log N) query
+        # PRIORITY 1A OPTIMIZATION: Use spatial index for efficient radius query
+        # Instead of O(N) distance calc to all stars, use O(log N) KD-tree query
+        if self._spatial_index is not None:
+            # Query spatial index for stars within range
+            max_range_kpc = max_range_pc / 1000.0
             nearby_indices, nearby_distances_kpc = self._spatial_index.query_radius(
                 source_pos, max_range_kpc, return_distances=True
             )
@@ -1990,7 +1936,7 @@ class GalaxySimulation:
             distances_pc = nearby_distances_kpc * 1000.0
         else:
             # Fallback to brute force if spatial index not available
-            distances_kpc = np.linalg.norm(self._positions - source_pos, axis=1)
+            distances_kpc = np.linalg.norm(self.galaxy.positions - source_pos, axis=1)
             distances_pc = distances_kpc * 1000.0
             range_mask = distances_pc <= max_range_pc
             nearby_indices = np.where(range_mask)[0]
@@ -2074,21 +2020,21 @@ class GalaxySimulation:
         source_idx = (
             probe.source_star_idx if hasattr(probe, "source_star_idx") else civ.parent_star_idx
         )
-        source_pos = self._positions[source_idx]
-        target_pos = self._positions[probe.target_star_idx]
+        source_pos = self.galaxy.positions[source_idx]
+        target_pos = self.galaxy.positions[probe.target_star_idx]
         current_pos = source_pos + fraction_complete * (target_pos - source_pos)
 
         # Scan for better targets within sensor range
-        distances_kpc = np.linalg.norm(self._positions - current_pos, axis=1)
+        distances_kpc = np.linalg.norm(self.galaxy.positions - current_pos, axis=1)
         distances_pc = distances_kpc * 1000.0
 
         # Filter: within sensor range, meets metallicity, uncolonized
         sensor_mask = distances_pc <= civ.probe_sensor_range_pc
         metallicity_mask = self.galaxy.metallicities >= civ.probe_min_metallicity
         not_colonized = ~np.isin(
-            np.arange(len(self._positions)), civ.colonized_stars
+            np.arange(len(self.galaxy.positions)), civ.colonized_stars
         )  # PRIORITY 1B: No list() needed
-        not_current_target = np.arange(len(self._positions)) != probe.target_star_idx
+        not_current_target = np.arange(len(self.galaxy.positions)) != probe.target_star_idx
 
         candidate_mask = sensor_mask & metallicity_mask & not_colonized & not_current_target
         candidate_indices = np.where(candidate_mask)[0]
@@ -2280,7 +2226,7 @@ class GalaxySimulation:
         
         if active_civs:
             civ_positions = np.array([
-                self._positions[c.parent_star_idx] for c in active_civs
+                self.galaxy.positions[c.parent_star_idx] for c in active_civs
             ])
         else:
             civ_positions = np.empty((0, 3))
@@ -2314,7 +2260,7 @@ class GalaxySimulation:
 
             # Get disaster position (dynamic if tracking parent star)
             disaster_position = disaster.get_position(
-                galaxy_positions=self._positions,
+                galaxy_positions=self.galaxy.positions,
                 track_parent_star=track_parent
             )
 
@@ -2585,8 +2531,8 @@ class GalaxySimulation:
                     progress = 0.0
 
                 # Linear interpolation of position
-                source_pos = self._positions[probe.launch_star_idx]
-                target_pos = self._positions[probe.target_star_idx]
+                source_pos = self.galaxy.positions[probe.launch_star_idx]
+                target_pos = self.galaxy.positions[probe.target_star_idx]
                 current_pos = source_pos + progress * (target_pos - source_pos)
 
                 probe_snapshot = ProbeSnapshot(
@@ -2680,8 +2626,8 @@ class GalaxySimulation:
             if civ.is_active and civ.colonized_stars:
                 for star_idx in civ.colonized_stars:
                     pos = (
-                        self._positions[star_idx]
-                        if self._positions is not None
+                        self.galaxy.positions[star_idx]
+                        if self.galaxy.positions is not None
                         else np.array([0.0, 0.0, 0.0])
                     )
                     colony_positions.append((civ.civ_id, pos.copy()))
@@ -2696,7 +2642,7 @@ class GalaxySimulation:
             if is_first_snapshot:
                 # First snapshot: store initial positions (they won't change)
                 stellar_positions = (
-                    self._positions.copy() if self._positions is not None else np.array([])
+                    self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([])
                 )
                 initial_positions = stellar_positions.copy() if len(stellar_positions) > 0 else None
                 stellar_velocities = None  # Not needed for visualization when motion disabled
@@ -2708,7 +2654,7 @@ class GalaxySimulation:
         else:
             # Stellar motion enabled: store actual evolved positions each snapshot
             stellar_positions = (
-                self._positions.copy() if self._positions is not None else np.array([])
+                self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([])
             )
             initial_positions = None
             stellar_velocities = None
@@ -2817,13 +2763,13 @@ class GalaxySimulation:
                 outcome = "peace"
 
         pos_a = (
-            self._positions[civ_a.parent_star_idx]
-            if self._positions is not None
+            self.galaxy.positions[civ_a.parent_star_idx]
+            if self.galaxy.positions is not None
             else np.array([0.0, 0.0, 0.0])
         )
         pos_b = (
-            self._positions[civ_b.parent_star_idx]
-            if self._positions is not None
+            self.galaxy.positions[civ_b.parent_star_idx]
+            if self.galaxy.positions is not None
             else np.array([0.0, 0.0, 0.0])
         )
         is_causal = is_communication_possible(
@@ -2895,18 +2841,18 @@ class GalaxySimulation:
 
         if self.config.civilization.alliance_propagation_enabled:
             pos_defender = (
-                self._positions[defender.parent_star_idx]
-                if self._positions is not None
+                self.galaxy.positions[defender.parent_star_idx]
+                if self.galaxy.positions is not None
                 else np.array([0.0, 0.0, 0.0])
             )
             ally_positions = {
                 ally_id: (
-                    self._positions[
+                    self.galaxy.positions[
                         next(
                             (c for c in self.civilizations if c.civ_id == ally_id and c.is_active)
                         ).parent_star_idx
                     ]
-                    if self._positions is not None
+                    if self.galaxy.positions is not None
                     else np.array([0.0, 0.0, 0.0])
                 )
                 for ally_id in defender.allies
