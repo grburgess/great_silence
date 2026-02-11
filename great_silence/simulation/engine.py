@@ -33,6 +33,7 @@ from ..civilization.war import (
     FleetState,
     WarState,
     BattleEvent,
+    BattleOutcome,
     CommunicationEvent,
     VassalState,
     calculate_fleet_strength,
