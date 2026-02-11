@@ -102,6 +102,22 @@ class CivilizationSpatialIndex:
             return self.civ_colony_info[civ_id].get(star_idx)
         return None
 
+    def get_colonizers_at_star(self, star_idx: int) -> Set[int]:
+        """
+        Get all civilizations that have colonized a specific star.
+
+        Args:
+            star_idx: Star index to check
+
+        Returns:
+            Set of civilization IDs that have colonized this star
+        """
+        colonizers = set()
+        for civ_id, colonies in self.civ_colonies.items():
+            if star_idx in colonies:
+                colonizers.add(civ_id)
+        return colonizers
+
     def find_civilizations_in_range(self, center_star_idx: int, radius_pc: float) -> Set[int]:
         """
         Find all civilizations with colonies within range of a star.
