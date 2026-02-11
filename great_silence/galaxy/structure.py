@@ -348,6 +348,23 @@ class GalaxyModel:
 
         return v_circ_km_s
 
+    def _compute_circular_velocities_batch(self, positions: np.ndarray) -> np.ndarray:
+        accel = self._compute_accel_numba(positions)
+
+        x = positions[:, 0]
+        y = positions[:, 1]
+        R = np.sqrt(x**2 + y**2)
+
+        a_R = (accel[:, 0] * x + accel[:, 1] * y) / (R + 1e-10)
+
+        v_circ_kpc_myr = np.sqrt(np.maximum(R * (-a_R), 0.0))
+
+        v_circ_km_s = v_circ_kpc_myr / 0.001022
+
+        v_circ_km_s[R < 1e-6] = 0.0
+
+        return v_circ_km_s
+
     def _generate_velocities(self) -> np.ndarray:
         """
         Generate stellar velocities based on configured mode.
@@ -464,19 +481,19 @@ class GalaxyModel:
         """
         h_R = self.params.scale_length_kpc
         h_sigma = 2 * h_R
-        
+
+        R_safe = np.maximum(R, 0.1)
+        positions_batch = np.zeros((len(R), 3))
+        positions_batch[:, 0] = R_safe
+
+        v_c = self._compute_circular_velocities_batch(positions_batch)
+
         v_a = np.zeros(len(R))
-        
-        for i in range(len(R)):
-            r_i = max(0.1, R[i])
-            v_c = self._compute_circular_velocity(np.array([r_i, 0.0, 0.0]))
-            
-            if v_c > 10.0:
-                dlnrho_dlnR = -r_i / h_R
-                dlnsigma_dlnR = -r_i / h_sigma
-                
-                v_a[i] = sigma_R[i]**2 / (2 * v_c) * abs(dlnrho_dlnR + 2 * dlnsigma_dlnR)
-        
+        mask = v_c > 10.0
+        dlnrho_dlnR = -R_safe[mask] / h_R
+        dlnsigma_dlnR = -R_safe[mask] / h_sigma
+        v_a[mask] = sigma_R[mask]**2 / (2 * v_c[mask]) * np.abs(dlnrho_dlnR + 2 * dlnsigma_dlnR)
+
         return np.clip(v_a, 0, 50.0)
     
     def _generate_velocities_simple(self) -> np.ndarray:
@@ -516,26 +533,25 @@ class GalaxyModel:
                 disk_indices = np.where(disk_mask)[0]
                 R_disk = R[disk_indices]
                 z_disk = z[disk_indices]
-                
+
                 sigma_r = 30.0 * (1 + np.abs(z_disk) / self.params.disk_height_kpc)
                 v_a = self._compute_asymmetric_drift(R_disk, sigma_r)
 
-                for j, i in enumerate(disk_indices):
-                    v_circ = self._compute_circular_velocity(self.positions[i])
-                    v_circ_corrected = max(0.0, v_circ - v_a[j])
+                v_circ_all = self._compute_circular_velocities_batch(self.positions[disk_indices])
+                v_circ_corrected = np.maximum(0.0, v_circ_all - v_a)
 
-                    r_i = R[i] + 1e-10
-                    x_i, y_i, z_i = x[i], y[i], z[i]
+                x_d, y_d, z_d = x[disk_indices], y[disk_indices], z[disk_indices]
+                r_d = R_disk + 1e-10
 
-                    v_x[i] = -v_circ_corrected * y_i / r_i
-                    v_y[i] = v_circ_corrected * x_i / r_i
+                v_x[disk_indices] = -v_circ_corrected * y_d / r_d
+                v_y[disk_indices] = v_circ_corrected * x_d / r_d
 
-                    sigma_theta = 20.0 * (1 + np.abs(z_i) / self.params.disk_height_kpc)
-                    sigma_z_i = 20.0 * (1 + np.abs(z_i) / self.params.disk_height_kpc)
+                sigma_theta = 20.0 * (1 + np.abs(z_d) / self.params.disk_height_kpc)
+                sigma_z_d = 20.0 * (1 + np.abs(z_d) / self.params.disk_height_kpc)
 
-                    v_x[i] += self.rng.normal(0, sigma_r[j])
-                    v_y[i] += self.rng.normal(0, sigma_theta)
-                    v_z[i] += self.rng.normal(0, sigma_z_i)
+                v_x[disk_indices] += self.rng.normal(0, sigma_r, len(disk_indices))
+                v_y[disk_indices] += self.rng.normal(0, sigma_theta)
+                v_z[disk_indices] += self.rng.normal(0, sigma_z_d)
         else:
             v_circ = self.params.rotation_velocity_km_s
 
@@ -600,28 +616,27 @@ class GalaxyModel:
                 disk_indices = np.where(disk_mask)[0]
                 R_disk = R[disk_indices]
                 z_disk = z[disk_indices]
-                
+
                 sigma_R, sigma_phi, sigma_z = self._compute_velocity_dispersion_jeans(
                     R_disk, z_disk
                 )
                 v_a = self._compute_asymmetric_drift(R_disk, sigma_R)
 
-                for j, i in enumerate(disk_indices):
-                    v_circ = self._compute_circular_velocity(self.positions[i])
-                    v_circ_corrected = max(0.0, v_circ - v_a[j])
+                v_circ_all = self._compute_circular_velocities_batch(self.positions[disk_indices])
+                v_circ_corrected = np.maximum(0.0, v_circ_all - v_a)
 
-                    r_i = R[i] + 1e-10
-                    x_i, y_i = x[i], y[i]
+                x_d, y_d = x[disk_indices], y[disk_indices]
+                r_d = R_disk + 1e-10
 
-                    v_phi = v_circ_corrected + self.rng.normal(0, sigma_phi[j])
-                    v_r = self.rng.normal(0, sigma_R[j])
-                    
-                    cos_phi = x_i / r_i
-                    sin_phi = y_i / r_i
-                    
-                    v_x[i] = v_r * cos_phi - v_phi * sin_phi
-                    v_y[i] = v_r * sin_phi + v_phi * cos_phi
-                    v_z[i] = self.rng.normal(0, sigma_z[j])
+                v_phi_all = v_circ_corrected + self.rng.normal(0, sigma_phi)
+                v_r_all = self.rng.normal(0, sigma_R)
+
+                cos_phi = x_d / r_d
+                sin_phi = y_d / r_d
+
+                v_x[disk_indices] = v_r_all * cos_phi - v_phi_all * sin_phi
+                v_y[disk_indices] = v_r_all * sin_phi + v_phi_all * cos_phi
+                v_z[disk_indices] = self.rng.normal(0, sigma_z)
         else:
             print("  Warning: No component types - using simple velocities")
             return self._generate_velocities_simple()
