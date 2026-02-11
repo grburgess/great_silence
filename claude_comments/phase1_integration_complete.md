@@ -232,3 +232,57 @@ nearby = self._spatial_hash.query_radius(source_pos, radius_kpc)
 - Profile to find remaining conversion hot spots
 
 **Recommendation**: Do Option 1 immediately, then investigate Options 2-3.
+
+---
+
+## Full Rollback - 2026-02-11 21:14
+
+### Yoshida Rollback Benchmark
+
+After disabling Yoshida (but keeping spatial hash + position caching), ran another benchmark:
+
+| Metric | Baseline | With Yoshida | Yoshida Disabled | Change |
+|--------|----------|--------------|------------------|---------|
+| **Total time** | 346s | 493s (+42%) | **811s (+134%)** | ❌ **2.3x SLOWER** |
+| Run time | 285s | 430s | 746s | +162% vs baseline |
+| Timesteps | 20,778 | 17,660 | 20,778 | Same as baseline |
+
+### Critical Finding: Spatial Hash Failed Catastrophically
+
+**New bottlenecks:**
+- `_find_nearest_targets`: 332s (was 16s with Yoshida, ~10s baseline)
+- `spatial_hash.query_radius`: 75s pure overhead
+- Array set ops (`isin`, `_in1d`): 398s combined
+
+**Root cause**: Spatial hash is 5-7x SLOWER than KD-tree for this workload
+- O(1) query theoretical benefit destroyed by:
+  - Hash cell traversal overhead
+  - 1,767 rebuilds every 10 timesteps
+  - Poor cache locality vs KD-tree
+
+### Decision: Full Rollback
+
+**Reverted commits:**
+- `6f089d4` - Spatial hash for probe targeting
+- `846a60e` - Yoshida integrator implementation
+- `d24fd1a` - Position caching via SoA optimization
+
+**Revert commit**: `fa086e6`
+
+**Result**: Removed all Phase 1 "optimizations" that collectively made performance 2.3x worse
+
+### Lessons Learned
+
+1. **O(1) vs O(log N) is not enough** - constant factors matter enormously
+2. **Spatial hash inappropriate for this workload** - KD-tree superior for variable-radius queries
+3. **Yoshida needs careful tuning** - adaptive timestep params don't automatically scale
+4. **Position caching incomplete** - missed conversion paths, spatial hash rebuild triggered more
+5. **Always benchmark incrementally** - three simultaneous changes made debugging harder
+6. **Profile-driven optimization** - paper analysis ≠ real performance
+
+### Next Steps
+
+1. ✅ Verify baseline performance restored with new benchmark
+2. 📊 Identify actual bottlenecks through profiling
+3. 🎯 Design targeted optimizations based on data, not theory
+4. 🔬 Test each optimization individually before combining
