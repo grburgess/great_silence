@@ -393,6 +393,10 @@ class GalaxySimulation:
         # Spatial index for civilization territories (O(log N) overlap detection)
         self.civ_spatial_index: Optional[CivilizationSpatialIndex] = None
 
+        # Spatial data structures for fast queries
+        self._spatial_index = None  # KD-tree (O(log N))
+        self._spatial_hash = None  # Hash grid (O(1) for fixed radius)
+
         # Pre-allocated scratch buffers (memory pool optimization)
         self._max_civs_buffer_size = 10000
         self._effects_buffer = np.zeros(self._max_civs_buffer_size, dtype=np.int32)
@@ -490,10 +494,17 @@ class GalaxySimulation:
         if self.config.simulation.use_numba:
             print("Building spatial index for fast queries...")
             from ..utils.spatial import SpatialIndex
+            from ..utils.spatial_hash import SpatialHashGrid
 
             self._spatial_index = SpatialIndex(self.galaxy.positions)
+
+            # Build spatial hash grid for O(1) probe targeting queries
+            # Cell size = typical probe range (10 kpc ~ 10M pc)
+            self._spatial_hash = SpatialHashGrid(cell_size=10.0)  # 10 kpc cells
+            self._spatial_hash.build(self.galaxy.positions)
         else:
             self._spatial_index = None
+            self._spatial_hash = None
 
         # Initialize disaster tracking modules
         print("Initializing disaster tracking...")
@@ -779,6 +790,12 @@ class GalaxySimulation:
         # Positions only change during stellar motion above, so this cache is valid
         # for the entire rest of the timestep. Saves ~67s (19% speedup).
         self._cached_positions = self.galaxy.positions
+
+        # Rebuild spatial hash if positions changed (stellar motion enabled)
+        # Only rebuild every 10 timesteps to amortize cost (positions don't change much)
+        if self._spatial_hash is not None and self.config.simulation.enable_stellar_motion:
+            if self._step_count % 10 == 0:
+                self._spatial_hash.build(self._cached_positions)
 
         # Fast path: skip civilization-related work when no civs exist
         has_active_civs = self._active_civ_count > 0
@@ -1944,11 +1961,23 @@ class GalaxySimulation:
         Returns:
             List of target star indices (habitable preferred, then metal-rich)
         """
-        # PRIORITY 1A OPTIMIZATION: Use spatial index for efficient radius query
-        # Instead of O(N) distance calc to all stars, use O(log N) KD-tree query
-        if self._spatial_index is not None:
-            # Query spatial index for stars within range
-            max_range_kpc = max_range_pc / 1000.0
+        # PRIORITY 1A OPTIMIZATION: Use spatial hash (O(1)) or KD-tree (O(log N))
+        max_range_kpc = max_range_pc / 1000.0
+
+        if self._spatial_hash is not None:
+            # Spatial hash grid: O(1) fixed-radius query
+            nearby_indices = self._spatial_hash.query_radius(source_pos, max_range_kpc)
+
+            if len(nearby_indices) == 0:
+                return []
+
+            # Compute distances for filtering
+            distances_kpc = np.linalg.norm(
+                self._positions[nearby_indices] - source_pos, axis=1
+            )
+            distances_pc = distances_kpc * 1000.0
+        elif self._spatial_index is not None:
+            # Fallback to KD-tree: O(log N) query
             nearby_indices, nearby_distances_kpc = self._spatial_index.query_radius(
                 source_pos, max_range_kpc, return_distances=True
             )
