@@ -639,3 +639,15 @@ python scripts/benchmark_baseline.py  # Detailed profiling
 
 **Next**: Phase 2 (War Mechanics) or integrate Phase 1.7-1.9
 
+### Feb 2026 - Phase 0+1 Benchmark & Analysis
+- **Benchmark**: 100k stars, 10 Gyr, 1012 civs → 346s (5.77 min)
+- **Peak memory**: 806.9 MB
+- **Main bottleneck**: Stellar motion (224s, 79% of run time)
+- **Key finding**: Optimizations implemented but not integrated:
+  - SoA exists but `column_stack` converts to AoS 777k times (67s overhead)
+  - Yoshida integrator exists but leapfrog still used (could save 112-168s)
+  - Spatial hash exists but KD-tree still used for probes (could save 16s)
+- **Speedup potential from integration**: 2.2-3.5x (346s → 100-156s)
+- **Session doc**: `claude_comments/session_2026-02-11_phase01_benchmark.md`
+- **Analysis**: `claude_comments/phase01_optimization_analysis.md`
+- **Recommendation**: Complete Phase 1 integration before adding new features
