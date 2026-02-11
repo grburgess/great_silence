@@ -1,6 +1,6 @@
 # Benchmark Results - War Implementation
 
-**Date**: 2026-02-11 22:41:36
+**Date**: 2026-02-11 22:50:09
 
 ## Configuration
 
@@ -12,63 +12,63 @@
 
 ## Performance
 
-- **Total time**: 239.00s
-  - Init: 64.02s (26.8%)
-  - Run: 174.97s (73.2%)
-- **Peak memory**: 761.2 MB
+- **Total time**: 229.71s
+  - Init: 4.91s (2.1%)
+  - Run: 224.80s (97.9%)
+- **Peak memory**: 785.4 MB
 
 ## Simulation Statistics
 
-- Total civilizations: 897
+- Total civilizations: 884
 - Active civilizations: 0
-- Extinct civilizations: 897
-- Total colonized systems: 35929
+- Extinct civilizations: 884
+- Total colonized systems: 50751
 - Snapshots saved: 102
 
 ## Snapshot Statistics
 
 - Total snapshots: 102
-- Avg snapshot size: ~10614.9 KB
+- Avg snapshot size: ~11451.9 KB
 
 ## Profiling - Top 30 Functions
 
 ```
-         112226945 function calls (112029443 primitive calls) in 238.949 seconds
+         31841284 function calls (31643786 primitive calls) in 229.636 seconds
 
    Ordered by: cumulative time
-   List reduced from 8129 to 30 due to restriction <30>
+   List reduced from 8130 to 30 due to restriction <30>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1    0.064    0.064  174.973  174.973 engine.py:802(run)
-    17768    4.404    0.000  173.391    0.010 engine.py:708(_step)
-    17768   65.990    0.004   86.284    0.005 structure.py:1064(evolve_positions_adaptive)
-    17768    0.166    0.000   66.565    0.004 engine.py:1328(_process_probe_events)
-    34931    1.772    0.000   64.854    0.002 engine.py:1716(_handle_replication_complete)
-        1    0.002    0.002   64.024   64.024 engine.py:405(initialize)
-    31380    4.514    0.000   63.077    0.002 engine.py:1840(_launch_offspring_probes)
-        1    0.001    0.001   60.146   60.146 structure.py:98(generate_stellar_population)
-        1    0.001    0.001   59.290   59.290 structure.py:351(_generate_velocities)
-        1    2.216    2.216   59.289   59.289 structure.py:482(_generate_velocities_simple)
-   646021   43.973    0.000   44.604    0.000 _shape_base_impl.py:628(column_stack)
-    31480   39.320    0.001   41.054    0.001 engine.py:1890(_find_nearest_targets)
-   148258    0.215    0.000   40.917    0.000 structure.py:55(positions)
-   160001    0.491    0.000   32.220    0.000 structure.py:310(_compute_circular_velocity)
-   160001    0.356    0.000   31.679    0.000 structure.py:825(_compute_gravitational_acceleration)
-   160001    0.580    0.000   27.553    0.000 structure.py:665(_compute_disk_acceleration)
-  1280008    1.210    0.000   26.156    0.000 necompiler.py:915(evaluate)
-  1280008    4.354    0.000   16.253    0.000 necompiler.py:797(validate)
-        1    0.133    0.133   15.703   15.703 structure.py:445(_compute_asymmetric_drift)
-    36403    0.910    0.000   10.045    0.000 engine.py:1736(_calculate_intercept_position)
-    35515    0.807    0.000    8.725    0.000 structure.py:1048(_compute_accel_numba)
-  1280008    2.913    0.000    8.692    0.000 necompiler.py:993(re_evaluate)
-   154889    1.943    0.000    7.829    0.000 _linalg.py:2623(norm)
-    35515    7.775    0.000    7.775    0.000 numba_kernels.py:1362(compute_total_acceleration_kernel)
-  2560016    5.091    0.000    6.772    0.000 necompiler.py:754(getArguments)
-   112696    6.430    0.000    6.430    0.000 {method 'reduce' of 'numpy.ufunc' objects}
-    17294    4.872    0.000    6.318    0.000 engine.py:3166(_update_colony_strengths)
-    17294    0.089    0.000    4.516    0.000 engine.py:1139(_evolve_civilizations)
-    17294    0.104    0.000    3.003    0.000 engine.py:2712(_scan_for_encounters)
-        1    2.375    2.375    2.598    2.598 star_formation.py:212(sample)
+        1    0.076    0.076  224.796  224.796 engine.py:802(run)
+    19056    5.503    0.000  210.441    0.011 engine.py:708(_step)
+    19056   73.891    0.004   96.463    0.005 structure.py:1079(evolve_positions_adaptive)
+    19056    0.248    0.000   88.680    0.005 engine.py:1328(_process_probe_events)
+    49232    2.239    0.000   85.777    0.002 engine.py:1716(_handle_replication_complete)
+    41511    5.986    0.000   83.532    0.002 engine.py:1840(_launch_offspring_probes)
+    41621   52.165    0.001   54.690    0.001 engine.py:1890(_find_nearest_targets)
+   175903   34.908    0.000   35.134    0.000 _shape_base_impl.py:628(column_stack)
+   156863    0.203    0.000   32.937    0.000 structure.py:55(positions)
+    53216    1.205    0.000   13.524    0.000 engine.py:1736(_calculate_intercept_position)
+      102    0.803    0.008   12.798    0.125 engine.py:2562(_save_snapshot)
+    38071    0.972    0.000    9.653    0.000 structure.py:1063(_compute_accel_numba)
+   215959    2.514    0.000    8.978    0.000 _linalg.py:2623(norm)
+    38071    8.516    0.000    8.516    0.000 numba_kernels.py:1362(compute_total_acceleration_kernel)
+    18580    6.551    0.000    8.482    0.000 engine.py:3166(_update_colony_strengths)
+   136025    7.072    0.000    7.072    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+    18580    0.098    0.000    5.082    0.000 engine.py:1139(_evolve_civilizations)
+        1    0.002    0.002    4.908    4.908 engine.py:405(initialize)
+    18580    0.125    0.000    3.823    0.000 engine.py:2712(_scan_for_encounters)
+    30579    3.101    0.000    3.301    0.000 civ_spatial_index.py:145(find_territory_overlaps)
+    18580    2.684    0.000    2.684    0.000 engine.py:1151(<listcomp>)
+        1    2.426    2.426    2.653    2.653 star_formation.py:212(sample)
+    49868    0.167    0.000    2.376    0.000 engine.py:1377(_handle_probe_arrival)
+    41621    1.521    0.000    2.344    0.000 spatial.py:25(query_radius)
+    18580    1.137    0.000    2.293    0.000 engine.py:1172(_evolve_civilizations_sequential)
+    49868    2.103    0.000    2.112    0.000 civ_spatial_index.py:105(get_colonizers_at_star)
+        6    0.000    0.000    1.943    0.324 dispatcher.py:344(_compile_for_args)
+     82/6    0.001    0.000    1.933    0.322 dispatcher.py:862(compile)
+     26/5    0.000    0.000    1.926    0.385 dispatcher.py:79(compile)
+     26/5    0.000    0.000    1.926    0.385 dispatcher.py:86(_compile_cached)
 
 
 ```
