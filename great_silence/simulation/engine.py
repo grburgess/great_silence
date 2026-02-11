@@ -129,7 +129,7 @@ class CivilizationState:
     probe_sensor_range_pc: Optional[float] = None
 
     # Probe tracking
-    active_probes: List["ProbeState"] = field(default_factory=list)
+    active_probes: Dict[int, "ProbeState"] = field(default_factory=dict)  # probe_id -> ProbeState (O(1) remove)
     archived_probes: List["ProbeState"] = field(default_factory=list)  # Completed probes
     targeted_stars: Set[int] = field(default_factory=set)  # Stars with probes en-route (prevents redundant targeting)
 
@@ -480,6 +480,8 @@ class GalaxySimulation:
 
         # Initialize colonized mask
         self._colonized_mask = np.zeros(self.config.galaxy.total_stars, dtype=bool)
+        # Reusable buffer for exclusion checks (avoids np.isin overhead)
+        self._exclusion_buf = np.zeros(self.config.galaxy.total_stars, dtype=bool)
 
         # Initialize civilization spatial index for efficient overlap detection
         self.civ_spatial_index = CivilizationSpatialIndex(self.galaxy.positions)
@@ -1364,19 +1366,13 @@ class GalaxySimulation:
                 continue
 
             # Separate active from completed probes
-            still_active = []
-            newly_archived = []
-
-            for probe in civ.active_probes:
-                # Probe is completed if it has arrived AND replicated
+            to_archive = []
+            for pid, probe in civ.active_probes.items():
                 if probe.has_arrived and probe.has_replicated:
-                    newly_archived.append(probe)
-                else:
-                    still_active.append(probe)
+                    to_archive.append(pid)
 
-            # Update lists
-            civ.active_probes = still_active
-            civ.archived_probes.extend(newly_archived)
+            for pid in to_archive:
+                civ.archived_probes.append(civ.active_probes.pop(pid))
 
     def _handle_probe_arrival(self, civ: CivilizationState, probe: ProbeState) -> None:
         """Handle probe arrival at target star."""
@@ -1434,8 +1430,8 @@ class GalaxySimulation:
         # Archive immediately on arrival - probe is now stationary, waiting to replicate
         # We keep probe data for replication event, but remove from active iteration
         # This prevents active_probes from accumulating arrived-but-not-yet-replicated probes
-        if probe in civ.active_probes:
-            civ.active_probes.remove(probe)
+        if probe.probe_id in civ.active_probes:
+            del civ.active_probes[probe.probe_id]
             civ.archived_probes.append(probe)
 
     def _evolve_civilizations_parallel(self, groups: List[List["CivilizationState"]]) -> None:
@@ -1702,7 +1698,7 @@ class GalaxySimulation:
             for civ_id, probe in buffer.new_probes:
                 civ = self._civ_by_id.get(civ_id)
                 if civ is not None:
-                    civ.active_probes.append(probe)
+                    civ.active_probes[probe.probe_id] = probe
                     self._probe_by_id[probe.probe_id] = (civ_id, probe)
 
             # Merge events into global event queue
@@ -1832,7 +1828,7 @@ class GalaxySimulation:
                 replication_delay_yr=civ.probe_replication_delay_yr,
             )
             self.next_probe_id += 1
-            civ.active_probes.append(probe)
+            civ.active_probes[probe.probe_id] = probe
             civ.targeted_stars.add(target_idx)
             self._probe_by_id[probe.probe_id] = (civ.civ_id, probe)
 
@@ -1882,7 +1878,7 @@ class GalaxySimulation:
                 replication_delay_yr=civ.probe_replication_delay_yr,
             )
             self.next_probe_id += 1
-            civ.active_probes.append(probe)
+            civ.active_probes[probe.probe_id] = probe
             civ.targeted_stars.add(target_idx)
             self._probe_by_id[probe.probe_id] = (civ.civ_id, probe)
 
@@ -1947,7 +1943,14 @@ class GalaxySimulation:
         # Filter nearby stars: sufficient metallicity, uncolonized, not targeted, not source
         metallicity_mask = self.galaxy.metallicities[nearby_indices] >= min_metallicity
         excluded_stars = colonized_set | targeted_set
-        not_excluded = ~np.isin(nearby_indices, list(excluded_stars))
+        if len(excluded_stars) > 0:
+            buf = self._exclusion_buf
+            exc_list = list(excluded_stars)
+            buf[exc_list] = True
+            not_excluded = ~buf[nearby_indices]
+            buf[exc_list] = False
+        else:
+            not_excluded = np.ones(len(nearby_indices), dtype=bool)
         not_source = nearby_indices != exclude_idx
 
         # Base candidates: any star meeting resource requirements
@@ -2031,9 +2034,14 @@ class GalaxySimulation:
         # Filter: within sensor range, meets metallicity, uncolonized
         sensor_mask = distances_pc <= civ.probe_sensor_range_pc
         metallicity_mask = self.galaxy.metallicities >= civ.probe_min_metallicity
-        not_colonized = ~np.isin(
-            np.arange(len(self.galaxy.positions)), civ.colonized_stars
-        )  # PRIORITY 1B: No list() needed
+        if len(civ.colonized_stars) > 0:
+            buf = self._exclusion_buf
+            col_list = list(civ.colonized_stars)
+            buf[col_list] = True
+            not_colonized = ~buf
+            buf[col_list] = False
+        else:
+            not_colonized = np.ones(len(self.galaxy.positions), dtype=bool)
         not_current_target = np.arange(len(self.galaxy.positions)) != probe.target_star_idx
 
         candidate_mask = sensor_mask & metallicity_mask & not_colonized & not_current_target
@@ -2512,7 +2520,7 @@ class GalaxySimulation:
             if not civ.active_probes:
                 continue
 
-            for probe in civ.active_probes:
+            for probe in civ.active_probes.values():
                 # Skip probes that have arrived (already counted as colonies)
                 if probe.has_arrived:
                     continue
