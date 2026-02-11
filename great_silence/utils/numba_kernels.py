@@ -899,7 +899,7 @@ def compute_circular_velocities(
 # =============================================================================
 
 
-@numba.jit(nopython=True, fastmath=True, cache=True)
+@numba.jit(nopython=True, cache=True)
 def compute_emergence_probabilities_kernel(
     habitable_indices: np.ndarray,
     stellar_ages: np.ndarray,
@@ -917,7 +917,7 @@ def compute_emergence_probabilities_kernel(
 ) -> np.ndarray:
     """
     Compute emergence and sample which stars develop civilizations.
-    
+
     Combines filtering, probability calculation, and random sampling
     in a single Numba kernel for reduced Python overhead.
     Uses cache=True for faster repeated calls.

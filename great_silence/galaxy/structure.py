@@ -1,6 +1,7 @@
 """3D galactic structure modeling with proper stellar kinematics."""
 
 import numpy as np
+import numexpr as ne
 from typing import Tuple, Optional
 from ..config.parameters import GalaxyParameters
 
@@ -632,18 +633,12 @@ class GalaxyModel:
             Array of shape (N, 3) with acceleration in km/s per Myr
         """
         x, y, z = positions[:, 0], positions[:, 1], positions[:, 2]
-        R = np.sqrt(x**2 + y**2)
 
         # Miyamoto-Nagai parameters
         a = self.params.scale_length_kpc  # Disk scale length
         b = self.params.disk_height_kpc   # Disk scale height
 
         # Estimate disk mass from rotation curve
-        # Total rotation curve v_total² = v_disk² + v_bulge² + v_halo²
-        # For Milky Way at R ~ 8 kpc: v_total ~ 220 km/s
-        # Typical breakdown: v_disk ~ 150 km/s, v_bulge ~ 80 km/s, v_halo ~ 120 km/s
-        # Fractions must satisfy: frac_disk² + frac_bulge² + frac_halo² = 1.0
-
         v_circ = self.params.rotation_velocity_km_s  # Total circular velocity
         v_disk_frac = 0.72  # Disk contributes 72% → 0.72² = 0.518
         v_disk = v_disk_frac * v_circ
@@ -655,24 +650,23 @@ class GalaxyModel:
         v_disk_kpc_myr = v_disk * 0.001022
         M_disk = v_disk_kpc_myr**2 * R_char / G_kpc_msun  # Solar masses
 
-        # Miyamoto-Nagai acceleration components
-        # Φ = -GM / sqrt(R² + (a + sqrt(z² + b²))²)
-        # a_R = -∂Φ/∂R = -GM R / [R² + (a + sqrt(z² + b²))²]^(3/2)
-        # a_z = -∂Φ/∂z = -GM (a + sqrt(z² + b²)) z / [sqrt(z² + b²) × [...]^(3/2)]
+        GM = G_kpc_msun * M_disk
 
-        sqrt_term = np.sqrt(z**2 + b**2)
-        D_squared = R**2 + (a + sqrt_term)**2
-        D_cubed = D_squared**1.5
+        # Use numexpr for fast SIMD-optimized array operations
+        R = ne.evaluate('sqrt(x**2 + y**2)')
+        sqrt_term = ne.evaluate('sqrt(z**2 + b**2)')
+        D_squared = ne.evaluate('R**2 + (a + sqrt_term)**2')
+        D_cubed = ne.evaluate('D_squared**1.5')
 
         # Radial component (in xy-plane)
-        a_R = -G_kpc_msun * M_disk * R / (D_cubed + 1e-30)
+        a_R = ne.evaluate('-GM * R / (D_cubed + 1e-30)')
 
         # z component
-        a_z = -G_kpc_msun * M_disk * (a + sqrt_term) * z / ((sqrt_term + 1e-10) * D_cubed + 1e-30)
+        a_z = ne.evaluate('-GM * (a + sqrt_term) * z / ((sqrt_term + 1e-10) * D_cubed + 1e-30)')
 
         # Convert to Cartesian (handle R=0 case)
-        a_x = a_R * x / (R + 1e-10)
-        a_y = a_R * y / (R + 1e-10)
+        a_x = ne.evaluate('a_R * x / (R + 1e-10)')
+        a_y = ne.evaluate('a_R * y / (R + 1e-10)')
 
         return np.column_stack([a_x, a_y, a_z])
 

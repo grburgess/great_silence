@@ -493,3 +493,36 @@ python scripts/benchmark_baseline.py  # Detailed profiling
   - Added `max_active_probes_fraction: float = 0.05` (5% of total stars)
   - Effective limits computed at initialization based on actual star count
   - Example: 50k stars → 5,079 max colonies, 2,500 max active probes
+### Feb 2026 - War Speedup Phase 0 (Baseline + Bug Fixes + Quick Wins)
+**Goal**: Establish baseline, fix bugs, apply zero-effort optimizations for 100k+ star scale
+
+#### Phase 0.1 - Benchmark Script
+- Created `scripts/benchmark_war.py`: 100k stars, 10 Gyr, many civs
+- Includes cProfile, memory profiling, detailed statistics
+- Outputs to `claude_comments/benchmark_results.md`
+
+#### Phase 0.2 - Bug Fixes in engine.py
+1. **Duplicate HazardEvent class** - Removed duplicate definition (lines 169-190)
+2. **Dead code after return** - Removed unreachable recovery_queue code (line 2489)
+3. **scipy.special.expit** - Moved to module-level import (was imported per battle)
+4. **evolve_personality() return** - Fixed to properly create PersonalityState objects and unpack fields into CivilizationState attributes (personality_type, friendliness, aggression_factor, war_trauma, victory_confidence)
+5. **O(N) scan in _scan_for_encounters()** - Replaced `next()` linear scan with `_civ_by_id` dict lookup (lines 2728-2729)
+6. **O(N) scan in _resolve_wars()** - Replaced `next()` linear scan with `_civ_by_id` dict lookup (line 2893)
+7. **O(N) probe arrival check** - Replaced loop over all civs with `civ_spatial_index.get_colonizers_at_star()` query (line 1399)
+8. **fastmath audit** - Removed `fastmath=True` from `compute_emergence_probabilities_kernel` (probability/sampling kernels shouldn't use fastmath due to IEEE 754 violations)
+
+#### Phase 0.3 - Quick Wins
+1. **Memory pool** - Pre-allocated scratch buffers in `__init__()`:
+   - `_effects_buffer[10000]` for hazard effects
+   - `_mask_buffer[10000]` for boolean masks
+   - `_dist_buffer[10000]` for distance calculations
+   - Replaced per-timestep `np.zeros()` allocations with buffer reuse
+   - Expected: 10-30% reduction in per-step overhead
+2. **numexpr for disk acceleration** - Replaced multi-temporary NumPy expressions in `_compute_disk_acceleration()` with `ne.evaluate()` for 2-3x speedup with auto-SIMD threading
+3. **Skip inactive civs** - Filter to active civs in `_manage_strategic_resources()` before iteration
+
+#### Phase 0.4 - Verification
+- Basic smoke test passed: 1000 stars, 0.1 Gyr simulation runs successfully
+- All imports working (numexpr, scipy.special.expit)
+- No syntax errors or runtime failures
+- **Note**: Full pytest suite unavailable in environment, will use test-automator agents in subsequent phases

@@ -8,6 +8,7 @@ from typing import Optional, Dict, List, Any, Set, Tuple
 from dataclasses import dataclass, field
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
+from scipy.special import expit
 
 from ..config.parameters import SimulationConfig
 from ..utils.progress import create_progress_tracker, ProgressMetrics
@@ -164,18 +165,6 @@ class CivilizationState:
     strategic_resource_stockpile: float = 100.0
     resource_debt: float = 0.0
     war_exhaustion: float = 0.0
-
-
-@dataclass
-class HazardEvent:
-    """Record of an astrophysical hazard event."""
-
-    time_myr: float
-    event_type: str  # 'supernova', 'grb'
-    position: np.ndarray  # 3D position in kpc
-    energy: float  # Event energy (ergs)
-    sterilization_radius_pc: float  # Lethal range in parsecs
-    affected_civ_ids: List[int] = field(default_factory=list)  # Civilizations destroyed/affected
 
 
 @dataclass
@@ -400,6 +389,12 @@ class GalaxySimulation:
 
         # Spatial index for civilization territories (O(log N) overlap detection)
         self.civ_spatial_index: Optional[CivilizationSpatialIndex] = None
+
+        # Pre-allocated scratch buffers (memory pool optimization)
+        self._max_civs_buffer_size = 10000
+        self._effects_buffer = np.zeros(self._max_civs_buffer_size, dtype=np.int32)
+        self._mask_buffer = np.zeros(self._max_civs_buffer_size, dtype=bool)
+        self._dist_buffer = np.zeros(self._max_civs_buffer_size, dtype=np.float64)
 
         # Disaster tracking modules (initialized in initialize())
         self.supernova_scheduler: Optional[Any] = None
@@ -1396,15 +1391,17 @@ class GalaxySimulation:
         civ.targeted_stars.discard(probe.target_star_idx)
 
         # Check if star already colonized by another civ (encounter!)
-        for other_civ in self.civilizations:
-            if other_civ.civ_id == civ.civ_id or not other_civ.is_active:
-                continue
-
-            if probe.target_star_idx in other_civ.colonized_stars:
-                # First contact!
-                if civ.civ_id not in other_civ.known_civilizations:
-                    self._handle_encounter(civ, other_civ, probe.target_star_idx, "probe_arrival")
-                break
+        if self.civ_spatial_index is not None:
+            colonizers = self.civ_spatial_index.get_colonizers_at_star(probe.target_star_idx)
+            for other_civ_id in colonizers:
+                if other_civ_id == civ.civ_id:
+                    continue
+                other_civ = self._civ_by_id.get(other_civ_id)
+                if other_civ is not None and other_civ.is_active:
+                    # First contact!
+                    if civ.civ_id not in other_civ.known_civilizations:
+                        self._handle_encounter(civ, other_civ, probe.target_star_idx, "probe_arrival")
+                    break
 
         # Mark target as colonized
         if probe.target_star_idx not in civ.colonized_stars:
@@ -2336,7 +2333,8 @@ class GalaxySimulation:
                             civ_positions, disaster, random_values, disaster_position
                         )
                 else:
-                    effects = np.zeros(n_civs, dtype=np.int32)
+                    effects = self._effects_buffer[:n_civs]
+                    effects[:] = 0
 
                 for i, (civ, effect) in enumerate(zip(active_civs, effects)):
                     if effect > 0:
@@ -2377,7 +2375,8 @@ class GalaxySimulation:
     ) -> np.ndarray:
         """Python fallback for SN effect evaluation."""
         n_civs = len(civ_positions)
-        effects = np.zeros(n_civs, dtype=np.int32)
+        effects = self._effects_buffer[:n_civs]
+        effects[:] = 0
         
         # Note: disaster_position is passed via the numba kernel path
         # This fallback uses disaster.position for simplicity
@@ -2403,7 +2402,8 @@ class GalaxySimulation:
     ) -> np.ndarray:
         """Python fallback for GRB effect evaluation."""
         n_civs = len(civ_positions)
-        effects = np.zeros(n_civs, dtype=np.int32)
+        effects = self._effects_buffer[:n_civs]
+        effects[:] = 0
         
         disaster_pos = disaster_position if disaster_position is not None else disaster.position
         
@@ -2433,15 +2433,16 @@ class GalaxySimulation:
         return effects
 
     def _evaluate_ns_merger_effects_python(
-        self, 
-        civ_positions: np.ndarray, 
-        disaster, 
+        self,
+        civ_positions: np.ndarray,
+        disaster,
         random_values: np.ndarray,
         disaster_position: Optional[np.ndarray] = None
     ) -> np.ndarray:
         """Python fallback for NS merger effect evaluation."""
         n_civs = len(civ_positions)
-        effects = np.zeros(n_civs, dtype=np.int32)
+        effects = self._effects_buffer[:n_civs]
+        effects[:] = 0
         
         disaster_pos = disaster_position if disaster_position is not None else disaster.position
         
@@ -2483,13 +2484,8 @@ class GalaxySimulation:
                 )
                 if random_values[i] < np.exp(-3.0 * r):
                     effects[i] = 2
-        
-        return effects
 
-        if self.recovery_queue is not None:
-            recovered = self.recovery_queue.process_recoveries(self.current_time_myr)
-            if len(recovered) > 0:
-                pass
+        return effects
 
     def _interpolate_probe_positions(self, current_time_myr: float) -> List[ProbeSnapshot]:
         """
@@ -2725,10 +2721,10 @@ class GalaxySimulation:
                 if civ_b_id in civ.known_civilizations:
                     continue
 
-                civ_a = next((c for c in active_civs if c.civ_id == civ_a_id), None)
-                civ_b = next((c for c in active_civs if c.civ_id == civ_b_id), None)
+                civ_a = self._civ_by_id.get(civ_a_id)
+                civ_b = self._civ_by_id.get(civ_b_id)
 
-                if civ_a is None or civ_b is None:
+                if civ_a is None or civ_b is None or not civ_a.is_active or not civ_b.is_active:
                     continue
 
                 star_idx = next(iter(overlapping_stars))
@@ -2890,7 +2886,7 @@ class GalaxySimulation:
             if civ.war_state is None:
                 continue
 
-            enemy = next((c for c in active_civs if c.civ_id == civ.war_state.enemy_civ_id), None)
+            enemy = self._civ_by_id.get(civ.war_state.enemy_civ_id)
             if enemy is None or not enemy.is_active:
                 self._end_war(civ, victor=civ)
                 continue
@@ -2969,8 +2965,6 @@ class GalaxySimulation:
 
         tech_gap = civ_a.kardashev_scale - civ_b.kardashev_scale
 
-        from scipy.special import expit
-
         win_prob_a = 0.5 + 0.4 * expit(
             tech_gap / self.config.civilization.tech_advantage_sensitivity
         )
@@ -3003,22 +2997,49 @@ class GalaxySimulation:
             loser.reputation[winner.civ_id] = loser.reputation.get(winner.civ_id, 0.0) - 0.2
 
             if self.config.civilization.personality_evolution_enabled:
-                winner.personality = evolve_personality(
-                    winner,
+                winner_personality = PersonalityState(
+                    personality_type=winner.personality_type,
+                    friendliness=winner.friendliness,
+                    aggression_factor=winner.aggression_factor,
+                    war_trauma=winner.war_trauma,
+                    victory_confidence=winner.victory_confidence,
+                    evolution_history=[],
+                )
+                evolved_winner = evolve_personality(
+                    winner_personality,
                     "victory",
                     num_wars_lost=loser.wars_lost,
                     num_wars_won=winner.wars_won,
                     rng=self.rng,
                     evolution_rate=self.config.civilization.personality_evolution_rate,
                 )
-                loser.personality = evolve_personality(
-                    loser,
+                winner.personality_type = evolved_winner.personality_type
+                winner.friendliness = evolved_winner.friendliness
+                winner.aggression_factor = evolved_winner.aggression_factor
+                winner.war_trauma = evolved_winner.war_trauma
+                winner.victory_confidence = evolved_winner.victory_confidence
+
+                loser_personality = PersonalityState(
+                    personality_type=loser.personality_type,
+                    friendliness=loser.friendliness,
+                    aggression_factor=loser.aggression_factor,
+                    war_trauma=loser.war_trauma,
+                    victory_confidence=loser.victory_confidence,
+                    evolution_history=[],
+                )
+                evolved_loser = evolve_personality(
+                    loser_personality,
                     "defeat",
                     num_wars_lost=loser.wars_lost + 1,
                     num_wars_won=loser.wars_won,
                     rng=self.rng,
                     evolution_rate=self.config.civilization.personality_evolution_rate,
                 )
+                loser.personality_type = evolved_loser.personality_type
+                loser.friendliness = evolved_loser.friendliness
+                loser.aggression_factor = evolved_loser.aggression_factor
+                loser.war_trauma = evolved_loser.war_trauma
+                loser.victory_confidence = evolved_loser.victory_confidence
 
             winner.wars_won += 1
             loser.wars_lost += 1
@@ -3164,10 +3185,10 @@ class GalaxySimulation:
         war_cost = self.config.civilization.war_resource_cost_myr * dt_myr
         generation = self.config.civilization.resource_generation_rate * dt_myr
 
-        for civ in self.civilizations:
-            if not civ.is_active:
-                continue
+        # Filter to active civs only for performance
+        active_civs = [c for c in self.civilizations if c.is_active]
 
+        for civ in active_civs:
             if civ.war_state is not None:
                 civ.strategic_resource_stockpile -= war_cost
                 civ.resource_debt += war_cost * 0.1
