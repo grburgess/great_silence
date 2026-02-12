@@ -54,16 +54,11 @@ class GalaxyModel:
 
     @property
     def positions(self) -> Optional[np.ndarray]:
-        """
-        Get positions as (N, 3) array (AoS layout) for compatibility.
-
-        This is a view that combines the SoA arrays (pos_x, pos_y, pos_z).
-        Modifications to this array will update the underlying SoA arrays.
-        """
         if self._pos_x is None:
             return None
-        # Return column_stack view for compatibility
-        return np.column_stack([self._pos_x, self._pos_y, self._pos_z])
+        if self._positions_aos is None:
+            self._positions_aos = np.column_stack([self._pos_x, self._pos_y, self._pos_z])
+        return self._positions_aos
 
     @positions.setter
     def positions(self, value: np.ndarray) -> None:
@@ -304,8 +299,9 @@ class GalaxyModel:
             x += perturbation * x / (r + 1e-10)
             y += perturbation * y / (r + 1e-10)
 
-        self.positions[:, 0] = x
-        self.positions[:, 1] = y
+        self._pos_x[:] = x
+        self._pos_y[:] = y
+        self._positions_aos = None
 
     def _compute_circular_velocity(self, position: np.ndarray) -> float:
         """
@@ -930,42 +926,31 @@ class GalaxyModel:
                 a_current = np.zeros((n_stars, 3), dtype=np.float64)
                 a_new = np.zeros((n_stars, 3), dtype=np.float64)
                 
-                # Step 1: Compute acceleration at current positions (Numba)
+                pos = self.positions.copy()
+
                 compute_total_acceleration_kernel(
-                    self.positions.astype(np.float64),
-                    a_current,
+                    pos, a_current,
                     disk_a, disk_b, disk_G_M,
                     bulge_a, bulge_G_M,
-                    halo_v_sq,
-                    include_bulge
+                    halo_v_sq, include_bulge
                 )
-                
-                # Step 2: Update positions (Numba in-place)
+
                 leapfrog_integrate_positions_kernel(
-                    self.positions,
-                    self.velocities,
-                    a_current,
-                    dt_myr
+                    pos, self.velocities, a_current, dt_myr
                 )
-                
-                # Step 3: Compute acceleration at new positions (Numba)
+
                 compute_total_acceleration_kernel(
-                    self.positions.astype(np.float64),
-                    a_new,
+                    pos, a_new,
                     disk_a, disk_b, disk_G_M,
                     bulge_a, bulge_G_M,
-                    halo_v_sq,
-                    include_bulge
+                    halo_v_sq, include_bulge
                 )
-                
-                # Step 4: Update velocities (Numba in-place)
+
                 leapfrog_integrate_velocities_kernel(
-                    self.velocities,
-                    a_current,
-                    a_new,
-                    dt_myr
+                    self.velocities, a_current, a_new, dt_myr
                 )
-                
+
+                self.positions = pos
                 return
                 
             except ImportError:
@@ -974,7 +959,8 @@ class GalaxyModel:
         # Fallback: NumPy implementation
         v_kpc_myr = self.velocities * 0.001022
         a_current = self._compute_gravitational_acceleration(self.positions)
-        self.positions += v_kpc_myr * dt_myr + 0.5 * a_current * dt_myr**2
+        new_pos = self.positions + v_kpc_myr * dt_myr + 0.5 * a_current * dt_myr**2
+        self.positions = new_pos
         a_new = self._compute_gravitational_acceleration(self.positions)
         v_kpc_myr += 0.5 * (a_current + a_new) * dt_myr
         self.velocities = v_kpc_myr / 0.001022
@@ -1139,6 +1125,7 @@ class GalaxyModel:
         self._pos_x[update_indices] = pos_new[:, 0]
         self._pos_y[update_indices] = pos_new[:, 1]
         self._pos_z[update_indices] = pos_new[:, 2]
+        self._positions_aos = None
         self.velocities[update_indices] = v_kpc_myr_new / 0.001022
 
         a_mag_new = np.linalg.norm(a_new, axis=1)
