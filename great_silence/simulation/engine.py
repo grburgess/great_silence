@@ -1649,20 +1649,18 @@ class GalaxySimulation:
         if len(targets) == 0:
             return
 
-        # Create probes and events in buffer
-        for target_idx in targets:
+        _, travel_times = self._calculate_intercept_positions_batch(
+            source_pos=source_pos,
+            target_indices=targets,
+            velocity_c=civ.probe_velocity_c,
+        )
+
+        for j, target_idx in enumerate(targets):
             probe_id = self.next_probe_id
             self.next_probe_id += 1
 
-            # Calculate intercept position for moving target
-            intercept_pos, travel_time_myr = self._calculate_intercept_position(
-                source_pos=source_pos,
-                target_idx=target_idx,
-                velocity_c=civ.probe_velocity_c,
-            )
-            arrival_time_myr = self.current_time_myr + travel_time_myr
+            arrival_time_myr = self.current_time_myr + travel_times[j]
 
-            # Create probe
             probe = ProbeState(
                 probe_id=probe_id,
                 parent_probe_id=None,
@@ -1677,13 +1675,8 @@ class GalaxySimulation:
                 has_replicated=False,
             )
 
-            # Track target immediately to prevent duplicate targeting
             civ.targeted_stars.add(target_idx)
-
-            # Add to buffer with civ_id for later merging
             buffer.new_probes.append((civ.civ_id, probe))
-
-            # Add arrival event to buffer
             buffer.new_events.append((arrival_time_myr, "probe_arrival", civ.civ_id, probe_id))
 
     def _merge_probe_buffers(self, buffers: List[ThreadLocalProbeBuffer]) -> None:
@@ -1787,6 +1780,42 @@ class GalaxySimulation:
         
         return intercept_pos, travel_time_myr
 
+    def _calculate_intercept_positions_batch(
+        self,
+        source_pos: np.ndarray,
+        target_indices: List[int],
+        velocity_c: float,
+        max_iterations: int = 3,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        n = len(target_indices)
+        if n == 0:
+            return np.empty((0, 3)), np.empty(0)
+
+        target_pos = self.galaxy.positions[target_indices]
+
+        if (not self.config.simulation.enable_stellar_motion or
+            not self.config.simulation.probe_intercept_enabled or
+            self.galaxy.velocities is None):
+            diff = target_pos - source_pos
+            distances_kpc = np.linalg.norm(diff, axis=1)
+            distances_pc = distances_kpc * 1000.0
+            travel_times_myr = distances_pc / (velocity_c * C_PC_YR) / 1e6
+            return target_pos.copy(), travel_times_myr
+
+        target_vel_kpc_myr = self.galaxy.velocities[target_indices] * 0.001022
+
+        intercept_pos = target_pos.copy()
+        travel_times_myr = np.zeros(n)
+
+        for _ in range(max_iterations):
+            diff = intercept_pos - source_pos
+            distances_kpc = np.linalg.norm(diff, axis=1)
+            distances_pc = distances_kpc * 1000.0
+            travel_times_myr = distances_pc / (velocity_c * C_PC_YR) / 1e6
+            intercept_pos = target_pos + target_vel_kpc_myr * travel_times_myr[:, np.newaxis]
+
+        return intercept_pos, travel_times_myr
+
     def _launch_initial_probes(self, civ: CivilizationState) -> None:
         """Launch initial wave of probes from home world."""
         home_idx = civ.parent_star_idx
@@ -1853,17 +1882,18 @@ class GalaxySimulation:
             min_metallicity=civ.probe_min_metallicity,
         )
 
-        # Launch offspring probes
-        for target_idx in targets:
-            # Calculate intercept position for moving target
-            intercept_pos, travel_time_myr = self._calculate_intercept_position(
-                source_pos=source_pos,
-                target_idx=target_idx,
-                velocity_c=civ.probe_velocity_c,
-            )
-            arrival_time_myr = self.current_time_myr + travel_time_myr
+        if len(targets) == 0:
+            return
 
-            # Create offspring probe
+        _, travel_times = self._calculate_intercept_positions_batch(
+            source_pos=source_pos,
+            target_indices=targets,
+            velocity_c=civ.probe_velocity_c,
+        )
+
+        for j, target_idx in enumerate(targets):
+            arrival_time_myr = self.current_time_myr + travel_times[j]
+
             probe = ProbeState(
                 probe_id=self.next_probe_id,
                 parent_probe_id=parent_probe.probe_id,
@@ -1882,7 +1912,6 @@ class GalaxySimulation:
             civ.targeted_stars.add(target_idx)
             self._probe_by_id[probe.probe_id] = (civ.civ_id, probe)
 
-            # PRIORITY 2: Schedule probe arrival event
             heapq.heappush(
                 self.event_queue, (arrival_time_myr, "probe_arrival", civ.civ_id, probe.probe_id)
             )
