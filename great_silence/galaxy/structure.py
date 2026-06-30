@@ -58,6 +58,8 @@ class GalaxyModel:
         )
         self.stellar_accelerations: Optional[np.ndarray] = None  # Cached accelerations (kpc/Myr²)
 
+        self._orbit_use_gpu: bool = False
+
     @property
     def positions(self) -> Optional[np.ndarray]:
         if self._pos_x is None:
@@ -1071,12 +1073,18 @@ class GalaxyModel:
         return self._potential_params
 
     def _compute_accel_numba(self, positions: np.ndarray) -> np.ndarray:
-        """Compute gravitational acceleration using Numba kernel."""
+        """Compute gravitational acceleration using Numba kernel (or MLX GPU)."""
         from ..utils.numba_kernels import compute_total_acceleration_kernel
 
-        disk_a, disk_b, disk_G_M, bulge_a, bulge_G_M, halo_v_sq, include_bulge = (
-            self._get_potential_params()
-        )
+        params = self._get_potential_params()
+
+        if getattr(self, "_orbit_use_gpu", False):
+            from ..utils.mlx_backend import compute_total_acceleration_mlx, mlx_available
+
+            if mlx_available():
+                return compute_total_acceleration_mlx(positions, params)
+
+        disk_a, disk_b, disk_G_M, bulge_a, bulge_G_M, halo_v_sq, include_bulge = params
         out = np.empty_like(positions, dtype=np.float64)
         compute_total_acceleration_kernel(
             np.ascontiguousarray(positions, dtype=np.float64),
