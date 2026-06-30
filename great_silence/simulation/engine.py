@@ -1772,6 +1772,14 @@ class GalaxySimulation:
         Returns:
             Tuple of (intercept_position_kpc, travel_time_myr)
         """
+        if (
+            self.orbit_model is not None
+            and self.config.simulation.enable_stellar_motion
+            and self.config.simulation.probe_intercept_enabled
+        ):
+            pos, travel_times = self._solve_intercepts_orbit(source_pos, [target_idx], velocity_c)
+            return pos[0], float(travel_times[0])
+
         target_pos = self.galaxy.positions[target_idx].copy()
 
         # If stellar motion disabled or no velocities, use current position
@@ -1816,6 +1824,13 @@ class GalaxySimulation:
         if n == 0:
             return np.empty((0, 3)), np.empty(0)
 
+        if (
+            self.orbit_model is not None
+            and self.config.simulation.enable_stellar_motion
+            and self.config.simulation.probe_intercept_enabled
+        ):
+            return self._solve_intercepts_orbit(source_pos, target_indices, velocity_c)
+
         target_pos = self.galaxy.positions[target_indices]
 
         if (
@@ -1842,6 +1857,61 @@ class GalaxySimulation:
             intercept_pos = target_pos + target_vel_kpc_myr * travel_times_myr[:, np.newaxis]
 
         return intercept_pos, travel_times_myr
+
+    def _orbit_positions_subset(self, indices: np.ndarray, t_myr: np.ndarray) -> np.ndarray:
+        orb = self.orbit_model
+        R_g = orb.R_g[indices]
+        Omega_g = orb.Omega_g[indices]
+        kappa = orb.kappa[indices]
+        nu = orb.nu[indices]
+        X = orb.X[indices]
+        alpha = orb.alpha[indices]
+        phi_g0 = orb.phi_g0[indices]
+        Z = orb.Z[indices]
+        beta = orb.beta[indices]
+
+        ph_R = kappa * t_myr + alpha
+        R = R_g + X * np.cos(ph_R)
+        gamma = 2.0 * Omega_g / (kappa * R_g)
+        phi = phi_g0 + Omega_g * t_myr - gamma * X * np.sin(ph_R) / R_g
+        z = Z * np.cos(nu * t_myr + beta)
+        return np.column_stack([R * np.cos(phi), R * np.sin(phi), z])
+
+    def _solve_intercepts_orbit(
+        self,
+        source_pos: np.ndarray,
+        target_indices: List[int],
+        velocity_c: float,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        indices = np.asarray(target_indices, dtype=np.int64)
+        n = indices.shape[0]
+        t0 = self.current_time_myr
+        kpc_to_myr = 1000.0 / (velocity_c * C_PC_YR) / 1e6
+
+        def travel_time(positions: np.ndarray) -> np.ndarray:
+            return np.linalg.norm(positions - source_pos, axis=1) * kpc_to_myr
+
+        tau_lo = np.zeros(n)
+        f_lo = travel_time(self._orbit_positions_subset(indices, t0 + tau_lo))
+        tau_hi = np.maximum(f_lo, 1e-6) * 2.0
+
+        for _ in range(60):
+            f_hi = travel_time(self._orbit_positions_subset(indices, t0 + tau_hi)) - tau_hi
+            grow = f_hi > 0.0
+            if not grow.any():
+                break
+            tau_hi = np.where(grow, tau_hi * 2.0, tau_hi)
+
+        for _ in range(20):
+            tau_mid = 0.5 * (tau_lo + tau_hi)
+            f_mid = travel_time(self._orbit_positions_subset(indices, t0 + tau_mid)) - tau_mid
+            right = f_mid > 0.0
+            tau_lo = np.where(right, tau_mid, tau_lo)
+            tau_hi = np.where(right, tau_hi, tau_mid)
+
+        tau = 0.5 * (tau_lo + tau_hi)
+        pos = self._orbit_positions_subset(indices, t0 + tau)
+        return pos, tau
 
     def _launch_initial_probes(self, civ: CivilizationState) -> None:
         """Launch initial wave of probes from home world."""
