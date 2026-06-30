@@ -1,8 +1,10 @@
 """3D galactic structure modeling with proper stellar kinematics."""
 
-import numpy as np
+from typing import Optional, Tuple
+
 import numexpr as ne
-from typing import Tuple, Optional
+import numpy as np
+
 from ..config.parameters import GalaxyParameters
 
 
@@ -14,7 +16,9 @@ class GalaxyModel:
     Uses exponential disk profile with optional bulge and spiral arms.
     """
 
-    def __init__(self, params: GalaxyParameters, seed: Optional[int] = None, use_numba: bool = True):
+    def __init__(
+        self, params: GalaxyParameters, seed: Optional[int] = None, use_numba: bool = True
+    ):
         """
         Initialize galaxy model.
 
@@ -49,7 +53,9 @@ class GalaxyModel:
 
         # Adaptive timestep arrays (for efficient stellar motion)
         self.stellar_timesteps: Optional[np.ndarray] = None  # Individual dt for each star (Myr)
-        self.time_until_update: Optional[np.ndarray] = None  # Time remaining until next update (Myr)
+        self.time_until_update: Optional[np.ndarray] = (
+            None  # Time remaining until next update (Myr)
+        )
         self.stellar_accelerations: Optional[np.ndarray] = None  # Cached accelerations (kpc/Myr²)
 
     @property
@@ -136,7 +142,7 @@ class GalaxyModel:
 
         # Generate velocities from rotation curve
         self.velocities = self._generate_velocities()
-        
+
         # Store initial positions for delta compression (before any evolution)
         self.initial_positions = self.positions.copy()
 
@@ -170,6 +176,7 @@ class GalaxyModel:
         if use_numba:
             try:
                 from ..utils.numba_kernels import rejection_sample_exponential_disk_radii
+
                 # Generate seed from RNG state
                 seed = self.rng.integers(0, 2**31)
                 r = rejection_sample_exponential_disk_radii(
@@ -293,7 +300,7 @@ class GalaxyModel:
             dtheta = np.abs((theta - theta_spiral + np.pi) % (2 * np.pi) - np.pi)
 
             # Apply perturbation based on proximity to spiral arm
-            perturbation = strength * np.exp(-dtheta**2 / 0.1)
+            perturbation = strength * np.exp(-(dtheta**2) / 0.1)
 
             # Perturb positions radially
             x += perturbation * x / (r + 1e-10)
@@ -364,62 +371,84 @@ class GalaxyModel:
     def _generate_velocities(self) -> np.ndarray:
         """
         Generate stellar velocities based on configured mode.
-        
+
         Dispatches to either simple (empirical) or Jeans (equilibrium) mode.
         """
-        mode = getattr(self.params, 'velocity_init_mode', 'simple')
-        
-        if mode == 'jeans':
+        mode = getattr(self.params, "velocity_init_mode", "simple")
+
+        if mode == "jeans":
             return self._generate_velocities_jeans()
         else:
             return self._generate_velocities_simple()
-    
+
     def _compute_epicyclic_frequency(self, R: float) -> float:
         """
         Compute epicyclic frequency κ at cylindrical radius R.
-        
+
         κ² = R × d(Ω²)/dR + 4Ω²
-        
+
         For a flat rotation curve (v_c = const), κ = √2 × Ω = √2 × v_c/R
         """
         if R < 0.1:
             R = 0.1
-            
+
         pos = np.array([[R, 0.0, 0.0]])
         v_c = self._compute_circular_velocity(pos[0])
-        
+
         dr = 0.1
         pos_plus = np.array([[R + dr, 0.0, 0.0]])
         pos_minus = np.array([[max(0.1, R - dr), 0.0, 0.0]])
         v_c_plus = self._compute_circular_velocity(pos_plus[0])
         v_c_minus = self._compute_circular_velocity(pos_minus[0])
-        
+
         Omega = v_c / R
         dv_dR = (v_c_plus - v_c_minus) / (2 * dr)
         dOmega_dR = (dv_dR - v_c / R) / R
-        
+
         kappa_sq = R * 2 * Omega * dOmega_dR + 4 * Omega**2
         kappa = np.sqrt(max(0.0, kappa_sq))
-        
+
         return kappa
-    
+
+    def epicyclic_frequencies_batch(self, R_kpc: np.ndarray) -> np.ndarray:
+        R = np.maximum(R_kpc, 0.1)
+        dr = 0.1
+        zer = np.zeros_like(R)
+        vc = self._compute_circular_velocities_batch(np.column_stack([R, zer, zer]))
+        vc_p = self._compute_circular_velocities_batch(np.column_stack([R + dr, zer, zer]))
+        vc_m = self._compute_circular_velocities_batch(
+            np.column_stack([np.maximum(R - dr, 0.1), zer, zer])
+        )
+        Omega = vc / R
+        dvc_dR = (vc_p - vc_m) / (2 * dr)
+        dOmega_dR = (dvc_dR - vc / R) / R
+        kappa_sq = R * 2 * Omega * dOmega_dR + 4 * Omega**2
+        return np.sqrt(np.maximum(kappa_sq, 0.0))
+
+    def vertical_frequencies_batch(self, R_kpc: np.ndarray) -> np.ndarray:
+        R = np.maximum(R_kpc, 0.1)
+        dz = 0.05
+        zer = np.zeros_like(R)
+        a_plus = self._compute_accel_numba(np.column_stack([R, zer, zer + dz]))[:, 2]
+        a_minus = self._compute_accel_numba(np.column_stack([R, zer, zer - dz]))[:, 2]
+        d2Phi_dz2 = -(a_plus - a_minus) / (2 * dz)
+        return np.sqrt(np.maximum(d2Phi_dz2, 1e-12))
+
     def _compute_velocity_dispersion_jeans(
-        self, 
-        R: np.ndarray, 
-        z: np.ndarray
+        self, R: np.ndarray, z: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Compute velocity dispersions (σ_R, σ_φ, σ_z) from Jeans equations.
-        
+
         For an exponential disk in a combined potential:
         - σ_R follows Toomre Q stability criterion
         - σ_φ = σ_R × κ/(2Ω) from epicyclic approximation
         - σ_z from vertical Jeans equation
-        
+
         Args:
             R: Cylindrical radii (kpc)
             z: Vertical heights (kpc)
-            
+
         Returns:
             Tuple of (σ_R, σ_φ, σ_z) arrays in km/s
         """
@@ -427,51 +456,47 @@ class GalaxyModel:
         sigma_R = np.zeros(n_stars)
         sigma_phi = np.zeros(n_stars)
         sigma_z = np.zeros(n_stars)
-        
+
         h_R = self.params.scale_length_kpc
         h_z = self.params.disk_height_kpc
         v_0 = self.params.rotation_velocity_km_s
-        
+
         sigma_R_0 = 35.0
         sigma_z_0 = 20.0
-        
+
         for i in range(n_stars):
             r_i = max(0.1, R[i])
             z_i = z[i]
-            
+
             sigma_R[i] = sigma_R_0 * np.exp(-r_i / (2 * h_R))
-            sigma_R[i] *= (1.0 + np.abs(z_i) / h_z)
-            
+            sigma_R[i] *= 1.0 + np.abs(z_i) / h_z
+
             kappa = self._compute_epicyclic_frequency(r_i)
             Omega = v_0 / r_i
-            
+
             if Omega > 1e-10:
                 sigma_phi[i] = sigma_R[i] * kappa / (2 * Omega)
             else:
                 sigma_phi[i] = sigma_R[i] * 0.7
-            
+
             sigma_z[i] = sigma_z_0 * np.exp(-r_i / (2 * h_R))
-            sigma_z[i] *= (1.0 + 0.5 * np.abs(z_i) / h_z)
-        
+            sigma_z[i] *= 1.0 + 0.5 * np.abs(z_i) / h_z
+
         return sigma_R, sigma_phi, sigma_z
-    
-    def _compute_asymmetric_drift(
-        self, 
-        R: np.ndarray, 
-        sigma_R: np.ndarray
-    ) -> np.ndarray:
+
+    def _compute_asymmetric_drift(self, R: np.ndarray, sigma_R: np.ndarray) -> np.ndarray:
         """
         Compute asymmetric drift correction for disk stars.
-        
+
         v_φ = v_c - v_a where v_a ≈ σ_R² / (2 × v_c) × d(ln(ρ × σ_R²)) / d(ln R)
-        
+
         For an exponential disk with exponentially declining σ_R:
         v_a ≈ σ_R² × (1/h_R + 1/h_σ) / (2 × v_c)
-        
+
         Args:
             R: Cylindrical radii (kpc)
             sigma_R: Radial velocity dispersions (km/s)
-            
+
         Returns:
             Asymmetric drift velocities (km/s) to subtract from circular
         """
@@ -488,14 +513,14 @@ class GalaxyModel:
         mask = v_c > 10.0
         dlnrho_dlnR = -R_safe[mask] / h_R
         dlnsigma_dlnR = -R_safe[mask] / h_sigma
-        v_a[mask] = sigma_R[mask]**2 / (2 * v_c[mask]) * np.abs(dlnrho_dlnR + 2 * dlnsigma_dlnR)
+        v_a[mask] = sigma_R[mask] ** 2 / (2 * v_c[mask]) * np.abs(dlnrho_dlnR + 2 * dlnsigma_dlnR)
 
         return np.clip(v_a, 0, 50.0)
-    
+
     def _generate_velocities_simple(self) -> np.ndarray:
         """
         Generate velocities using simple circular rotation + empirical dispersions.
-        
+
         This is the original method with small improvements:
         - Asymmetric drift correction for disk stars
         - Better handling of central regions
@@ -563,16 +588,16 @@ class GalaxyModel:
             v_z += self.rng.normal(0, sigma_z, n_stars)
 
         return np.column_stack([v_x, v_y, v_z])
-    
+
     def _generate_velocities_jeans(self) -> np.ndarray:
         """
         Generate velocities using Jeans equations for equilibrium.
-        
+
         Solves the collisionless Boltzmann equation assuming:
         - Exponential disk density profile
         - Miyamoto-Nagai + Hernquist + NFW potential
         - Steady-state, axisymmetric distribution
-        
+
         This provides better equilibrium initial conditions that
         maintain stability over longer timescales.
         """
@@ -580,7 +605,7 @@ class GalaxyModel:
             raise ValueError("Must generate positions before velocities")
 
         print("  Computing Jeans equilibrium velocities...")
-        
+
         n_stars = len(self.positions)
         x, y, z = self.positions[:, 0], self.positions[:, 1], self.positions[:, 2]
         R = np.sqrt(x**2 + y**2)
@@ -595,14 +620,14 @@ class GalaxyModel:
                 sigma_bulge = self.params.bulge_velocity_dispersion_km_s
                 bulge_ref_pos = np.array([self.params.bulge_radius_kpc, 0.0, 0.0])
                 v_rot_bulge = 0.3 * self._compute_circular_velocity(bulge_ref_pos)
-                
+
                 bulge_indices = np.where(bulge_mask)[0]
                 for i in bulge_indices:
                     r_i = R[i] + 1e-10
-                    r_sph = np.sqrt(x[i]**2 + y[i]**2 + z[i]**2)
-                    
+                    r_sph = np.sqrt(x[i] ** 2 + y[i] ** 2 + z[i] ** 2)
+
                     sigma_r_bulge = sigma_bulge * (1.0 + 0.5 * r_sph / self.params.bulge_radius_kpc)
-                    
+
                     v_x[i] = self.rng.normal(0, sigma_r_bulge)
                     v_y[i] = self.rng.normal(0, sigma_r_bulge) + v_rot_bulge * x[i] / r_i
                     v_z[i] = self.rng.normal(0, sigma_r_bulge)
@@ -668,15 +693,14 @@ class GalaxyModel:
             else:
                 # Disk: linear gradient with radius
                 # [Fe/H](r) = [Fe/H]_center + gradient * r
-                metallicities[i] = self.params.central_metallicity_feh + \
-                                   self.params.metallicity_gradient_dex_per_kpc * r
+                metallicities[i] = (
+                    self.params.central_metallicity_feh
+                    + self.params.metallicity_gradient_dex_per_kpc * r
+                )
 
         return metallicities
 
-    def _compute_disk_acceleration(
-        self,
-        positions: np.ndarray
-    ) -> np.ndarray:
+    def _compute_disk_acceleration(self, positions: np.ndarray) -> np.ndarray:
         """
         Compute gravitational acceleration from Miyamoto-Nagai disk potential.
 
@@ -700,7 +724,7 @@ class GalaxyModel:
 
         # Miyamoto-Nagai parameters
         a = self.params.scale_length_kpc  # Disk scale length
-        b = self.params.disk_height_kpc   # Disk scale height
+        b = self.params.disk_height_kpc  # Disk scale height
 
         # Estimate disk mass from rotation curve
         v_circ = self.params.rotation_velocity_km_s  # Total circular velocity
@@ -717,27 +741,24 @@ class GalaxyModel:
         GM = G_kpc_msun * M_disk
 
         # Use numexpr for fast SIMD-optimized array operations
-        R = ne.evaluate('sqrt(x**2 + y**2)')
-        sqrt_term = ne.evaluate('sqrt(z**2 + b**2)')
-        D_squared = ne.evaluate('R**2 + (a + sqrt_term)**2')
-        D_cubed = ne.evaluate('D_squared**1.5')
+        R = ne.evaluate("sqrt(x**2 + y**2)")
+        sqrt_term = ne.evaluate("sqrt(z**2 + b**2)")
+        D_squared = ne.evaluate("R**2 + (a + sqrt_term)**2")
+        D_cubed = ne.evaluate("D_squared**1.5")
 
         # Radial component (in xy-plane)
-        a_R = ne.evaluate('-GM * R / (D_cubed + 1e-30)')
+        a_R = ne.evaluate("-GM * R / (D_cubed + 1e-30)")
 
         # z component
-        a_z = ne.evaluate('-GM * (a + sqrt_term) * z / ((sqrt_term + 1e-10) * D_cubed + 1e-30)')
+        a_z = ne.evaluate("-GM * (a + sqrt_term) * z / ((sqrt_term + 1e-10) * D_cubed + 1e-30)")
 
         # Convert to Cartesian (handle R=0 case)
-        a_x = ne.evaluate('a_R * x / (R + 1e-10)')
-        a_y = ne.evaluate('a_R * y / (R + 1e-10)')
+        a_x = ne.evaluate("a_R * x / (R + 1e-10)")
+        a_y = ne.evaluate("a_R * y / (R + 1e-10)")
 
         return np.column_stack([a_x, a_y, a_z])
 
-    def _compute_bulge_acceleration(
-        self,
-        positions: np.ndarray
-    ) -> np.ndarray:
+    def _compute_bulge_acceleration(self, positions: np.ndarray) -> np.ndarray:
         """
         Compute gravitational acceleration from Hernquist bulge potential.
 
@@ -781,7 +802,7 @@ class GalaxyModel:
         # Hernquist acceleration: a = -∇Φ where Φ = -GM/(r + a)
         # ∂Φ/∂r = -GM/(r + a)²
         # a_r = -∂Φ/∂r = GM/(r + a)² (pointing inward, so negative sign needed)
-        factor = -G_kpc_msun * M_bulge / ((r + a_bulge)**2 + 1e-30)
+        factor = -G_kpc_msun * M_bulge / ((r + a_bulge) ** 2 + 1e-30)
 
         a_x = factor * x / (r + 1e-10)
         a_y = factor * y / (r + 1e-10)
@@ -789,10 +810,7 @@ class GalaxyModel:
 
         return np.column_stack([a_x, a_y, a_z])
 
-    def _compute_halo_acceleration(
-        self,
-        positions: np.ndarray
-    ) -> np.ndarray:
+    def _compute_halo_acceleration(self, positions: np.ndarray) -> np.ndarray:
         """
         Compute gravitational acceleration from NFW dark matter halo.
 
@@ -833,10 +851,7 @@ class GalaxyModel:
 
         return np.column_stack([a_x, a_y, a_z])
 
-    def _compute_gravitational_acceleration(
-        self,
-        positions: np.ndarray
-    ) -> np.ndarray:
+    def _compute_gravitational_acceleration(self, positions: np.ndarray) -> np.ndarray:
         """
         Compute total gravitational acceleration from all components.
 
@@ -857,7 +872,9 @@ class GalaxyModel:
 
         return a_disk + a_bulge + a_halo
 
-    def evolve_positions(self, dt_myr: float, use_numba: bool = True, enable_motion: bool = False) -> None:
+    def evolve_positions(
+        self, dt_myr: float, use_numba: bool = True, enable_motion: bool = False
+    ) -> None:
         """
         Evolve stellar positions and velocities using leapfrog integrator.
 
@@ -893,66 +910,72 @@ class GalaxyModel:
         if use_numba:
             try:
                 from ..utils.numba_kernels import (
+                    compute_total_acceleration_kernel,
                     leapfrog_integrate_positions_kernel,
                     leapfrog_integrate_velocities_kernel,
-                    compute_total_acceleration_kernel,
                 )
-                
+
                 # Precompute potential parameters
                 v_circ = self.params.rotation_velocity_km_s
                 v_kpc_myr = v_circ * 0.001022
                 G_kpc_msun = 4.498e-12
                 R_char = 8.0
-                
+
                 # Disk parameters
                 disk_a = self.params.scale_length_kpc
                 disk_b = self.params.disk_height_kpc
                 v_disk = 0.72 * v_circ * 0.001022
                 disk_G_M = (v_disk**2 * R_char / G_kpc_msun) * G_kpc_msun
-                
+
                 # Bulge parameters
                 bulge_a = self.params.bulge_radius_kpc
                 v_bulge = 0.38 * v_circ * 0.001022
                 bulge_G_M = (v_bulge**2 * R_char / G_kpc_msun) * G_kpc_msun
-                
+
                 # Halo parameters
                 v_halo = 0.58 * v_circ * 0.001022
                 halo_v_sq = v_halo**2
-                
+
                 include_bulge = self.params.include_bulge
-                
+
                 # Allocate acceleration arrays
                 n_stars = len(self.positions)
                 a_current = np.zeros((n_stars, 3), dtype=np.float64)
                 a_new = np.zeros((n_stars, 3), dtype=np.float64)
-                
+
                 pos = self.positions.copy()
 
                 compute_total_acceleration_kernel(
-                    pos, a_current,
-                    disk_a, disk_b, disk_G_M,
-                    bulge_a, bulge_G_M,
-                    halo_v_sq, include_bulge
+                    pos,
+                    a_current,
+                    disk_a,
+                    disk_b,
+                    disk_G_M,
+                    bulge_a,
+                    bulge_G_M,
+                    halo_v_sq,
+                    include_bulge,
                 )
 
-                leapfrog_integrate_positions_kernel(
-                    pos, self.velocities, a_current, dt_myr
-                )
+                leapfrog_integrate_positions_kernel(pos, self.velocities, a_current, dt_myr)
 
                 compute_total_acceleration_kernel(
-                    pos, a_new,
-                    disk_a, disk_b, disk_G_M,
-                    bulge_a, bulge_G_M,
-                    halo_v_sq, include_bulge
+                    pos,
+                    a_new,
+                    disk_a,
+                    disk_b,
+                    disk_G_M,
+                    bulge_a,
+                    bulge_G_M,
+                    halo_v_sq,
+                    include_bulge,
                 )
 
-                leapfrog_integrate_velocities_kernel(
-                    self.velocities, a_current, a_new, dt_myr
-                )
+                leapfrog_integrate_velocities_kernel(self.velocities, a_current, a_new, dt_myr)
 
                 self.positions = pos
                 return
-                
+
             except ImportError:
                 pass
 
@@ -966,19 +989,16 @@ class GalaxyModel:
         self.velocities = v_kpc_myr / 0.001022
 
     def initialize_adaptive_timesteps(
-        self, 
-        eta: float = 0.02,
-        min_dt: float = 0.05,
-        max_dt: float = 2.0
+        self, eta: float = 0.02, min_dt: float = 0.05, max_dt: float = 2.0
     ) -> None:
         """
         Initialize individual timesteps for each star based on orbital dynamics.
-        
+
         Uses the standard criterion: dt_i = η × sqrt(r_i / |a_i|)
         where η is a dimensionless accuracy parameter (typically 0.01-0.1).
-        
+
         Timesteps are quantized to block timesteps (powers of 2) for efficiency.
-        
+
         Args:
             eta: Accuracy parameter (smaller = more accurate but slower)
             min_dt: Minimum allowed timestep in Myr
@@ -999,28 +1019,28 @@ class GalaxyModel:
 
         # Compute galactocentric radius
         r = np.sqrt(self._pos_x**2 + self._pos_y**2 + self._pos_z**2)
-        
+
         # Compute individual timesteps: dt = η × sqrt(r / |a|)
         # This gives approximately dt ~ T_orbit / (2π/η) where T_orbit is orbital period
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             dt_ideal = eta * np.sqrt(r / (a_mag + 1e-30))
-        
+
         # Clamp to [min_dt, max_dt]
         dt_clamped = np.clip(dt_ideal, min_dt, max_dt)
-        
+
         # Quantize to block timesteps (powers of 2 multiples of min_dt)
         # Available timesteps: min_dt, 2*min_dt, 4*min_dt, 8*min_dt, ...
         block_levels = np.floor(np.log2(dt_clamped / min_dt)).astype(int)
         block_levels = np.maximum(block_levels, 0)  # At least level 0
         max_level = int(np.log2(max_dt / min_dt))
         block_levels = np.minimum(block_levels, max_level)
-        
-        self.stellar_timesteps = min_dt * (2.0 ** block_levels)
+
+        self.stellar_timesteps = min_dt * (2.0**block_levels)
         self.time_until_update = self.stellar_timesteps.copy()
-        
+
     def _get_potential_params(self) -> tuple:
         """Precompute and cache gravitational potential parameters for Numba kernel."""
-        if not hasattr(self, '_potential_params') or self._potential_params is None:
+        if not hasattr(self, "_potential_params") or self._potential_params is None:
             v_circ = self.params.rotation_velocity_km_s
             G_kpc_msun = 4.498e-12
             R_char = 8.0
@@ -1040,9 +1060,13 @@ class GalaxyModel:
             include_bulge = self.params.include_bulge
 
             self._potential_params = (
-                disk_a, disk_b, disk_G_M,
-                bulge_a, bulge_G_M,
-                halo_v_sq, include_bulge
+                disk_a,
+                disk_b,
+                disk_G_M,
+                bulge_a,
+                bulge_G_M,
+                halo_v_sq,
+                include_bulge,
             )
         return self._potential_params
 
@@ -1055,18 +1079,19 @@ class GalaxyModel:
         )
         out = np.empty_like(positions, dtype=np.float64)
         compute_total_acceleration_kernel(
-            np.ascontiguousarray(positions, dtype=np.float64), out,
-            disk_a, disk_b, disk_G_M,
-            bulge_a, bulge_G_M,
-            halo_v_sq, include_bulge
+            np.ascontiguousarray(positions, dtype=np.float64),
+            out,
+            disk_a,
+            disk_b,
+            disk_G_M,
+            bulge_a,
+            bulge_G_M,
+            halo_v_sq,
+            include_bulge,
         )
         return out
 
-    def evolve_positions_adaptive(
-        self,
-        dt_myr: float,
-        use_numba: bool = True
-    ) -> None:
+    def evolve_positions_adaptive(self, dt_myr: float, use_numba: bool = True) -> None:
         """
         Evolve stellar positions using adaptive individual timesteps.
 
@@ -1092,11 +1117,9 @@ class GalaxyModel:
         if len(update_indices) == 0:
             return
 
-        pos_update = np.column_stack([
-            self._pos_x[update_indices],
-            self._pos_y[update_indices],
-            self._pos_z[update_indices]
-        ])
+        pos_update = np.column_stack(
+            [self._pos_x[update_indices], self._pos_y[update_indices], self._pos_z[update_indices]]
+        )
         vel_update = self.velocities[update_indices]
         dt_update = self.stellar_timesteps[update_indices]
         dt_col = dt_update[:, np.newaxis]
@@ -1110,7 +1133,7 @@ class GalaxyModel:
             a_current = self._compute_gravitational_acceleration(pos_update)
 
         v_kpc_myr = vel_update * 0.001022
-        pos_new = pos_update + v_kpc_myr * dt_col + 0.5 * a_current * (dt_col ** 2)
+        pos_new = pos_update + v_kpc_myr * dt_col + 0.5 * a_current * (dt_col**2)
 
         if use_numba:
             try:
@@ -1129,13 +1152,13 @@ class GalaxyModel:
         self.velocities[update_indices] = v_kpc_myr_new / 0.001022
 
         a_mag_new = np.linalg.norm(a_new, axis=1)
-        r_new = np.sqrt(pos_new[:, 0]**2 + pos_new[:, 1]**2 + pos_new[:, 2]**2)
+        r_new = np.sqrt(pos_new[:, 0] ** 2 + pos_new[:, 1] ** 2 + pos_new[:, 2] ** 2)
 
         eta = 0.02
         min_dt = self.stellar_timesteps.min()
         max_dt = self.stellar_timesteps.max()
 
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             dt_ideal = eta * np.sqrt(r_new / (a_mag_new + 1e-30))
         dt_clamped = np.clip(dt_ideal, min_dt, max_dt)
 
@@ -1144,7 +1167,7 @@ class GalaxyModel:
         max_level = int(np.log2(max_dt / min_dt))
         block_levels = np.minimum(block_levels, max_level)
 
-        new_timesteps = min_dt * (2.0 ** block_levels)
+        new_timesteps = min_dt * (2.0**block_levels)
         self.stellar_timesteps[update_indices] = new_timesteps
         self.time_until_update[update_indices] = new_timesteps
 
