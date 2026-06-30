@@ -1,7 +1,8 @@
 """Configuration and parameter classes for simulations."""
 
 from dataclasses import dataclass, field
-from typing import Dict, Any
+from typing import Any, Dict
+
 import yaml
 
 
@@ -46,7 +47,9 @@ class GalaxyParameters:
     spiral_arm_count: int = 4
     spiral_arm_strength: float = 0.2
     enable_bar: bool = True
-    velocity_init_mode: str = "simple"  # "simple" (circular + empirical) or "jeans" (full equilibrium)
+    velocity_init_mode: str = (
+        "simple"  # "simple" (circular + empirical) or "jeans" (full equilibrium)
+    )
 
     # Star population
     total_stars: int = 100_000_000  # Total stars in simulation
@@ -271,14 +274,20 @@ class SimulationParameters:
     # Physics options
     enable_stellar_motion: bool = True  # Enable gravitational evolution of stellar positions
     stellar_motion_adaptive: bool = True  # Use adaptive individual timesteps (faster, recommended)
-    stellar_motion_eta: float = 0.02  # Accuracy parameter for adaptive timesteps (smaller = more accurate)
+    stellar_motion_eta: float = (
+        0.02  # Accuracy parameter for adaptive timesteps (smaller = more accurate)
+    )
     stellar_motion_min_dt_myr: float = 0.05  # Minimum timestep for adaptive mode (Myr)
     stellar_motion_max_dt_myr: float = 2.0  # Maximum timestep for adaptive mode (Myr)
     stellar_motion_use_numba: bool = True  # Use Numba kernels for position evolution
     probe_intercept_enabled: bool = True  # Probes calculate intercept position for moving targets
     disaster_track_parent_star: bool = True  # Disasters occur at parent star's current position
     enable_star_formation: bool = True  # Enable continuous star formation during simulation
-    
+    orbit_mode: str = "fast"  # Stellar orbit tier: "fast" (epicyclic) or "exact" (leapfrog)
+    orbit_use_gpu: bool = (
+        False  # Use MLX Apple-GPU acceleration for exact tier (falls back to Numba)
+    )
+
     # Disaster timing
     disaster_start_offset_myr: float = 0.0  # Skip disasters occurring before this time
     spread_initial_disasters: bool = False  # Artificially spread disasters for visualization
@@ -316,7 +325,7 @@ class SimulationConfig:
     @classmethod
     def from_yaml(cls, filepath: str) -> "SimulationConfig":
         """Load configuration from YAML file."""
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             data = yaml.safe_load(f)
 
         return cls(

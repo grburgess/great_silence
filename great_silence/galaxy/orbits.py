@@ -14,6 +14,8 @@ Units:
 
 import numpy as np
 
+from great_silence.utils.numba_kernels import epicyclic_positions_kernel
+
 KMS_TO_KPC_MYR = 0.001022
 
 
@@ -23,6 +25,7 @@ class EpicyclicOrbitModel:
     def __init__(self, R_g, Omega_g, kappa, nu, X, alpha, phi_g0, Z, beta):
         self.R_g, self.Omega_g, self.kappa, self.nu = R_g, Omega_g, kappa, nu
         self.X, self.alpha, self.phi_g0, self.Z, self.beta = X, alpha, phi_g0, Z, beta
+        self._out = np.empty((R_g.shape[0], 3), dtype=np.float64)
 
     @classmethod
     def from_galaxy(cls, galaxy):
@@ -80,6 +83,22 @@ class EpicyclicOrbitModel:
         return Rg
 
     def positions_at_time(self, t_myr):
+        epicyclic_positions_kernel(
+            float(t_myr),
+            self.R_g,
+            self.Omega_g,
+            self.kappa,
+            self.nu,
+            self.X,
+            self.alpha,
+            self.phi_g0,
+            self.Z,
+            self.beta,
+            self._out,
+        )
+        return self._out.copy()
+
+    def _positions_numpy(self, t_myr):
         ph_R = self.kappa * t_myr + self.alpha
         R = self.R_g + self.X * np.cos(ph_R)
         gamma = 2.0 * self.Omega_g / (self.kappa * self.R_g)

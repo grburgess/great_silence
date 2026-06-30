@@ -1,7 +1,7 @@
 import numpy as np
-from great_silence.galaxy.orbits import EpicyclicOrbitModel
 
 from great_silence.config import SimulationConfig
+from great_silence.galaxy.orbits import EpicyclicOrbitModel
 from great_silence.galaxy.structure import GalaxyModel
 
 
@@ -57,3 +57,19 @@ def test_params_dict_shapes():
     d = orb.params_dict()
     for k in ["R_g", "Omega_g", "kappa", "nu", "X", "alpha", "phi_g0", "Z", "beta"]:
         assert d[k].shape == (500,)
+
+
+def test_kernel_matches_numpy_positions():
+    g = _make_galaxy(n=1000)
+    orb = EpicyclicOrbitModel.from_galaxy(g)
+    ref = orb._positions_numpy(150.0)
+    fast = orb.positions_at_time(150.0)
+    assert np.allclose(ref, fast, atol=1e-6)
+
+
+def test_config_has_orbit_fields():
+    from great_silence.config import SimulationConfig
+
+    c = SimulationConfig()
+    assert c.simulation.orbit_mode == "fast"
+    assert c.simulation.orbit_use_gpu is False
