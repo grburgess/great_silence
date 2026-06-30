@@ -2,16 +2,43 @@
 
 import heapq
 import time
-import numpy as np
-from pathlib import Path
-from typing import Optional, Dict, List, Any, Set, Tuple
-from dataclasses import dataclass, field
-from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import numpy as np
 from scipy.special import expit
 
+from ..civilization.personality import (
+    PersonalityState,
+    evolve_personality,
+    sample_personality,
+)
+from ..civilization.probe_design import (
+    C_PC_YR,
+    min_metallicity_for_replication,
+    offspring_count,
+    per_hop_range_from_kardashev,
+    probe_velocity_from_kardashev,
+    replication_delay_years,
+)
+from ..civilization.war import (
+    BattleEvent,
+    BattleOutcome,
+    CommunicationEvent,
+    FleetState,
+    VassalState,
+    WarState,
+    calculate_colony_strength,
+    check_alliance_cascade_light_cone,
+    is_communication_possible,
+)
 from ..config.parameters import SimulationConfig
-from ..utils.progress import create_progress_tracker, ProgressMetrics
+from ..galaxy.orbits import EpicyclicOrbitModel
+from ..galaxy.star_formation import InitialMassFunction, StarFormationHistory
+from ..galaxy.structure import GalaxyModel
+from ..utils.civ_spatial_index import CivilizationSpatialIndex
 from ..utils.parallel import (
     ThreadLocalProbeBuffer,
     compute_light_travel_distance,
@@ -19,37 +46,7 @@ from ..utils.parallel import (
     find_causal_groups_with_colonies,
     should_use_parallelization,
 )
-from ..galaxy.structure import GalaxyModel
-from ..galaxy.star_formation import StarFormationHistory, InitialMassFunction
-from ..civilization.probe_design import (
-    probe_velocity_from_kardashev,
-    per_hop_range_from_kardashev,
-    offspring_count,
-    replication_delay_years,
-    min_metallicity_for_replication,
-    C_PC_YR,
-)
-from ..civilization.war import (
-    FleetState,
-    WarState,
-    BattleEvent,
-    BattleOutcome,
-    CommunicationEvent,
-    VassalState,
-    calculate_fleet_strength,
-    calculate_colony_strength,
-    resolve_battle,
-    calculate_light_cone_arrival,
-    is_communication_possible,
-    check_alliance_cascade_light_cone,
-)
-from ..civilization.personality import (
-    PersonalityState,
-    sample_personality,
-    evolve_personality,
-    get_colony_personality_modifier,
-)
-from ..utils.civ_spatial_index import CivilizationSpatialIndex
+from ..utils.progress import ProgressMetrics, create_progress_tracker
 
 
 @dataclass
@@ -129,9 +126,13 @@ class CivilizationState:
     probe_sensor_range_pc: Optional[float] = None
 
     # Probe tracking
-    active_probes: Dict[int, "ProbeState"] = field(default_factory=dict)  # probe_id -> ProbeState (O(1) remove)
+    active_probes: Dict[int, "ProbeState"] = field(
+        default_factory=dict
+    )  # probe_id -> ProbeState (O(1) remove)
     archived_probes: List["ProbeState"] = field(default_factory=list)  # Completed probes
-    targeted_stars: Set[int] = field(default_factory=set)  # Stars with probes en-route (prevents redundant targeting)
+    targeted_stars: Set[int] = field(
+        default_factory=set
+    )  # Stars with probes en-route (prevents redundant targeting)
 
     # Personality and AI behavior
     personality_type: str = "defensive"
@@ -221,39 +222,39 @@ class SimulationSnapshot:
         default_factory=list
     )  # (civ_id, position)
     civ_birth_ages: List[Tuple[int, float]] = field(default_factory=list)  # (civ_id, age_gyr)
-    
+
     # Delta compression fields
     use_delta_compression: bool = False
     reference_time_myr: float = 0.0  # Time when initial_positions were captured
     stellar_velocities: Optional[np.ndarray] = None  # (N, 3) in km/s - only on first snapshot
     initial_positions: Optional[np.ndarray] = None  # (N, 3) in kpc - only on first snapshot
-    
+
     def get_positions(self, fallback_galaxy: Optional[Any] = None) -> np.ndarray:
         """
         Reconstruct stellar positions at this snapshot's time.
-        
+
         For delta compression, computes: initial_positions + velocities * dt
-        
+
         Args:
             fallback_galaxy: GalaxyModel to use for initial_positions/velocities if not stored
-            
+
         Returns:
             (N, 3) array of stellar positions in kpc
         """
         if not self.use_delta_compression:
             return self.stellar_positions
-        
+
         init_pos = self.initial_positions
         vels = self.stellar_velocities
-        
+
         if init_pos is None and fallback_galaxy is not None:
-            init_pos = getattr(fallback_galaxy, 'initial_positions', None)
+            init_pos = getattr(fallback_galaxy, "initial_positions", None)
         if vels is None and fallback_galaxy is not None:
-            vels = getattr(fallback_galaxy, 'velocities', None)
-        
+            vels = getattr(fallback_galaxy, "velocities", None)
+
         if init_pos is None or vels is None:
             return self.stellar_positions
-        
+
         dt_myr = self.time_myr - self.reference_time_myr
         v_kpc_myr = vels * 0.001022  # 1 km/s = 0.001022 kpc/Myr
         return init_pos + v_kpc_myr * dt_myr
@@ -308,7 +309,7 @@ class GalaxySimulation:
         self._archive_interval_myr = 1.0  # Archive every 1 Myr
 
         # Extinction model
-        from ..civilization.extinction import ExtinctionModel, CrisisPeak
+        from ..civilization.extinction import CrisisPeak, ExtinctionModel
 
         crisis_peaks = [
             CrisisPeak(
@@ -369,10 +370,10 @@ class GalaxySimulation:
         self.civilizations: List[CivilizationState] = []
         self.next_civ_id: int = 0
         self._active_civ_count: int = 0  # Cached count for O(1) check
-        
+
         # O(1) lookup indexes for civilizations and probes
         self._civ_by_id: Dict[int, CivilizationState] = {}
-        self._probe_by_id: Dict[int, Tuple[int, "ProbeState"]] = {}  # probe_id -> (civ_id, probe)
+        self._probe_by_id: Dict[int, Tuple[int, ProbeState]] = {}  # probe_id -> (civ_id, probe)
 
         # History tracking
         self.snapshots: List[SimulationSnapshot] = []
@@ -401,6 +402,8 @@ class GalaxySimulation:
         self.supernova_scheduler: Optional[Any] = None
         self.recovery_queue: Optional[Any] = None
         self.disaster_archiver: Optional[Any] = None
+
+        self.orbit_model: Optional[Any] = None
 
     def initialize(self) -> None:
         """Initialize galaxy and stellar population."""
@@ -443,22 +446,22 @@ class GalaxySimulation:
             t_ms_gyr = 10.0 * self.galaxy.masses[massive_mask] ** (-2.5)
             t_ms_myr = t_ms_gyr * 1000.0
             sim_duration_myr = self.config.simulation.simulation_duration_gyr * 1000.0
-            
+
             rng = np.random.default_rng(self.seed + 100)
             n_massive = massive_mask.sum()
-            
+
             # Assign time-until-death uniformly across simulation + some buffer
             # This spreads disasters evenly rather than clustering at start
             time_until_death_myr = rng.uniform(0, sim_duration_myr * 1.2, size=n_massive)
-            
+
             # Compute age from time_until_death: age = t_ms - time_until_death
             ages_myr = t_ms_myr - time_until_death_myr
-            
+
             # Clamp ages to valid range [0, t_ms]
             # Stars with computed age < 0 are "just born" (assign small positive age)
             # Stars with computed age > t_ms have "already died" (assign t_ms, scheduler handles)
             ages_myr = np.clip(ages_myr, 0.001, t_ms_myr * 0.999)
-            
+
             self.galaxy.ages[massive_mask] = ages_myr / 1000.0  # Convert to Gyr
 
         # Generate metallicities (with radial gradient if enabled)
@@ -498,8 +501,8 @@ class GalaxySimulation:
         # Initialize disaster tracking modules
         print("Initializing disaster tracking...")
         from .disasters import (
-            RecoveryQueue,
             DisasterArchiver,
+            RecoveryQueue,
             UnifiedDisasterScheduler,
         )
 
@@ -517,10 +520,12 @@ class GalaxySimulation:
             spread_initial_disasters=self.config.simulation.spread_initial_disasters,
         )
         disaster_stats = self.disaster_scheduler.get_statistics()
-        print(f"  Scheduled disasters: {disaster_stats['total_scheduled']} "
-              f"(SN: {disaster_stats['supernovae']}, GRB: {disaster_stats['grbs']}, "
-              f"NS mergers: {disaster_stats['ns_mergers']})")
-        if disaster_stats['scheduled_star_births'] > 0:
+        print(
+            f"  Scheduled disasters: {disaster_stats['total_scheduled']} "
+            f"(SN: {disaster_stats['supernovae']}, GRB: {disaster_stats['grbs']}, "
+            f"NS mergers: {disaster_stats['ns_mergers']})"
+        )
+        if disaster_stats["scheduled_star_births"] > 0:
             print(f"  Scheduled star births: {disaster_stats['scheduled_star_births']}")
 
         n_stars = self.config.galaxy.total_stars
@@ -536,7 +541,9 @@ class GalaxySimulation:
         civ_cfg = self.config.civilization
         if civ_cfg.use_scaled_probe_limits:
             self._effective_max_colonies = max(10, int(n_habitable * civ_cfg.max_colonies_fraction))
-            self._effective_max_active_probes = max(10, int(n_total * civ_cfg.max_active_probes_fraction))
+            self._effective_max_active_probes = max(
+                10, int(n_total * civ_cfg.max_active_probes_fraction)
+            )
         else:
             self._effective_max_colonies = civ_cfg.max_colonies_per_civilization
             self._effective_max_active_probes = civ_cfg.max_active_probes_per_civilization
@@ -548,6 +555,10 @@ class GalaxySimulation:
                 archive_path=archive_path, recent_window_myr=10.0, buffer_size=1000
             )
 
+        if self.config.simulation.orbit_mode == "fast":
+            print("Characterizing epicyclic orbits (fast tier)...")
+            self.orbit_model = EpicyclicOrbitModel.from_galaxy(self.galaxy)
+
         print(f"Galaxy initialized with {len(self.galaxy.positions)} stars")
         if self.config.galaxy.include_bulge:
             n_bulge = np.sum(self.galaxy.component_type == 0)
@@ -558,7 +569,7 @@ class GalaxySimulation:
     def _compute_next_timestep(self) -> float:
         """
         Compute adaptive timestep based on upcoming events.
-        
+
         Considers:
         - Probe arrival/replication events
         - Scheduled disaster events (SN, GRB, NS merger)
@@ -579,128 +590,134 @@ class GalaxySimulation:
             if time_to_event > 0 and time_to_event <= cfg.max_adaptive_step_myr:
                 candidate_dt = min(candidate_dt, max(time_to_event, cfg.min_timestep_myr))
 
-        if hasattr(self, 'disaster_scheduler') and self.disaster_scheduler is not None:
+        if hasattr(self, "disaster_scheduler") and self.disaster_scheduler is not None:
             next_disaster_time = self.disaster_scheduler.peek_next_disaster_time()
             if next_disaster_time is not None:
                 time_to_disaster = next_disaster_time - self.current_time_myr
                 if time_to_disaster > 0 and time_to_disaster <= cfg.max_adaptive_step_myr:
-                    candidate_dt = min(candidate_dt, max(time_to_disaster + 0.001, cfg.min_timestep_myr))
-            
+                    candidate_dt = min(
+                        candidate_dt, max(time_to_disaster + 0.001, cfg.min_timestep_myr)
+                    )
+
             next_birth_time = self.disaster_scheduler.peek_next_star_birth_time()
             if next_birth_time is not None:
                 time_to_birth = next_birth_time - self.current_time_myr
                 if time_to_birth > 0 and time_to_birth <= cfg.max_adaptive_step_myr:
-                    candidate_dt = min(candidate_dt, max(time_to_birth + 0.001, cfg.min_timestep_myr))
+                    candidate_dt = min(
+                        candidate_dt, max(time_to_birth + 0.001, cfg.min_timestep_myr)
+                    )
 
         active_civs = sum(1 for c in self.civilizations if c.is_active)
 
         if active_civs > 0:
             candidate_dt = min(candidate_dt, cfg.medium_timestep_myr)
-        
+
         if self._emergence_heap:
             next_emergence_time = self._emergence_heap[0][0]
             time_to_emergence = next_emergence_time - self.current_time_myr
             if time_to_emergence > 0 and time_to_emergence <= cfg.max_adaptive_step_myr:
-                candidate_dt = min(candidate_dt, max(time_to_emergence + 0.001, cfg.min_timestep_myr))
+                candidate_dt = min(
+                    candidate_dt, max(time_to_emergence + 0.001, cfg.min_timestep_myr)
+                )
 
         return candidate_dt
 
     def _estimate_emergence_timestep(self) -> float:
         """
         Estimate appropriate timestep for emergence probability accuracy.
-        
+
         Uses the expected emergence rate to choose a timestep that won't
         skip emergence windows, while staying efficient during quiet periods.
-        
+
         Returns:
             Suggested timestep in Myr
         """
         cfg = self.config.simulation
         params = self.config.civilization
-        
+
         f_life = params.fraction_develop_life
         f_intel = params.fraction_develop_intelligence
         f_tech = params.fraction_develop_technology
         n_habitable = params.avg_habitable_planets_per_system
         f_base = params.fraction_stars_with_planets
-        
+
         p_emergence_per_star_gyr = f_base * n_habitable * f_life * f_intel * f_tech
-        
+
         if self.habitable_star_indices is None:
             return cfg.max_timestep_myr
-        
+
         n_eligible = len(self.habitable_star_indices)
         if n_eligible == 0:
             return cfg.max_timestep_myr
-        
+
         expected_emergence_per_gyr = p_emergence_per_star_gyr * n_eligible
-        
+
         if expected_emergence_per_gyr > 0:
             expected_time_between_myr = 1000.0 / expected_emergence_per_gyr
             target_dt = expected_time_between_myr / 10.0
-            
+
             target_dt = max(cfg.medium_timestep_myr, min(target_dt, cfg.max_timestep_myr))
             return target_dt
-        
+
         return cfg.max_timestep_myr
 
     def _schedule_emergence_events(self, simulation_duration_myr: float) -> None:
         """
         Pre-schedule all civilization emergence events using exponential sampling.
-        
+
         Instead of checking every habitable star every timestep (O(N) per step),
         we sample emergence times upfront using exponential inter-arrival times.
         This reduces emergence checking to O(log N) heap operations.
-        
+
         Stars that aren't old enough at simulation start but will become eligible
         during the simulation have their emergence events scheduled starting from
         the time they become eligible.
         """
         if self.habitable_star_indices is None or len(self.habitable_star_indices) == 0:
             return
-        
+
         params = self.config.civilization
         min_age_gyr = params.min_stellar_age_for_life_gyr
-        
+
         f_life = params.fraction_develop_life
         f_intel = params.fraction_develop_intelligence
         f_tech = params.fraction_develop_technology
         n_habitable = params.avg_habitable_planets_per_system
         f_base = params.fraction_stars_with_planets
-        
+
         star_ages = self.galaxy.ages[self.habitable_star_indices]
         time_until_eligible_myr = np.maximum(0.0, (min_age_gyr - star_ages) * 1000.0)
-        
+
         will_be_eligible_mask = time_until_eligible_myr < simulation_duration_myr
         candidate_indices = self.habitable_star_indices[will_be_eligible_mask]
         candidate_eligible_times = time_until_eligible_myr[will_be_eligible_mask]
-        
+
         if len(candidate_indices) == 0:
             return
-        
+
         metallicities = self.galaxy.metallicities[candidate_indices]
         if self.config.galaxy.use_metallicity_gradient:
             f_planets = f_base * np.power(10.0, metallicities)
             f_planets = np.clip(f_planets, 0.01, 1.0)
         else:
             f_planets = np.full(len(candidate_indices), f_base)
-        
+
         rates_per_myr = f_planets * n_habitable * f_life * f_intel * f_tech / 1000.0
-        
+
         for i, star_idx in enumerate(candidate_indices):
             rate = rates_per_myr[i]
             if rate <= 0:
                 continue
-            
+
             start_time = candidate_eligible_times[i]
             current_time = start_time
             while current_time < simulation_duration_myr:
                 wait_time = self.rng.exponential(1.0 / rate)
                 current_time += wait_time
-                
+
                 if current_time < simulation_duration_myr:
                     heapq.heappush(self._emergence_heap, (current_time, int(star_idx)))
-        
+
         n_scheduled = len(self._emergence_heap)
         if n_scheduled > 0:
             print(f"  Pre-scheduled emergence events: {n_scheduled}")
@@ -732,7 +749,11 @@ class GalaxySimulation:
 
         # Evolve stellar positions (independent of civilizations)
         if self.config.simulation.enable_stellar_motion:
-            if self.config.simulation.stellar_motion_adaptive:
+            if self.orbit_model is not None:
+                self.galaxy.positions = self.orbit_model.positions_at_time(
+                    self.current_time_myr + dt_myr
+                )
+            elif self.config.simulation.stellar_motion_adaptive:
                 # Adaptive individual timesteps - much faster for realistic galaxies
                 # Initialize timesteps on first call
                 if self.galaxy.stellar_timesteps is None:
@@ -760,7 +781,7 @@ class GalaxySimulation:
 
         # Fast path: skip civilization-related work when no civs exist
         has_active_civs = self._active_civ_count > 0
-        
+
         if has_active_civs:
             # Evolve existing civilizations
             self._evolve_civilizations()
@@ -887,7 +908,7 @@ class GalaxySimulation:
         if self.disaster_archiver is not None:
             self.disaster_archiver.finalize()
 
-        print(f"\nSimulation complete!")
+        print("\nSimulation complete!")
         print(f"Total civilizations emerged: {self.next_civ_id}")
         print(f"Active civilizations: {sum(c.is_active for c in self.civilizations)}")
 
@@ -998,27 +1019,27 @@ class GalaxySimulation:
 
     def _check_civilization_emergence(self) -> None:
         """Check for new civilization emergence using pre-scheduled events.
-        
+
         Uses O(log N) heap operations instead of O(N_habitable) per-step checks.
         Events are pre-scheduled at initialization based on Drake equation rates.
-        
+
         Physical correctness: Emergence is cancelled if:
         1. A probe colonizes the star (colonized_mask check) - evolution disrupted
         2. The star was sterilized by a disaster (recovery_queue check) - no life possible
         """
         emerged_stars = []
-        
+
         while self._emergence_heap and self._emergence_heap[0][0] <= self.current_time_myr:
             event_time, star_idx = heapq.heappop(self._emergence_heap)
-            
+
             # If probe arrived before native emergence, skip (evolution disrupted)
             if self._colonized_mask[star_idx]:
                 continue
-            
+
             # If star was sterilized by disaster, skip (no life possible)
             if self.recovery_queue is not None and self.recovery_queue.status[star_idx] != 0:
                 continue
-            
+
             emerged_stars.append(star_idx)
 
         for star_idx in emerged_stars:
@@ -1342,7 +1363,7 @@ class GalaxySimulation:
             probe_entry = self._probe_by_id.get(probe_id)
             if probe_entry is None:
                 continue
-            
+
             _, probe = probe_entry
 
             if event_type == "probe_arrival":
@@ -1397,7 +1418,9 @@ class GalaxySimulation:
                 if other_civ is not None and other_civ.is_active:
                     # First contact!
                     if civ.civ_id not in other_civ.known_civilizations:
-                        self._handle_encounter(civ, other_civ, probe.target_star_idx, "probe_arrival")
+                        self._handle_encounter(
+                            civ, other_civ, probe.target_star_idx, "probe_arrival"
+                        )
                     break
 
         # Mark target as colonized
@@ -1735,49 +1758,51 @@ class GalaxySimulation:
     ) -> Tuple[np.ndarray, float]:
         """
         Calculate intercept position for a moving target star.
-        
+
         Uses iterative refinement to find where the target will be when
         the probe arrives. Converges in 2-3 iterations for typical stellar
         velocities (~30 km/s) and probe velocities (~0.01c).
-        
+
         Args:
             source_pos: Launch position (kpc)
             target_idx: Index of target star
             velocity_c: Probe velocity as fraction of c
             max_iterations: Maximum iterations for convergence
-            
+
         Returns:
             Tuple of (intercept_position_kpc, travel_time_myr)
         """
         target_pos = self.galaxy.positions[target_idx].copy()
-        
+
         # If stellar motion disabled or no velocities, use current position
-        if (not self.config.simulation.enable_stellar_motion or 
-            not self.config.simulation.probe_intercept_enabled or
-            self.galaxy.velocities is None):
+        if (
+            not self.config.simulation.enable_stellar_motion
+            or not self.config.simulation.probe_intercept_enabled
+            or self.galaxy.velocities is None
+        ):
             distance_kpc = np.linalg.norm(target_pos - source_pos)
             distance_pc = distance_kpc * 1000.0
             travel_time_yr = distance_pc / (velocity_c * C_PC_YR)
             travel_time_myr = travel_time_yr / 1e6
             return target_pos, travel_time_myr
-        
+
         # Get target velocity (km/s -> kpc/Myr)
         target_vel_kms = self.galaxy.velocities[target_idx]
         target_vel_kpc_myr = target_vel_kms * 0.001022
-        
+
         # Iterative intercept calculation
         intercept_pos = target_pos.copy()
         travel_time_myr = 0.0
-        
+
         for _ in range(max_iterations):
             distance_kpc = np.linalg.norm(intercept_pos - source_pos)
             distance_pc = distance_kpc * 1000.0
             travel_time_yr = distance_pc / (velocity_c * C_PC_YR)
             travel_time_myr = travel_time_yr / 1e6
-            
+
             # Update intercept position based on travel time
             intercept_pos = target_pos + target_vel_kpc_myr * travel_time_myr
-        
+
         return intercept_pos, travel_time_myr
 
     def _calculate_intercept_positions_batch(
@@ -1793,9 +1818,11 @@ class GalaxySimulation:
 
         target_pos = self.galaxy.positions[target_indices]
 
-        if (not self.config.simulation.enable_stellar_motion or
-            not self.config.simulation.probe_intercept_enabled or
-            self.galaxy.velocities is None):
+        if (
+            not self.config.simulation.enable_stellar_motion
+            or not self.config.simulation.probe_intercept_enabled
+            or self.galaxy.velocities is None
+        ):
             diff = target_pos - source_pos
             distances_kpc = np.linalg.norm(diff, axis=1)
             distances_pc = distances_kpc * 1000.0
@@ -2137,34 +2164,33 @@ class GalaxySimulation:
     def _process_star_formation(self, dt_myr: float) -> None:
         """
         Process pre-scheduled star births from UnifiedDisasterScheduler.
-        
+
         Star births are scheduled at initialization for the entire simulation,
         so this method only retrieves and processes births in the current window.
         No per-timestep RNG calls - all randomness is resolved at init.
         """
-        if not hasattr(self, 'disaster_scheduler') or self.disaster_scheduler is None:
+        if not hasattr(self, "disaster_scheduler") or self.disaster_scheduler is None:
             return
-        
+
         if not self.config.simulation.enable_star_formation:
             return
-        
+
         start_time = self.current_time_myr - dt_myr
         star_births = self.disaster_scheduler.get_star_births_in_window(
-            start_myr=start_time,
-            end_myr=self.current_time_myr
+            start_myr=start_time, end_myr=self.current_time_myr
         )
-        
+
         if not star_births:
             return
-        
+
         for birth in star_births:
             t_ms_gyr = 10.0 * birth.mass ** (-2.5)
             time_until_sn_myr = t_ms_gyr * 1000.0
             sn_time_myr = birth.time_myr + time_until_sn_myr
-            
+
             if sn_time_myr > self.config.simulation.simulation_duration_gyr * 1000:
                 continue
-            
+
             self._schedule_new_stellar_death(
                 position=birth.position,
                 mass=birth.mass,
@@ -2180,11 +2206,12 @@ class GalaxySimulation:
         sn_time_myr: float,
     ) -> None:
         """Add a newly formed massive star to the disaster schedule."""
-        from .disasters import ScheduledDisaster, DisasterType
         import heapq
-        
+
+        from .disasters import DisasterType, ScheduledDisaster
+
         scheduler = self.disaster_scheduler
-        
+
         sn_disaster = ScheduledDisaster(
             time_myr=sn_time_myr,
             disaster_type=DisasterType.SUPERNOVA,
@@ -2194,21 +2221,21 @@ class GalaxySimulation:
             lethal_radius_pc=self.config.astrophysics.sn_lethal_range_pc,
             sterilization_radius_pc=self.config.astrophysics.sn_sterilization_range_pc,
         )
-        
+
         sn_idx = len(scheduler.scheduled_disasters)
         scheduler.scheduled_disasters.append(sn_disaster)
         heapq.heappush(scheduler.disaster_by_time, (sn_time_myr, sn_idx))
-        
+
         if mass > self.config.astrophysics.grb_min_progenitor_mass:
             grb_base_fraction = self.config.astrophysics.grb_fraction_of_sne
             z_modifier = np.clip(10.0 ** (-0.8 * metallicity), 0.1, 10.0)
             mass_modifier = np.clip((mass / 20.0) ** 0.5, 1.0, 2.0)
             p_grb = np.clip(grb_base_fraction * z_modifier * mass_modifier, 0.0, 1.0)
-            
+
             if self.rng.uniform(0, 1) < p_grb:
                 jet_theta = np.arccos(2 * self.rng.uniform(0, 1) - 1)
                 jet_phi = self.rng.uniform(0, 2 * np.pi)
-                
+
                 grb_disaster = ScheduledDisaster(
                     time_myr=sn_time_myr,
                     disaster_type=DisasterType.GRB,
@@ -2221,11 +2248,11 @@ class GalaxySimulation:
                     grb_jet_phi=jet_phi,
                     grb_beaming_angle_deg=self.config.astrophysics.grb_beaming_angle_deg,
                 )
-                
+
                 grb_idx = len(scheduler.scheduled_disasters)
                 scheduler.scheduled_disasters.append(grb_disaster)
                 heapq.heappush(scheduler.disaster_by_time, (sn_time_myr, grb_idx))
-        
+
         if mass > 8.0 and mass < 25.0:
             scheduler.ns_remnant_indices.append(-1)
             scheduler.ns_formation_times.append(sn_time_myr)
@@ -2239,13 +2266,13 @@ class GalaxySimulation:
         2. Record ALL disaster events (for visualization)
         3. Evaluate effects on civilizations using batch kernels
         4. Apply destruction effects to affected civilizations
-        
+
         Uses UnifiedDisasterScheduler for O(log N) event retrieval and
         Numba-optimized kernels for batch effect evaluation.
         """
         from .disasters import DisasterType
-        
-        if not hasattr(self, 'disaster_scheduler') or self.disaster_scheduler is None:
+
+        if not hasattr(self, "disaster_scheduler") or self.disaster_scheduler is None:
             return
 
         dt_myr = self._current_dt_myr
@@ -2260,11 +2287,11 @@ class GalaxySimulation:
             return
 
         active_civs = [c for c in self.civilizations if c.is_active]
-        
+
         if active_civs:
-            civ_positions = np.array([
-                self.galaxy.positions[c.parent_star_idx] for c in active_civs
-            ])
+            civ_positions = np.array(
+                [self.galaxy.positions[c.parent_star_idx] for c in active_civs]
+            )
         else:
             civ_positions = np.empty((0, 3))
 
@@ -2272,10 +2299,11 @@ class GalaxySimulation:
         if use_numba:
             try:
                 from ..utils.numba_kernels import (
-                    evaluate_sn_effect_on_civs_kernel,
                     evaluate_grb_effect_on_civs_kernel,
                     evaluate_ns_merger_effect_on_civs_kernel,
+                    evaluate_sn_effect_on_civs_kernel,
                 )
+
                 has_kernels = True
             except ImportError:
                 has_kernels = False
@@ -2284,10 +2312,10 @@ class GalaxySimulation:
 
         # Determine whether to track parent star positions for disasters
         track_parent = (
-            self.config.simulation.enable_stellar_motion and
-            self.config.simulation.disaster_track_parent_star
+            self.config.simulation.enable_stellar_motion
+            and self.config.simulation.disaster_track_parent_star
         )
-        
+
         for disaster in disasters:
             event_type_str = {
                 DisasterType.SUPERNOVA: "supernova",
@@ -2297,8 +2325,7 @@ class GalaxySimulation:
 
             # Get disaster position (dynamic if tracking parent star)
             disaster_position = disaster.get_position(
-                galaxy_positions=self.galaxy.positions,
-                track_parent_star=track_parent
+                galaxy_positions=self.galaxy.positions, track_parent_star=track_parent
             )
 
             hazard_event = HazardEvent(
@@ -2321,7 +2348,7 @@ class GalaxySimulation:
                             disaster_position.astype(np.float64),
                             disaster.lethal_radius_pc,
                             disaster.sterilization_radius_pc,
-                            random_values
+                            random_values,
                         )
                     else:
                         effects = self._evaluate_sn_effects_python(
@@ -2336,7 +2363,7 @@ class GalaxySimulation:
                             disaster.grb_jet_theta,
                             disaster.grb_jet_phi,
                             disaster.grb_beaming_angle_deg,
-                            disaster.lethal_radius_pc / 1000.0
+                            disaster.lethal_radius_pc / 1000.0,
                         )
                     else:
                         effects = self._evaluate_grb_effects_python(
@@ -2344,16 +2371,14 @@ class GalaxySimulation:
                         )
 
                 elif disaster.disaster_type == DisasterType.NS_MERGER:
-                    sgrb_range = getattr(
-                        self.config.astrophysics, 'ns_sgrb_lethal_range_kpc', 3.0
-                    )
+                    sgrb_range = getattr(self.config.astrophysics, "ns_sgrb_lethal_range_kpc", 3.0)
                     kilonova_lethal = getattr(
-                        self.config.astrophysics, 'ns_kilonova_lethal_range_pc', 30.0
+                        self.config.astrophysics, "ns_kilonova_lethal_range_pc", 30.0
                     )
                     kilonova_sterilization = getattr(
-                        self.config.astrophysics, 'ns_kilonova_sterilization_range_pc', 100.0
+                        self.config.astrophysics, "ns_kilonova_sterilization_range_pc", 100.0
                     )
-                    
+
                     if has_kernels:
                         effects = evaluate_ns_merger_effect_on_civs_kernel(
                             civ_positions.astype(np.float64),
@@ -2364,7 +2389,7 @@ class GalaxySimulation:
                             sgrb_range,
                             kilonova_lethal,
                             kilonova_sterilization,
-                            random_values
+                            random_values,
                         )
                     else:
                         effects = self._evaluate_ns_merger_effects_python(
@@ -2377,7 +2402,7 @@ class GalaxySimulation:
                 for i, (civ, effect) in enumerate(zip(active_civs, effects)):
                     if effect > 0:
                         hazard_event.affected_civ_ids.append(civ.civ_id)
-                        
+
                         if not civ.home_world_destroyed:
                             civ.home_world_destroyed = True
                             civ.home_world_destruction_time_myr = self.current_time_myr
@@ -2415,15 +2440,15 @@ class GalaxySimulation:
         n_civs = len(civ_positions)
         effects = self._effects_buffer[:n_civs]
         effects[:] = 0
-        
+
         # Note: disaster_position is passed via the numba kernel path
         # This fallback uses disaster.position for simplicity
         disaster_pos = disaster.position
-        
+
         for i in range(n_civs):
             dist_kpc = np.linalg.norm(civ_positions[i] - disaster_pos)
             dist_pc = dist_kpc * 1000.0
-            
+
             if dist_pc < disaster.lethal_radius_pc:
                 effects[i] = 1
             elif dist_pc < disaster.sterilization_radius_pc:
@@ -2432,7 +2457,7 @@ class GalaxySimulation:
                 )
                 if random_values[i] < np.exp(-3.0 * r):
                     effects[i] = 1
-        
+
         return effects
 
     def _evaluate_grb_effects_python(
@@ -2442,32 +2467,34 @@ class GalaxySimulation:
         n_civs = len(civ_positions)
         effects = self._effects_buffer[:n_civs]
         effects[:] = 0
-        
+
         disaster_pos = disaster_position if disaster_position is not None else disaster.position
-        
-        jet_dir = np.array([
-            np.sin(disaster.grb_jet_theta) * np.cos(disaster.grb_jet_phi),
-            np.sin(disaster.grb_jet_theta) * np.sin(disaster.grb_jet_phi),
-            np.cos(disaster.grb_jet_theta)
-        ])
-        
+
+        jet_dir = np.array(
+            [
+                np.sin(disaster.grb_jet_theta) * np.cos(disaster.grb_jet_phi),
+                np.sin(disaster.grb_jet_theta) * np.sin(disaster.grb_jet_phi),
+                np.cos(disaster.grb_jet_theta),
+            ]
+        )
+
         beaming_rad = disaster.grb_beaming_angle_deg * np.pi / 180.0
         cos_beaming = np.cos(beaming_rad)
         lethal_kpc = disaster.lethal_radius_pc / 1000.0
-        
+
         for i in range(n_civs):
             to_civ = civ_positions[i] - disaster_pos
             dist_kpc = np.linalg.norm(to_civ)
-            
+
             if dist_kpc < 1e-10 or dist_kpc > lethal_kpc:
                 continue
-            
+
             to_civ_unit = to_civ / dist_kpc
             cos_angle = np.dot(jet_dir, to_civ_unit)
-            
+
             if cos_angle > cos_beaming or (-cos_angle) > cos_beaming:
                 effects[i] = 1
-        
+
         return effects
 
     def _evaluate_ns_merger_effects_python(
@@ -2475,45 +2502,47 @@ class GalaxySimulation:
         civ_positions: np.ndarray,
         disaster,
         random_values: np.ndarray,
-        disaster_position: Optional[np.ndarray] = None
+        disaster_position: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """Python fallback for NS merger effect evaluation."""
         n_civs = len(civ_positions)
         effects = self._effects_buffer[:n_civs]
         effects[:] = 0
-        
+
         disaster_pos = disaster_position if disaster_position is not None else disaster.position
-        
-        sgrb_range = getattr(self.config.astrophysics, 'ns_sgrb_lethal_range_kpc', 3.0)
-        kilonova_lethal = getattr(self.config.astrophysics, 'ns_kilonova_lethal_range_pc', 30.0)
+
+        sgrb_range = getattr(self.config.astrophysics, "ns_sgrb_lethal_range_kpc", 3.0)
+        kilonova_lethal = getattr(self.config.astrophysics, "ns_kilonova_lethal_range_pc", 30.0)
         kilonova_sterilization = getattr(
-            self.config.astrophysics, 'ns_kilonova_sterilization_range_pc', 100.0
+            self.config.astrophysics, "ns_kilonova_sterilization_range_pc", 100.0
         )
-        
-        jet_dir = np.array([
-            np.sin(disaster.grb_jet_theta) * np.cos(disaster.grb_jet_phi),
-            np.sin(disaster.grb_jet_theta) * np.sin(disaster.grb_jet_phi),
-            np.cos(disaster.grb_jet_theta)
-        ])
-        
+
+        jet_dir = np.array(
+            [
+                np.sin(disaster.grb_jet_theta) * np.cos(disaster.grb_jet_phi),
+                np.sin(disaster.grb_jet_theta) * np.sin(disaster.grb_jet_phi),
+                np.cos(disaster.grb_jet_theta),
+            ]
+        )
+
         beaming_rad = disaster.grb_beaming_angle_deg * np.pi / 180.0
         cos_beaming = np.cos(beaming_rad)
-        
+
         kilonova_lethal_kpc = kilonova_lethal / 1000.0
         kilonova_sterilization_kpc = kilonova_sterilization / 1000.0
-        
+
         for i in range(n_civs):
             to_civ = civ_positions[i] - disaster_pos
             dist_kpc = np.linalg.norm(to_civ)
-            
+
             if dist_kpc > 1e-10 and dist_kpc < sgrb_range:
                 to_civ_unit = to_civ / dist_kpc
                 cos_angle = np.dot(jet_dir, to_civ_unit)
-                
+
                 if cos_angle > cos_beaming or (-cos_angle) > cos_beaming:
                     effects[i] = 1
                     continue
-            
+
             if dist_kpc < kilonova_lethal_kpc:
                 effects[i] = 2
             elif dist_kpc < kilonova_sterilization_kpc:
@@ -2674,12 +2703,14 @@ class GalaxySimulation:
         # When stellar motion is disabled, positions don't change so we can use delta compression
         use_delta = not self.config.simulation.enable_stellar_motion
         is_first_snapshot = len(self.snapshots) == 0
-        
+
         if use_delta:
             if is_first_snapshot:
                 # First snapshot: store initial positions (they won't change)
                 stellar_positions = (
-                    self.galaxy.positions.copy() if self.galaxy.positions is not None else np.array([])
+                    self.galaxy.positions.copy()
+                    if self.galaxy.positions is not None
+                    else np.array([])
                 )
                 initial_positions = stellar_positions.copy() if len(stellar_positions) > 0 else None
                 stellar_velocities = None  # Not needed for visualization when motion disabled
@@ -2705,9 +2736,7 @@ class GalaxySimulation:
             ),
             civilization_states=[c for c in self.civilizations],
             stellar_positions=stellar_positions,
-            stellar_ages=(
-                self.galaxy.ages.copy() if self.galaxy.ages is not None else None
-            ),
+            stellar_ages=(self.galaxy.ages.copy() if self.galaxy.ages is not None else None),
             active_probes_in_flight=probe_snapshots,
             total_active_probes=len(probe_snapshots),
             hazard_events=hazard_events_since_snapshot,
@@ -2886,7 +2915,7 @@ class GalaxySimulation:
                 ally_id: (
                     self.galaxy.positions[
                         next(
-                            (c for c in self.civilizations if c.civ_id == ally_id and c.is_active)
+                            c for c in self.civilizations if c.civ_id == ally_id and c.is_active
                         ).parent_star_idx
                     ]
                     if self.galaxy.positions is not None
@@ -3166,14 +3195,14 @@ class GalaxySimulation:
         Only processes active civilizations with non-empty reputations.
         """
         decay = self.config.civilization.reputation_decay_rate * (dt_myr / 1000.0)
-        
+
         if decay <= 0.0:
             return
 
         for civ in self.civilizations:
             if not civ.is_active or not civ.reputation:
                 continue
-            
+
             keys_to_remove = []
             for other_civ_id, rep_value in civ.reputation.items():
                 if rep_value > 0:
@@ -3188,7 +3217,7 @@ class GalaxySimulation:
                         keys_to_remove.append(other_civ_id)
                     else:
                         civ.reputation[other_civ_id] = new_val
-            
+
             for key in keys_to_remove:
                 del civ.reputation[key]
 

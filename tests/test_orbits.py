@@ -73,3 +73,18 @@ def test_config_has_orbit_fields():
     c = SimulationConfig()
     assert c.simulation.orbit_mode == "fast"
     assert c.simulation.orbit_use_gpu is False
+
+
+def test_fast_mode_runs_and_moves_stars():
+    from great_silence import GalaxySimulation, SimulationConfig
+
+    c = SimulationConfig()
+    c.galaxy.total_stars = 5000
+    c.simulation.simulation_duration_gyr = 1.0
+    c.simulation.orbit_mode = "fast"
+    sim = GalaxySimulation(c)
+    sim.initialize()
+    p0 = sim.galaxy.positions.copy()
+    sim.run()
+    assert not np.allclose(p0, sim.galaxy.positions)
+    assert np.isfinite(sim.galaxy.positions).all()
