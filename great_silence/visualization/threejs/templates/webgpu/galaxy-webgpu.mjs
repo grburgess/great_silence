@@ -54,6 +54,7 @@ let maxTimeMyr = 5000.0;
 let currentTimeMyr = 0.0;
 let playing = true;
 let playbackMyrPerSec = 260.0;
+let lastChartFrame = -1;
 
 let introDone = false;
 const introDuration = 5.5;
@@ -294,6 +295,20 @@ function timeToFrac(t) {
     return maxTimeMyr > minTimeMyr ? (t - minTimeMyr) / (maxTimeMyr - minTimeMyr) : 0.0;
 }
 
+// Bridge the continuous WebGPU time to the frame-indexed chart system so the
+// HR diagram (and other panels) animate as currentTimeMyr advances.
+function updateChartFrame() {
+    if (!window.updateCharts) return;
+    const nFrames = (window.animationData && window.animationData.frames && window.animationData.frames.length)
+        || (window.hrData && window.hrData.per_frame && window.hrData.per_frame.length) || 0;
+    if (nFrames <= 0) return;
+    const idx = Math.max(0, Math.min(nFrames - 1, Math.round(timeToFrac(currentTimeMyr) * (nFrames - 1))));
+    if (idx !== lastChartFrame) {
+        lastChartFrame = idx;
+        window.updateCharts(idx);
+    }
+}
+
 function wireUI() {
     const slider = document.getElementById('timeline-slider');
     const timeDisplay = document.getElementById('time-display');
@@ -353,6 +368,7 @@ function tick() {
     uTime.value = currentTimeMyr;
     updateDisasters();
     if (window.__wgpuUpdateUI) window.__wgpuUpdateUI();
+    updateChartFrame();
 
     postProcessing.render();
 }
