@@ -39,15 +39,16 @@ class EpicyclicOrbitModel:
         v_phi = (-vel[:, 0] * y + vel[:, 1] * x) / R
         v_z = vel[:, 2]
         L_z = R * v_phi
+        spin = np.where(v_phi >= 0.0, 1.0, -1.0)
 
-        R_g = cls._guiding_radius(galaxy, R, L_z)
+        R_g = cls._guiding_radius(galaxy, R, np.abs(L_z))
         vc_g = (
             galaxy._compute_circular_velocities_batch(
                 np.column_stack([R_g, np.zeros_like(R_g), np.zeros_like(R_g)])
             )
             * KMS_TO_KPC_MYR
         )
-        Omega_g = vc_g / R_g
+        Omega_g = spin * vc_g / R_g
         kappa = np.maximum(galaxy.epicyclic_frequencies_batch(R_g) * KMS_TO_KPC_MYR, 1e-9)
         nu = np.maximum(galaxy.vertical_frequencies_batch(R_g), 1e-9)
 
@@ -55,7 +56,7 @@ class EpicyclicOrbitModel:
         X = np.sqrt(dR**2 + (v_R / kappa) ** 2)
         alpha = np.arctan2(-v_R / kappa, dR)
         gamma = 2.0 * Omega_g / (kappa * R_g)
-        phi_g0 = phi + gamma * X * np.sin(alpha) / R_g
+        phi_g0 = phi + gamma * X * np.sin(alpha)
         Z = np.sqrt(z**2 + (v_z / nu) ** 2)
         beta = np.arctan2(-v_z / nu, z)
         return cls(R_g, Omega_g, kappa, nu, X, alpha, phi_g0, Z, beta)
@@ -102,7 +103,7 @@ class EpicyclicOrbitModel:
         ph_R = self.kappa * t_myr + self.alpha
         R = self.R_g + self.X * np.cos(ph_R)
         gamma = 2.0 * self.Omega_g / (self.kappa * self.R_g)
-        phi = self.phi_g0 + self.Omega_g * t_myr - gamma * self.X * np.sin(ph_R) / self.R_g
+        phi = self.phi_g0 + self.Omega_g * t_myr - gamma * self.X * np.sin(ph_R)
         z = self.Z * np.cos(self.nu * t_myr + self.beta)
         return np.column_stack([R * np.cos(phi), R * np.sin(phi), z])
 

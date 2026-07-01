@@ -1436,7 +1436,7 @@ def epicyclic_positions_kernel(
 
     Mirrors EpicyclicOrbitModel._positions_numpy:
         R = R_g + X cos(kappa t + alpha)
-        phi = phi_g0 + Omega_g t - gamma X sin(kappa t + alpha) / R_g
+        phi = phi_g0 + Omega_g t - gamma X sin(kappa t + alpha)
         z = Z cos(nu t + beta)
     with gamma = 2 Omega_g / (kappa R_g).
 
@@ -1452,7 +1452,7 @@ def epicyclic_positions_kernel(
         ph_R = kappa[i] * t_myr + alpha[i]
         R = R_g[i] + X[i] * np.cos(ph_R)
         gamma = 2.0 * Omega_g[i] / (kappa[i] * R_g[i])
-        phi = phi_g0[i] + Omega_g[i] * t_myr - gamma * X[i] * np.sin(ph_R) / R_g[i]
+        phi = phi_g0[i] + Omega_g[i] * t_myr - gamma * X[i] * np.sin(ph_R)
         out[i, 0] = R * np.cos(phi)
         out[i, 1] = R * np.sin(phi)
         out[i, 2] = Z[i] * np.cos(nu[i] * t_myr + beta[i])

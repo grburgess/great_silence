@@ -98,3 +98,47 @@ above the measured drift and below the radial-amplitude scale of this hot disk, 
 guards against regressions (e.g. a doubling of drift) without asserting a physically unrealizable 5%.
 The civ-count agreement in the table above (181 vs 184) confirms the fast tier does not change the
 qualitative simulation outcome, so `orbit_mode="fast"` remains the right default.
+
+## Post-verification fixes (adversarial review, 2026-07-01)
+
+Three verifier agents (full-suite, astrophysics-code-reviewer, numba-kernel-reviewer)
+reviewed the built engine. Two confirmed physics bugs were fixed:
+
+### CRITICAL: spurious extra /R_g in azimuthal evolution
+The epicyclic azimuth (Binney & Tremaine 2008, eq. 3.148) is
+`phi(t) = phi_g0 + Omega_g*t - (2*Omega_g*X)/(kappa*R_g)*sin(kappa*t+alpha)`.
+The code had `gamma = 2*Omega_g/(kappa*R_g)` and then wrote `- gamma*X*sin(...)/R_g`,
+an extra 1/R_g. Because phi_g0 carried the same extra factor, the two cancelled at
+t=0, so every t=0 test passed; and it was identical in the numpy reference, the Numba
+kernel, and the engine intercept helper, so cross-checks passed too. Time evolution
+was wrong: azimuthal oscillation 8x too small at R_g=8 kpc, 10x too large in the bulge.
+Fixed by dropping the trailing /R_g at all four sites (orbits.py phi_g0 + _positions_numpy,
+numba_kernels.py epicyclic_positions_kernel, engine.py _orbit_positions_subset).
+Regression test: test_model_velocity_matches_input_at_t0 (finite-difference velocity of
+positions_at_time must match the input velocity to first order; median in-plane error
+< 0.2). RED before fix, GREEN after.
+
+### MAJOR: retrograde stars clipped to R_g=0.1 kpc
+The guiding-radius Newton solve on F(Rg)=Rg*vc(Rg)-L_z has no root for L_z<0 (F>0 for
+all Rg), so ~7.8% of stars (retrograde, mostly bulge) silently pinned to the 0.1 kpc
+clip. Fixed: solve on |L_z| and carry a rotation sign `spin=sign(v_phi)` into
+`Omega_g = spin*vc_g/R_g`. Regression test:
+test_retrograde_stars_get_physical_guiding_radius (median |R_g-R|/R < 0.1). RED->GREEN.
+
+### Kernel benchmark gate: parallel=True justified (Apple M1 Max)
+epicyclic_positions_kernel parallel vs plain @njit, warm, us/call:
+
+| N       | parallel | serial  | winner            |
+|---------|----------|---------|-------------------|
+| 1,000   | 81.3     | 41.6    | serial 2.0x       |
+| 4,000   | 116.2    | 166.9   | parallel 1.4x     |
+| 30,000  | 303.0    | 1302.5  | parallel 4.3x     |
+| 100,000 | 1008.2   | 4779.5  | parallel 4.7x     |
+
+Crossover ~2-4k stars. positions_at_time runs over ALL N stars each step, so at the
+fast tier's target scale (30k-100k) parallel wins 4-5x; sub-2k it loses by microseconds.
+parallel=True retained.
+
+Note: the radial drift gate (0.261 median) is unaffected by these fixes — it measures
+radial error, the bugs were azimuthal/guiding-radius. Fast-vs-exact radial divergence
+remains the dynamically-hot-disk approximation limit documented above.

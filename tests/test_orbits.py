@@ -1,7 +1,7 @@
 import numpy as np
 
 from great_silence.config import SimulationConfig
-from great_silence.galaxy.orbits import EpicyclicOrbitModel
+from great_silence.galaxy.orbits import KMS_TO_KPC_MYR, EpicyclicOrbitModel
 from great_silence.galaxy.structure import GalaxyModel
 
 
@@ -88,3 +88,27 @@ def test_fast_mode_runs_and_moves_stars():
     sim.run()
     assert not np.allclose(p0, sim.galaxy.positions)
     assert np.isfinite(sim.galaxy.positions).all()
+
+
+def test_model_velocity_matches_input_at_t0():
+    g = _make_galaxy(n=2000)
+    v_in = g.velocities * KMS_TO_KPC_MYR
+    orb = EpicyclicOrbitModel.from_galaxy(g)
+    dt = 0.1
+    v_model = (orb.positions_at_time(dt) - orb.positions_at_time(-dt)) / (2 * dt)
+    err = np.linalg.norm(v_model[:, :2] - v_in[:, :2], axis=1)
+    speed = np.linalg.norm(v_in[:, :2], axis=1)
+    assert np.median(err / (speed + 1e-6)) < 0.2
+
+
+def test_retrograde_stars_get_physical_guiding_radius():
+    g = _make_galaxy(n=800)
+    g._pos_z[:] = 0.0
+    R = np.sqrt(g._pos_x**2 + g._pos_y**2)
+    vc = g._compute_circular_velocities_batch(g.positions)
+    phi = np.arctan2(g._pos_y, g._pos_x)
+    vx = vc * np.sin(phi)
+    vy = -vc * np.cos(phi)
+    g.velocities = np.column_stack([vx, vy, np.zeros_like(vx)])
+    orb = EpicyclicOrbitModel.from_galaxy(g)
+    assert np.median(np.abs(orb.R_g - R) / R) < 0.1

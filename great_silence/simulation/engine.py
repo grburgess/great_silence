@@ -1873,7 +1873,7 @@ class GalaxySimulation:
         ph_R = kappa * t_myr + alpha
         R = R_g + X * np.cos(ph_R)
         gamma = 2.0 * Omega_g / (kappa * R_g)
-        phi = phi_g0 + Omega_g * t_myr - gamma * X * np.sin(ph_R) / R_g
+        phi = phi_g0 + Omega_g * t_myr - gamma * X * np.sin(ph_R)
         z = Z * np.cos(nu * t_myr + beta)
         return np.column_stack([R * np.cos(phi), R * np.sin(phi), z])
 
