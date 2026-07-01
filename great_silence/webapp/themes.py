@@ -1,7 +1,6 @@
 """Space-themed color schemes for the webapp."""
 
-from typing import Dict, Any
-
+from typing import Any, Dict
 
 THEME_GRAPHICS = {
     "event_horizon": """
@@ -480,23 +479,63 @@ def get_theme_css(theme_name: str) -> str:
     graphics = THEME_GRAPHICS.get(theme_name, THEME_GRAPHICS["deep_space"])
 
     return f"""
+        :root {{
+            --gs-accent: {theme['primary_accent']};
+            --gs-accent-2: {theme['secondary_accent']};
+            --gs-card-border: {theme['card_border']};
+        }}
         body {{
             background: {theme['background_gradient']};
+            background-attachment: fixed;
             min-height: 100vh;
         }}
         .q-card {{
-            background: {theme['card_bg']} !important;
+            background:
+                linear-gradient(155deg, {theme['card_bg']} 0%, rgba(0, 0, 0, 0.28) 100%) !important;
             border: 1px solid {theme['card_border']};
-            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            backdrop-filter: blur(18px) saturate(135%);
+            -webkit-backdrop-filter: blur(18px) saturate(135%);
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                0 12px 30px -14px rgba(0, 0, 0, 0.75);
+            transition:
+                border-color 0.35s ease,
+                box-shadow 0.35s ease,
+                transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }}
+        .q-card:hover {{
+            border-color: {theme['primary_accent']}55;
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.08),
+                0 18px 44px -16px rgba(0, 0, 0, 0.85),
+                0 0 22px -6px {theme['primary_accent']}33;
+        }}
+        .gs-stat {{
+            transition:
+                transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+                border-color 0.35s ease,
+                box-shadow 0.35s ease;
+        }}
+        .gs-stat:hover {{
+            transform: translateY(-3px);
+            border-color: {theme['primary_accent']}66;
+            box-shadow:
+                0 20px 40px -18px rgba(0, 0, 0, 0.85),
+                0 0 26px -6px {theme['primary_accent']}44;
         }}
         .q-expansion-item {{
             background: {theme['expansion_bg']} !important;
+            border-radius: 14px;
         }}
         .q-slider__track {{
             background: {theme['slider_track']} !important;
         }}
         .q-slider__selection {{
             background: {theme['primary_accent']} !important;
+        }}
+        .q-slider__thumb {{
+            color: {theme['primary_accent']} !important;
         }}
         .q-linear-progress__track {{
             background: {theme['progress_track']} !important;
@@ -509,13 +548,29 @@ def get_theme_css(theme_name: str) -> str:
         }}
         ::-webkit-scrollbar-thumb {{
             background: {theme['scrollbar_thumb']};
-            border-radius: 4px;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            background-clip: padding-box;
+        }}
+        ::-webkit-scrollbar-thumb:hover {{
+            background: {theme['primary_accent']}88;
+            background-clip: padding-box;
         }}
         .theme-accent {{
             color: {theme['primary_accent']} !important;
         }}
         .theme-accent-secondary {{
             color: {theme['secondary_accent']} !important;
+        }}
+        .q-btn {{
+            transition:
+                transform 0.2s ease,
+                box-shadow 0.25s ease,
+                color 0.2s ease,
+                background 0.25s ease;
+        }}
+        .q-btn:not(.q-btn--flat):hover {{
+            transform: translateY(-1px);
         }}
         .q-btn--flat:hover {{
             color: {theme['primary_accent']} !important;
@@ -537,11 +592,40 @@ def get_base_css() -> str:
             --q-dark: #1a1a2e;
             --q-dark-page: #16213e;
         }
+        html, body {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }
         .nicegui-content {
             padding: 0 !important;
         }
         ::-webkit-scrollbar {
-            width: 8px;
+            width: 10px;
+            height: 10px;
+        }
+        .gs-eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            font-size: 0.68rem;
+            font-weight: 600;
+        }
+        .gs-metric {
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+            line-height: 1.05;
+        }
+        .q-page .q-card {
+            animation: gs-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        @keyframes gs-rise {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        *:focus-visible {
+            outline: 2px solid var(--gs-accent, #06b6d4);
+            outline-offset: 2px;
+            border-radius: 6px;
         }
         .star-field {
             position: fixed;
@@ -555,6 +639,15 @@ def get_base_css() -> str:
         @keyframes twinkle {
             0%, 100% { opacity: 0.3; }
             50% { opacity: 1; }
+        }
+        @media (max-width: 700px) {
+            .q-card { border-radius: 12px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, .q-card, .q-page .q-card, .q-btn, .gs-stat {
+                animation: none !important;
+                transition: none !important;
+            }
         }
         #theme-styles {
             /* Placeholder for dynamic theme styles */

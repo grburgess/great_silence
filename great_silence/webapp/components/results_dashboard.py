@@ -1,10 +1,10 @@
 """Results dashboard with Three.js visualization embed and statistics."""
 
-from nicegui import ui, app
-import tempfile
 import os
+import tempfile
 from pathlib import Path
-from typing import Optional
+
+from nicegui import app, ui
 
 from ..state import app_state
 
@@ -23,7 +23,9 @@ class ResultsDashboard:
             self._container = container
             self._container.visible = False
 
-            ui.label("📊 Results").classes("text-lg font-semibold text-gray-300 mb-4")
+            ui.label("Results").classes("gs-eyebrow text-gray-300 mb-4").style(
+                "font-size: 0.85rem;"
+            )
 
             with ui.tabs().classes("w-full") as tabs:
                 self._stats_tab = ui.tab("Statistics", icon="analytics")
@@ -70,7 +72,7 @@ class ResultsDashboard:
 
             if total > 0:
                 ui.separator().classes("my-4")
-                ui.label("Extinction Causes").classes("text-md font-semibold text-gray-400")
+                ui.label("Extinction Causes").classes("gs-eyebrow text-gray-400")
 
                 death_causes = {}
                 for c in sim.civilizations:
@@ -88,21 +90,21 @@ class ResultsDashboard:
                             "old_age": "gray",
                             "colonial_war": "yellow",
                         }
-                        for cause, count in sorted(
-                            death_causes.items(), key=lambda x: -x[1]
-                        ):
+                        for cause, count in sorted(death_causes.items(), key=lambda x: -x[1]):
                             color = cause_colors.get(cause, "gray")
                             pct = count / extinct * 100 if extinct > 0 else 0
-                            with ui.card().classes(f"bg-{color}-900/30 p-3"):
+                            with ui.card().classes(f"gs-stat bg-{color}-900/30 p-3"):
                                 ui.label(cause.replace("_", " ").title()).classes(
-                                    f"text-{color}-400 text-sm font-semibold"
+                                    f"gs-eyebrow text-{color}-400"
                                 )
-                                ui.label(f"{count} ({pct:.1f}%)").classes("text-white text-lg")
+                                ui.label(f"{count} ({pct:.1f}%)").classes(
+                                    "gs-metric text-white text-lg"
+                                )
                 else:
                     ui.label("No extinctions recorded").classes("text-gray-500 italic")
 
                 ui.separator().classes("my-4")
-                ui.label("Kardashev Distribution").classes("text-md font-semibold text-gray-400")
+                ui.label("Kardashev Distribution").classes("gs-eyebrow text-gray-400")
 
                 if total > 0:
                     k_levels = [c.kardashev_scale for c in sim.civilizations]
@@ -110,12 +112,16 @@ class ResultsDashboard:
                     max_k = max(k_levels)
 
                     with ui.row().classes("w-full gap-4"):
-                        with ui.card().classes("bg-gray-800 p-3"):
-                            ui.label("Average K-Level").classes("text-gray-400 text-sm")
-                            ui.label(f"{avg_k:.2f}").classes("text-cyan-400 text-xl font-bold")
-                        with ui.card().classes("bg-gray-800 p-3"):
-                            ui.label("Maximum K-Level").classes("text-gray-400 text-sm")
-                            ui.label(f"{max_k:.2f}").classes("text-purple-400 text-xl font-bold")
+                        with ui.card().classes("gs-stat bg-gray-800 p-3"):
+                            ui.label("Average K-Level").classes("gs-eyebrow text-gray-400")
+                            ui.label(f"{avg_k:.2f}").classes(
+                                "gs-metric text-cyan-400 text-xl font-bold"
+                            )
+                        with ui.card().classes("gs-stat bg-gray-800 p-3"):
+                            ui.label("Maximum K-Level").classes("gs-eyebrow text-gray-400")
+                            ui.label(f"{max_k:.2f}").classes(
+                                "gs-metric text-purple-400 text-xl font-bold"
+                            )
 
                         type_counts = {"Type 0": 0, "Type I": 0, "Type II": 0, "Type III": 0}
                         for k in k_levels:
@@ -130,19 +136,18 @@ class ResultsDashboard:
 
                         for type_name, count in type_counts.items():
                             if count > 0:
-                                with ui.card().classes("bg-gray-800 p-3"):
-                                    ui.label(type_name).classes("text-gray-400 text-sm")
-                                    ui.label(str(count)).classes("text-white text-lg")
+                                with ui.card().classes("gs-stat bg-gray-800 p-3"):
+                                    ui.label(type_name).classes("gs-eyebrow text-gray-400")
+                                    ui.label(str(count)).classes("gs-metric text-white text-lg")
 
     def _stat_card(self, label: str, value: str, icon: str, color: str) -> None:
         """Create a statistics card."""
-        with ui.card().classes(f"bg-{color}-900/30 p-4"):
-            with ui.row().classes("items-center gap-2"):
-                ui.label(icon).classes("text-2xl")
-                ui.column().classes("gap-0")
-                with ui.column().classes("gap-0"):
-                    ui.label(label).classes(f"text-{color}-400 text-sm")
-                    ui.label(value).classes("text-white text-2xl font-bold")
+        with ui.card().classes(f"gs-stat bg-{color}-900/30 p-4"):
+            with ui.row().classes("items-center gap-3"):
+                ui.label(icon).classes("text-3xl")
+                with ui.column().classes("gap-1"):
+                    ui.label(label).classes(f"gs-eyebrow text-{color}-400")
+                    ui.label(value).classes("gs-metric text-white text-3xl font-bold")
 
     def _setup_visualization(self, sim) -> None:
         """Setup 3D visualization tab."""
@@ -168,18 +173,18 @@ class ResultsDashboard:
             self._viz_frame_container = ui.column().classes("w-full mt-4")
 
             self._fullscreen_dialog = ui.dialog().classes("max-w-none").props("maximized")
-            with self._fullscreen_dialog:
-                with ui.card().classes("w-full h-full bg-black"):
-                    with ui.row().classes("w-full justify-end p-2"):
-                        ui.button(icon="close", on_click=self._fullscreen_dialog.close).props(
-                            "flat round"
-                        ).classes("text-white")
-                    self._fullscreen_frame = ui.html("", sanitize=False).classes("w-full h-full")
+            with self._fullscreen_dialog, ui.card().classes("w-full h-full bg-black"):
+                with ui.row().classes("w-full justify-end p-2"):
+                    ui.button(icon="close", on_click=self._fullscreen_dialog.close).props(
+                        "flat round"
+                    ).classes("text-white")
+                self._fullscreen_frame = ui.html("", sanitize=False).classes("w-full h-full")
 
     def _generate_viz(self, sim) -> None:
         """Generate the Three.js visualization."""
-        import traceback
         import time
+        import traceback
+
         try:
             from great_silence.visualization.threejs import export_html
 
@@ -196,7 +201,7 @@ class ResultsDashboard:
                 show_spheres=True,
                 show_hazards=True,
             )
-            
+
             if not os.path.exists(self._viz_html_path):
                 ui.notify("Error: Visualization file not created", type="negative")
                 return
@@ -241,14 +246,16 @@ class ResultsDashboard:
             with ui.column().classes("w-full gap-4"):
                 with ui.card().classes("w-full bg-gray-800 p-4"):
                     ui.label("Export Visualization HTML").classes("font-semibold text-gray-300")
-                    ui.label(
-                        "Save the 3D visualization as a standalone HTML file"
-                    ).classes("text-gray-500 text-sm mb-2")
+                    ui.label("Save the 3D visualization as a standalone HTML file").classes(
+                        "text-gray-500 text-sm mb-2"
+                    )
 
                     with ui.row().classes("gap-4"):
-                        self._html_path_input = ui.input(
-                            value="galaxy_visualization.html", placeholder="filename.html"
-                        ).classes("w-64").props("dense outlined dark")
+                        self._html_path_input = (
+                            ui.input(value="galaxy_visualization.html", placeholder="filename.html")
+                            .classes("w-64")
+                            .props("dense outlined dark")
+                        )
                         ui.button(
                             "Export HTML",
                             icon="html",
@@ -257,14 +264,16 @@ class ResultsDashboard:
 
                 with ui.card().classes("w-full bg-gray-800 p-4"):
                     ui.label("Export Configuration").classes("font-semibold text-gray-300")
-                    ui.label(
-                        "Save the current configuration as a YAML file"
-                    ).classes("text-gray-500 text-sm mb-2")
+                    ui.label("Save the current configuration as a YAML file").classes(
+                        "text-gray-500 text-sm mb-2"
+                    )
 
                     with ui.row().classes("gap-4"):
-                        self._yaml_path_input = ui.input(
-                            value="simulation_config.yaml", placeholder="filename.yaml"
-                        ).classes("w-64").props("dense outlined dark")
+                        self._yaml_path_input = (
+                            ui.input(value="simulation_config.yaml", placeholder="filename.yaml")
+                            .classes("w-64")
+                            .props("dense outlined dark")
+                        )
                         ui.button(
                             "Export YAML",
                             icon="description",
@@ -273,14 +282,16 @@ class ResultsDashboard:
 
                 with ui.card().classes("w-full bg-gray-800 p-4"):
                     ui.label("Export Data (HDF5)").classes("font-semibold text-gray-300")
-                    ui.label(
-                        "Save simulation data for later analysis"
-                    ).classes("text-gray-500 text-sm mb-2")
+                    ui.label("Save simulation data for later analysis").classes(
+                        "text-gray-500 text-sm mb-2"
+                    )
 
                     with ui.row().classes("gap-4"):
-                        self._hdf5_path_input = ui.input(
-                            value="simulation_data.h5", placeholder="filename.h5"
-                        ).classes("w-64").props("dense outlined dark")
+                        self._hdf5_path_input = (
+                            ui.input(value="simulation_data.h5", placeholder="filename.h5")
+                            .classes("w-64")
+                            .props("dense outlined dark")
+                        )
                         ui.button(
                             "Export HDF5",
                             icon="storage",
