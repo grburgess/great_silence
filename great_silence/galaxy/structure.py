@@ -1179,6 +1179,36 @@ class GalaxyModel:
         self.stellar_timesteps[update_indices] = new_timesteps
         self.time_until_update[update_indices] = new_timesteps
 
+    def integrate_reference(self, t_myr: float, use_numba: bool = True) -> np.ndarray:
+        """
+        Integrate stellar positions to time t_myr with the exact adaptive leapfrog.
+
+        Thin reference helper that loops evolve_positions_adaptive with a global
+        step equal to the smallest block timestep, so each star's physical time
+        tracks the global clock. Mutates positions/velocities in place.
+
+        Args:
+            t_myr: Target integration time in Myr
+            use_numba: Use Numba kernels for acceleration
+
+        Returns:
+            Stellar positions at time t_myr in kpc, shape (N, 3)
+        """
+        if self._pos_x is None or self.velocities is None:
+            raise ValueError("Must generate positions and velocities first")
+
+        if self.stellar_timesteps is None:
+            self.initialize_adaptive_timesteps()
+
+        step = float(self.stellar_timesteps.min())
+        elapsed = 0.0
+        while elapsed < t_myr:
+            dt = min(step, t_myr - elapsed)
+            self.evolve_positions_adaptive(dt, use_numba=use_numba)
+            elapsed += dt
+
+        return self.positions
+
     def get_distance_matrix(self, indices: Optional[np.ndarray] = None) -> np.ndarray:
         """
         Compute pairwise distance matrix between stars.
