@@ -1,5 +1,6 @@
 """Main simulation engine for galactic civilization modeling."""
 
+import copy
 import heapq
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -2804,7 +2805,12 @@ class GalaxySimulation:
             colonized_systems=sum(
                 len(c.colonized_stars) for c in self.civilizations if c.is_active
             ),
-            civilization_states=[c for c in self.civilizations],
+            # Shallow-copy so per-snapshot scalar state (is_active, kardashev_scale,
+            # ...) is captured at snapshot time. Storing live references made every
+            # frame read the end-of-simulation state, hiding all active civs from
+            # the visualization. Collections (probes, colonies) are shared by ref,
+            # which is fine: they are only consumed as cumulative/historical data.
+            civilization_states=[copy.copy(c) for c in self.civilizations],
             stellar_positions=stellar_positions,
             stellar_ages=(self.galaxy.ages.copy() if self.galaxy.ages is not None else None),
             active_probes_in_flight=probe_snapshots,
