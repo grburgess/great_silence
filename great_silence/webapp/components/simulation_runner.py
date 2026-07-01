@@ -1,17 +1,19 @@
 """Simulation runner component with progress bar and live stats."""
 
-from nicegui import ui, run
-import asyncio
 import time
-import threading
 from threading import Lock
-from typing import Optional, List, Tuple
+from typing import List, Tuple
 
-from ..state import app_state, SimulationEvent
+from nicegui import ui
+
+from ..state import SimulationEvent, app_state
 
 
 class SimulationRunner:
     """Component for running simulations with progress feedback."""
+
+    _UPDATE_INTERVAL = 0.3
+    _MAX_EVENTS = 200
 
     def __init__(self):
         self._run_button = None
@@ -21,10 +23,8 @@ class SimulationRunner:
         self._stats_container = None
         self._events_log = None
         self._is_cancelled = False
-        self._simulation_thread = None
         self._simulation_done = False
         self._simulation_error = None
-        self._update_timer = None
         self.on_complete = None
         self._events_list: List[Tuple[float, str, str, str]] = []
         self._events_lock = Lock()
@@ -107,7 +107,7 @@ class SimulationRunner:
                 ui.label("📡 Event Feed").classes("text-sm font-semibold text-gray-400 mb-2")
                 self._events_log = ui.log(max_lines=30).classes("w-full h-40 bg-gray-950 text-sm")
 
-    def _start_simulation(self) -> None:
+    async def _start_simulation(self) -> None:
         self._is_cancelled = False
         self._simulation_done = False
         self._simulation_error = None
@@ -136,38 +136,60 @@ class SimulationRunner:
         self._sim = GalaxySimulation(config)
         app_state.simulation = self._sim
 
-        self._add_event(0.0, "init", f"🌌 Initializing galaxy with {config.galaxy.total_stars:,} stars...")
+        self._add_event(
+            0.0, "init", f"🌌 Initializing galaxy with {config.galaxy.total_stars:,} stars..."
+        )
         self._render_new_events()
 
-        def run_simulation_thread():
-            try:
-                self._sim.run(verbose=False)
-                self._simulation_done = True
-            except Exception as e:
-                self._simulation_error = str(e)
-                self._simulation_done = True
+        sim_task = asyncio.ensure_future(run.io_bound(self._sim.run, verbose=False))
 
-        self._simulation_thread = threading.Thread(target=run_simulation_thread, daemon=True)
-        self._simulation_thread.start()
+        while not sim_task.done():
+            if self._is_cancelled:
+                return
+            self._update_progress_display()
+            await asyncio.sleep(self._UPDATE_INTERVAL)
 
-        self._update_timer = ui.timer(0.3, self._update_progress_display)
+        try:
+            sim_task.result()
+            self._simulation_done = True
+        except Exception as e:
+            self._simulation_error = str(e)
+            self._simulation_done = True
+
+        if self._is_cancelled:
+            return
+
+        self._update_progress_display()
+
+        if self._simulation_error:
+            self._add_event(0.0, "error", f"❌ Error: {self._simulation_error}")
+        else:
+            self._progress_bar.value = 1.0
+            self._progress_label.text = "100%"
+            active = len([c for c in self._sim.civilizations if c.is_active])
+            total = len(self._sim.civilizations)
+            final_gyr = (
+                self._sim.current_time_myr / 1000.0 if hasattr(self._sim, "current_time_myr") else 0
+            )
+            self._add_event(
+                final_gyr,
+                "complete",
+                f"✅ Complete! {total} civilizations emerged, {active} survived",
+            )
+
+        self._render_new_events()
+        self._finish_simulation()
 
     def _update_progress_display(self) -> None:
         if self._is_cancelled:
             return
 
-        if self._simulation_error:
-            if self._update_timer:
-                self._update_timer.deactivate()
-            self._add_event(0.0, "error", f"❌ Error: {self._simulation_error}")
-            self._render_new_events()
-            self._finish_simulation()
-            return
-
         try:
             elapsed = time.time() - self._start_time
             total_gyr = app_state.config.simulation.simulation_duration_gyr
-            current_myr = self._sim.current_time_myr if hasattr(self._sim, 'current_time_myr') else 0
+            current_myr = (
+                self._sim.current_time_myr if hasattr(self._sim, "current_time_myr") else 0
+            )
             current_gyr = current_myr / 1000.0
 
             progress = min(current_gyr / total_gyr, 1.0) if total_gyr > 0 else 0
@@ -195,12 +217,16 @@ class SimulationRunner:
 
             if total > self._last_civs:
                 new_civs = total - self._last_civs
-                self._add_event(current_gyr, "emergence", f"🌟 {new_civs} new civilization(s) emerged")
+                self._add_event(
+                    current_gyr, "emergence", f"🌟 {new_civs} new civilization(s) emerged"
+                )
                 self._last_civs = total
 
             if extinctions > self._last_extinctions:
                 new_deaths = extinctions - self._last_extinctions
-                self._add_event(current_gyr, "extinction", f"💀 {new_deaths} civilization(s) went extinct")
+                self._add_event(
+                    current_gyr, "extinction", f"💀 {new_deaths} civilization(s) went extinct"
+                )
                 self._last_extinctions = extinctions
 
             self._render_new_events()
@@ -208,33 +234,14 @@ class SimulationRunner:
         except Exception:
             pass
 
-        if self._simulation_done:
-            if self._update_timer:
-                self._update_timer.deactivate()
-
-            if not self._simulation_error and not self._is_cancelled:
-                self._progress_bar.value = 1.0
-                self._progress_label.text = "100%"
-                active = len([c for c in self._sim.civilizations if c.is_active])
-                total = len(self._sim.civilizations)
-                final_gyr = self._sim.current_time_myr / 1000.0 if hasattr(self._sim, 'current_time_myr') else 0
-                self._add_event(
-                    final_gyr,
-                    "complete",
-                    f"✅ Complete! {total} civilizations emerged, {active} survived",
-                )
-                self._render_new_events()
-
-            self._finish_simulation()
-
     def _finish_simulation(self) -> None:
         app_state.progress.is_running = False
         app_state.results = {
             "simulation": self._sim,
             "total_civilizations": len(self._sim.civilizations) if self._sim else 0,
-            "active_civilizations": len([c for c in self._sim.civilizations if c.is_active])
-            if self._sim
-            else 0,
+            "active_civilizations": (
+                len([c for c in self._sim.civilizations if c.is_active]) if self._sim else 0
+            ),
             "elapsed_time": time.time() - self._start_time,
         }
         self._run_button.visible = True
@@ -249,24 +256,24 @@ class SimulationRunner:
     def _cancel_simulation(self) -> None:
         """Cancel the simulation and reset UI."""
         self._is_cancelled = True
-        
-        if self._update_timer:
-            self._update_timer.deactivate()
-            self._update_timer = None
-        
+
         if self._sim:
-            current_gyr = self._sim.current_time_myr / 1000.0 if hasattr(self._sim, 'current_time_myr') else 0.0
+            current_gyr = (
+                self._sim.current_time_myr / 1000.0
+                if hasattr(self._sim, "current_time_myr")
+                else 0.0
+            )
             self._add_event(
                 current_gyr,
                 "cancel",
-                "⏹️ Simulation cancelled (background thread may still be running)"
+                "⏹️ Simulation cancelled (background thread may still be running)",
             )
             self._render_new_events()
-        
+
         app_state.progress.is_running = False
         self._run_button.visible = True
         self._cancel_button.visible = False
-        
+
         ui.notify("Simulation cancelled", type="warning")
 
     def _add_event(self, time_gyr: float, event_type: str, description: str) -> None:
@@ -289,8 +296,11 @@ class SimulationRunner:
     def _render_new_events(self) -> None:
         """Render only new events that haven't been displayed yet."""
         with self._events_lock:
-            new_events = self._events_list[self._displayed_event_count:]
+            new_events = self._events_list[self._displayed_event_count :]
             self._displayed_event_count = len(self._events_list)
+            if len(self._events_list) > self._MAX_EVENTS:
+                self._events_list = self._events_list[-self._MAX_EVENTS :]
+                self._displayed_event_count = len(self._events_list)
 
-        for time_gyr, event_type, description, color in new_events:
+        for time_gyr, event_type, description, color in new_events[-self._MAX_EVENTS :]:
             self._events_log.push(f"[{time_gyr:6.2f} Gyr] {description}")
