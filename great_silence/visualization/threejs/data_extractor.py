@@ -1,46 +1,56 @@
 """Data extraction for Three.js visualization."""
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, List, Union, Dict, Any
+from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
-import json
 
 from .config import ThreeJSConfig
 
 
 def _extract_civ_list(snap, galaxy_positions=None):
     """Extract civilization list from snapshot.
-    
+
     Args:
         snap: Simulation snapshot
         galaxy_positions: Optional fallback positions from galaxy model
     """
-    if hasattr(snap, 'civilization_states'):
+    if hasattr(snap, "civilization_states"):
         # Get positions - prefer stellar_positions, fall back to galaxy_positions
         positions = None
-        if hasattr(snap, 'stellar_positions') and snap.stellar_positions is not None and len(snap.stellar_positions) > 0:
+        if (
+            hasattr(snap, "stellar_positions")
+            and snap.stellar_positions is not None
+            and len(snap.stellar_positions) > 0
+        ):
             positions = snap.stellar_positions
         elif galaxy_positions is not None and len(galaxy_positions) > 0:
             positions = galaxy_positions
-        
+
         civs = []
         for c in snap.civilization_states:
             if positions is not None and c.parent_star_idx < len(positions):
                 pos = positions[c.parent_star_idx].tolist()
             else:
                 pos = [0.0, 0.0, 0.0]
-            
-            civs.append({
-                'civ_id': c.civ_id,
-                'position': pos,
-                'kardashev': c.kardashev_scale,
-                'age': (snap.time_myr - c.birth_time_myr) / 1000.0 
-                       if hasattr(snap, 'time_myr') else c.birth_time_myr / 1000.0,
-                'is_active': c.is_active
-            })
+
+            civs.append(
+                {
+                    "civ_id": c.civ_id,
+                    "position": pos,
+                    "kardashev": c.kardashev_scale,
+                    "age": (
+                        (snap.time_myr - c.birth_time_myr) / 1000.0
+                        if hasattr(snap, "time_myr")
+                        else c.birth_time_myr / 1000.0
+                    ),
+                    "is_active": c.is_active,
+                }
+            )
         return civs
-    elif hasattr(snap, 'civilizations'):
+    elif hasattr(snap, "civilizations"):
         return snap.civilizations.copy()
     else:
         return []
@@ -48,17 +58,17 @@ def _extract_civ_list(snap, galaxy_positions=None):
 
 def _extract_probe_list(snap):
     """Extract probe list from snapshot."""
-    if hasattr(snap, 'active_probes_in_flight'):
+    if hasattr(snap, "active_probes_in_flight"):
         return [
             {
-                'probe_id': p.probe_id,
-                'position': p.current_position.tolist(),
-                'civ_id': p.civ_id,
-                'progress': p.progress_fraction
+                "probe_id": p.probe_id,
+                "position": p.current_position.tolist(),
+                "civ_id": p.civ_id,
+                "progress": p.progress_fraction,
             }
             for p in snap.active_probes_in_flight
         ]
-    elif hasattr(snap, 'probes'):
+    elif hasattr(snap, "probes"):
         return snap.probes.copy()
     else:
         return []
@@ -66,29 +76,29 @@ def _extract_probe_list(snap):
 
 def _extract_hazard_list(snap):
     """Extract hazard list from snapshot with full disaster data."""
-    if hasattr(snap, 'hazard_events'):
+    if hasattr(snap, "hazard_events"):
         hazards = []
         for h in snap.hazard_events:
             hazard_data = {
-                'position': h.position.tolist(),
-                'type': h.event_type,
-                'time': h.time_myr / 1000.0,
-                'lethal_radius': h.sterilization_radius_pc / 1000.0,
-                'energy': getattr(h, 'energy', 1e51),
-                'affected_civs': getattr(h, 'affected_civ_ids', []),
+                "position": h.position.tolist(),
+                "type": h.event_type,
+                "time": h.time_myr / 1000.0,
+                "lethal_radius": h.sterilization_radius_pc / 1000.0,
+                "energy": getattr(h, "energy", 1e51),
+                "affected_civs": getattr(h, "affected_civ_ids", []),
             }
-            
-            if hasattr(h, 'grb_jet_theta'):
-                hazard_data['jet_theta'] = h.grb_jet_theta
-                hazard_data['jet_phi'] = h.grb_jet_phi
-                hazard_data['beaming_angle'] = getattr(h, 'grb_beaming_angle_deg', 10.0)
-            
-            if hasattr(h, 'sterilization_radius_pc'):
-                hazard_data['sterilization_radius'] = h.sterilization_radius_pc / 1000.0
-            
+
+            if hasattr(h, "grb_jet_theta"):
+                hazard_data["jet_theta"] = h.grb_jet_theta
+                hazard_data["jet_phi"] = h.grb_jet_phi
+                hazard_data["beaming_angle"] = getattr(h, "grb_beaming_angle_deg", 10.0)
+
+            if hasattr(h, "sterilization_radius_pc"):
+                hazard_data["sterilization_radius"] = h.sterilization_radius_pc / 1000.0
+
             hazards.append(hazard_data)
         return hazards
-    elif hasattr(snap, 'hazards'):
+    elif hasattr(snap, "hazards"):
         return snap.hazards.copy()
     else:
         return []
@@ -97,56 +107,74 @@ def _extract_hazard_list(snap):
 def _extract_expansion_trajectories(snap):
     """Extract expansion trajectories from archived probes and colonies with timing."""
     trajectories = []
-    
-    if not hasattr(snap, 'civilization_states') or not hasattr(snap, 'stellar_positions'):
+
+    if not hasattr(snap, "civilization_states") or not hasattr(snap, "stellar_positions"):
         return trajectories
-    
+
     stellar_positions = snap.stellar_positions
     if stellar_positions is None or len(stellar_positions) == 0:
         return trajectories
-    
-    current_time = snap.time_myr if hasattr(snap, 'time_myr') else 0
+
+    current_time = snap.time_myr if hasattr(snap, "time_myr") else 0
     seen_edges = set()
-    
+
     for civ in snap.civilization_states:
         home_idx = civ.parent_star_idx
-        home_pos = stellar_positions[home_idx].tolist() if home_idx < len(stellar_positions) else [0, 0, 0]
-        
-        if hasattr(civ, 'archived_probes') and civ.archived_probes:
+        home_pos = (
+            stellar_positions[home_idx].tolist() if home_idx < len(stellar_positions) else [0, 0, 0]
+        )
+
+        if hasattr(civ, "archived_probes") and civ.archived_probes:
             for probe in civ.archived_probes:
                 launch_idx = probe.launch_star_idx
                 target_idx = probe.target_star_idx
                 edge_key = (civ.civ_id, launch_idx, target_idx)
-                
-                if edge_key not in seen_edges and launch_idx < len(stellar_positions) and target_idx < len(stellar_positions):
+
+                if (
+                    edge_key not in seen_edges
+                    and launch_idx < len(stellar_positions)
+                    and target_idx < len(stellar_positions)
+                ):
                     seen_edges.add(edge_key)
                     start_pos = stellar_positions[launch_idx].tolist()
                     end_pos = stellar_positions[target_idx].tolist()
-                    
-                    arrival_time = probe.arrival_time_myr if hasattr(probe, 'arrival_time_myr') else current_time
-                    
-                    trajectories.append({
-                        'start': start_pos,
-                        'end': end_pos,
-                        'civ_id': civ.civ_id,
-                        'generation': probe.generation if hasattr(probe, 'generation') else 0,
-                        'time_myr': arrival_time
-                    })
-        
-        if hasattr(civ, 'colonized_stars') and civ.colonized_stars:
+
+                    arrival_time = (
+                        probe.arrival_time_myr
+                        if hasattr(probe, "arrival_time_myr")
+                        else current_time
+                    )
+
+                    trajectories.append(
+                        {
+                            "start": start_pos,
+                            "end": end_pos,
+                            "civ_id": civ.civ_id,
+                            "generation": probe.generation if hasattr(probe, "generation") else 0,
+                            "time_myr": arrival_time,
+                        }
+                    )
+
+        if hasattr(civ, "colonized_stars") and civ.colonized_stars:
             for colony_idx in civ.colonized_stars:
                 edge_key = (civ.civ_id, home_idx, colony_idx)
-                if edge_key not in seen_edges and colony_idx != home_idx and colony_idx < len(stellar_positions):
+                if (
+                    edge_key not in seen_edges
+                    and colony_idx != home_idx
+                    and colony_idx < len(stellar_positions)
+                ):
                     seen_edges.add(edge_key)
                     colony_pos = stellar_positions[colony_idx].tolist()
-                    trajectories.append({
-                        'start': home_pos,
-                        'end': colony_pos,
-                        'civ_id': civ.civ_id,
-                        'generation': 0,
-                        'time_myr': current_time
-                    })
-    
+                    trajectories.append(
+                        {
+                            "start": home_pos,
+                            "end": colony_pos,
+                            "civ_id": civ.civ_id,
+                            "generation": 0,
+                            "time_myr": current_time,
+                        }
+                    )
+
     return trajectories
 
 
@@ -202,19 +230,13 @@ class SimulationDataExtractor:
             with h5py.File(path, "r") as f:
                 if "galaxy" in f:
                     gal_group = f["galaxy"]
-                    self.simulation_data["galaxy_positions"] = np.array(
-                        gal_group["positions"]
-                    )
-                    self.simulation_data["galaxy_colors"] = np.array(
-                        gal_group.get("colors", [])
-                    )
+                    self.simulation_data["galaxy_positions"] = np.array(gal_group["positions"])
+                    self.simulation_data["galaxy_colors"] = np.array(gal_group.get("colors", []))
 
                 if "snapshots" in f:
                     snap_group = f["snapshots"]
                     for key in snap_group.keys():
-                        self.snapshots.append(
-                            json.loads(snap_group[key][()])
-                        )
+                        self.snapshots.append(json.loads(snap_group[key][()]))
 
         except ImportError:
             pass
@@ -222,59 +244,87 @@ class SimulationDataExtractor:
     def _extract_from_simulation(self) -> dict:
         """Extract data dict from simulation object."""
         if hasattr(self.source, "galaxy"):
-            self.simulation_data["galaxy_positions"] = (
-                self.source.galaxy.positions.copy()
-            )
-            
+            self.simulation_data["galaxy_positions"] = self.source.galaxy.positions.copy()
+
             if hasattr(self.source.galaxy, "masses") and self.source.galaxy.masses is not None:
                 self.simulation_data["galaxy_masses"] = self.source.galaxy.masses.copy()
-            
+
             if hasattr(self.source.galaxy, "ages") and self.source.galaxy.ages is not None:
                 self.simulation_data["galaxy_ages"] = self.source.galaxy.ages.copy()
-            
-            if hasattr(self.source.galaxy, "habitable_indices") and self.source.galaxy.habitable_indices is not None:
-                self.simulation_data["habitable_indices"] = self.source.galaxy.habitable_indices.copy()
-            
+
+            if (
+                hasattr(self.source.galaxy, "habitable_indices")
+                and self.source.galaxy.habitable_indices is not None
+            ):
+                self.simulation_data["habitable_indices"] = (
+                    self.source.galaxy.habitable_indices.copy()
+                )
+
             # Delta compression data for stellar motion
-            if hasattr(self.source.galaxy, "initial_positions") and self.source.galaxy.initial_positions is not None:
-                self.simulation_data["initial_positions"] = self.source.galaxy.initial_positions.copy()
-            
-            if hasattr(self.source.galaxy, "velocities") and self.source.galaxy.velocities is not None:
+            if (
+                hasattr(self.source.galaxy, "initial_positions")
+                and self.source.galaxy.initial_positions is not None
+            ):
+                self.simulation_data["initial_positions"] = (
+                    self.source.galaxy.initial_positions.copy()
+                )
+
+            if (
+                hasattr(self.source.galaxy, "velocities")
+                and self.source.galaxy.velocities is not None
+            ):
                 self.simulation_data["stellar_velocities"] = self.source.galaxy.velocities.copy()
+
+        if getattr(self.source, "orbit_model", None) is not None:
+            self.simulation_data["stellar_orbits"] = {
+                key: np.asarray(value)
+                for key, value in self.source.orbit_model.params_dict().items()
+            }
 
         if hasattr(self.source, "snapshots"):
             # Get galaxy positions as fallback for delta-compressed snapshots
             galaxy_pos = self.simulation_data.get("galaxy_positions", None)
-            
+
             # Check if stellar motion is enabled (positions change per snapshot)
             stellar_motion_enabled = False
-            if hasattr(self.source, 'config') and hasattr(self.source.config, 'simulation'):
-                stellar_motion_enabled = getattr(self.source.config.simulation, 'enable_stellar_motion', False)
-            
+            if hasattr(self.source, "config") and hasattr(self.source.config, "simulation"):
+                stellar_motion_enabled = getattr(
+                    self.source.config.simulation, "enable_stellar_motion", False
+                )
+
             self.snapshots = []
             for snap in self.source.snapshots:
                 snap_data = {
-                    "time": snap.time_myr / 1000.0 if hasattr(snap, 'time_myr') else snap.time_gyr,
-                    "time_myr": snap.time_myr if hasattr(snap, 'time_myr') else snap.time_gyr * 1000,
+                    "time": snap.time_myr / 1000.0 if hasattr(snap, "time_myr") else snap.time_gyr,
+                    "time_myr": (
+                        snap.time_myr if hasattr(snap, "time_myr") else snap.time_gyr * 1000
+                    ),
                     "civilizations": _extract_civ_list(snap, galaxy_pos),
                     "probes": _extract_probe_list(snap),
                     "hazards": _extract_hazard_list(snap),
                     "trajectories": _extract_expansion_trajectories(snap),
-                    "stellar_ages": snap.stellar_ages.tolist() if hasattr(snap, 'stellar_ages') and snap.stellar_ages is not None else None,
-                    "use_delta_compression": getattr(snap, 'use_delta_compression', False),
+                    "stellar_ages": (
+                        snap.stellar_ages.tolist()
+                        if hasattr(snap, "stellar_ages") and snap.stellar_ages is not None
+                        else None
+                    ),
+                    "use_delta_compression": getattr(snap, "use_delta_compression", False),
                 }
-                
+
                 # Include stellar positions if motion enabled (positions differ each snapshot)
-                if stellar_motion_enabled and hasattr(snap, 'stellar_positions') and snap.stellar_positions is not None and len(snap.stellar_positions) > 0:
+                if (
+                    stellar_motion_enabled
+                    and hasattr(snap, "stellar_positions")
+                    and snap.stellar_positions is not None
+                    and len(snap.stellar_positions) > 0
+                ):
                     snap_data["stellar_positions"] = snap.stellar_positions.tolist()
-                
+
                 self.snapshots.append(snap_data)
 
         return self.simulation_data
 
-    def extract_galaxy_data(
-        self, subsample: int = 10000, seed: int = 42
-    ) -> dict:
+    def extract_galaxy_data(self, subsample: int = 10000, seed: int = 42) -> dict:
         """Extract star positions, colors, and sizes for visualization.
 
         Args:
@@ -285,10 +335,10 @@ class SimulationDataExtractor:
             Dict with positions, colors, and sizes (as lists for JSON serialization)
         """
         from great_silence.astrophysics.stellar_evolution import StellarEvolution
-        
+
         positions = self.simulation_data.get("galaxy_positions", np.array([]))
         masses = self.simulation_data.get("galaxy_masses", np.array([]))
-        
+
         # Store indices for consistent subsampling across snapshots
         self._subsample_indices = None
         if len(positions) > subsample:
@@ -313,11 +363,22 @@ class SimulationDataExtractor:
             "colors": colors.tolist() if len(colors) > 0 else [],
             "sizes": sizes.tolist() if len(sizes) > 0 else [],
         }
-        
+
+        stellar_orbits = self.simulation_data.get("stellar_orbits", None)
+        if stellar_orbits is not None:
+            if self._subsample_indices is not None:
+                stellar_orbits = {
+                    key: value[self._subsample_indices] for key, value in stellar_orbits.items()
+                }
+            result["stellar_orbits"] = {
+                key: value.tolist() for key, value in stellar_orbits.items()
+            }
+            result["reference_time_myr"] = 0.0
+
         # NOTE: GPU-based stellar motion interpolation is disabled because linear
         # extrapolation (pos = initial + vel * t) doesn't model orbital motion.
         # Stars orbit in the galactic potential, not fly in straight lines.
-        # 
+        #
         # For physically correct motion visualization, the simulation must:
         # 1. Run with enable_stellar_motion=True (uses leapfrog integrator)
         # 2. Save frequent snapshots with evolved positions
@@ -325,31 +386,32 @@ class SimulationDataExtractor:
         #
         # To enable experimental GPU motion (will look wrong over long timescales):
         # Set GREAT_SILENCE_GPU_STELLAR_MOTION=1 environment variable
-        
+
         import os
-        if os.environ.get('GREAT_SILENCE_GPU_STELLAR_MOTION') == '1':
+
+        if os.environ.get("GREAT_SILENCE_GPU_STELLAR_MOTION") == "1":
             stellar_motion_enabled = False
-            if hasattr(self.source, 'config') and hasattr(self.source.config, 'simulation'):
-                stellar_motion_enabled = getattr(self.source.config.simulation, 'enable_stellar_motion', False)
-            
+            if hasattr(self.source, "config") and hasattr(self.source.config, "simulation"):
+                stellar_motion_enabled = getattr(
+                    self.source.config.simulation, "enable_stellar_motion", False
+                )
+
             if stellar_motion_enabled:
                 initial_positions = self.simulation_data.get("initial_positions", None)
                 velocities = self.simulation_data.get("stellar_velocities", None)
-                
+
                 if initial_positions is not None and velocities is not None:
                     if indices is not None:
                         initial_positions = initial_positions[indices]
                         velocities = velocities[indices]
-                    
+
                     result["initial_positions"] = initial_positions.tolist()
                     result["velocities"] = velocities.tolist()
                     result["reference_time"] = 0.0
-        
+
         return result
 
-    def extract_civilization_data(
-        self, time_gyr: Optional[float] = None
-    ) -> dict:
+    def extract_civilization_data(self, time_gyr: Optional[float] = None) -> dict:
         """Extract civilization data at given time.
 
         Args:
@@ -395,9 +457,7 @@ class SimulationDataExtractor:
             "extinct_positions": extinct_pos if extinct_pos else [],
         }
 
-    def extract_trajectory_data(
-        self, time_gyr: Optional[float] = None
-    ) -> List[dict]:
+    def extract_trajectory_data(self, time_gyr: Optional[float] = None) -> List[dict]:
         """Extract expansion trajectory lines for visualization.
 
         Args:
@@ -433,9 +493,7 @@ class SimulationDataExtractor:
 
         return trajectories
 
-    def extract_probe_data(
-        self, time_gyr: Optional[float] = None
-    ) -> dict:
+    def extract_probe_data(self, time_gyr: Optional[float] = None) -> dict:
         """Extract in-flight probe data with interpolation.
 
         Interpolates probe positions between snapshots (Issue #30).
@@ -513,9 +571,7 @@ class SimulationDataExtractor:
                 )
                 alpha = max(0, min(1, alpha))
 
-                pos_before = np.array(
-                    probe_before.get("position", [0, 0, 0])
-                )
+                pos_before = np.array(probe_before.get("position", [0, 0, 0]))
                 pos_after = np.array(probe_after.get("position", [0, 0, 0]))
                 pos = (1 - alpha) * pos_before + alpha * pos_after
                 positions.append(pos)
@@ -529,9 +585,7 @@ class SimulationDataExtractor:
             elif probe_after is not None:
                 launch_time = probe_after.get("launch_time", snap_before["time"])
                 if target_time >= launch_time:
-                    alpha = (target_time - launch_time) / (
-                        snap_after["time"] - launch_time + 1e-6
-                    )
+                    alpha = (target_time - launch_time) / (snap_after["time"] - launch_time + 1e-6)
                     alpha = max(0, min(1, alpha))
                     origin = np.array(probe_after.get("origin", [0, 0, 0]))
                     pos_after = np.array(probe_after.get("position", [0, 0, 0]))
@@ -549,15 +603,15 @@ class SimulationDataExtractor:
             probe_id_list.append(probe_id)
 
         return {
-            "positions": [p.tolist() if hasattr(p, 'tolist') else p for p in positions] if positions else [],
+            "positions": (
+                [p.tolist() if hasattr(p, "tolist") else p for p in positions] if positions else []
+            ),
             "civ_ids": civ_ids if civ_ids else [],
             "progress": progress if progress else [],
             "probe_ids": probe_id_list,
         }
 
-    def extract_hazard_data(
-        self, time_gyr: Optional[float] = None
-    ) -> dict:
+    def extract_hazard_data(self, time_gyr: Optional[float] = None) -> dict:
         """Extract hazard data with timing info.
 
         Includes times_gyr and time_since arrays (Issue #25, #27).
@@ -608,9 +662,7 @@ class SimulationDataExtractor:
             "time_since": time_since if time_since else [],
         }
 
-    def extract_stellar_hr_data(
-        self, subsample: int = 5000, seed: int = 42
-    ) -> dict:
+    def extract_stellar_hr_data(self, subsample: int = 5000, seed: int = 42) -> dict:
         """Extract stellar data for HR diagram visualization.
 
         Returns per-frame HR data if stellar ages are available in snapshots.
@@ -642,7 +694,7 @@ class SimulationDataExtractor:
             indices = rng.choice(len(masses), subsample, replace=False)
         else:
             indices = np.arange(len(masses))
-        
+
         masses_sub = masses[indices]
         temperatures = StellarEvolution.effective_temperature(masses_sub)
         luminosities = StellarEvolution.luminosity(masses_sub)
@@ -659,11 +711,11 @@ class SimulationDataExtractor:
                     ages = np.array(snap["stellar_ages"])
                     if len(ages) > 0:
                         ages_sub = ages[indices] if len(ages) > len(indices) else ages
-                        
+
                         temps, lums, phases, colors = StellarEvolution.evolved_properties(
                             masses_sub, ages_sub
                         )
-                        
+
                         frame_hr["temperatures"] = temps.tolist()
                         frame_hr["luminosities"] = lums.tolist()
                         frame_hr["phases"] = phases.tolist()
