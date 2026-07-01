@@ -267,14 +267,18 @@ function collectDisasterEvents(animationData) {
 
 function updateDisasters() {
     let slot = 0;
+    const maxR = disasterState.exaggeratedScale
+        ? DISASTER_MAX_RADIUS_KPC * (disasterState.scaleMultiplier / 20.0)
+        : DISASTER_MAX_RADIUS_KPC;
     for (const ev of disasterEvents) {
         const age = currentTimeMyr - ev.t;
         if (age < 0 || age > DISASTER_LIFESPAN_MYR) continue;
+        if (!kindShown(ev.kind)) continue;
         if (slot >= disasterPool.length) break;
 
         const ring = disasterPool[slot++];
         const frac = age / DISASTER_LIFESPAN_MYR;
-        const radius = 0.15 + easeInOutCubic(frac) * DISASTER_MAX_RADIUS_KPC;
+        const radius = 0.15 + easeInOutCubic(frac) * maxR;
         const opacity = Math.pow(1.0 - frac, 1.8);
 
         ring.visible = true;
@@ -754,16 +758,6 @@ function buildDynamicLayers() {
     scene.add(civGroup, probeGroup, hazardGroup, trajGroup);
 }
 
-// Respects the SN/GRB/NSM disaster filter checkboxes (wired in wireDisasterUI).
-function disasterKindShown(kind) {
-    const f = window.__wgpuDisasterFilters;
-    if (!f) return true;
-    if (kind === 'supernova') return f.sn;
-    if (kind === 'grb') return f.grb;
-    if (kind === 'ns_merger') return f.nsm;
-    return true;
-}
-
 function rebuildCivs(frame) {
     clearGroup(civGroup);
     const cfg = window.config || {};
@@ -793,7 +787,7 @@ function rebuildHazards(frame) {
     const cfg = window.config || {};
     for (const h of frame.hazards || []) {
         const kind = classifyDisaster(h.type);
-        if (!disasterKindShown(kind)) continue;
+        if (!kindShown(kind)) continue;
         const m = emissiveSphere(
             cfg.hazard_marker_size || 0.3,
             HAZARD_MARKER_COLORS[kind] || 0xff0000,
@@ -881,6 +875,319 @@ function wireLayerUI() {
     toggle('btn-postprocess', () => usePostProcessing, (v) => (usePostProcessing = v), () => {});
 }
 
+// ---------------------------------------------------------------------------
+// Disaster sub-layers (sterilization zones / GRB beam cones / death markers)
+// + panel controls (type filters, history, scale) + timeline — ported from the
+// WebGL layers.js. Driven by an aggregated disaster list (window.allDisasters),
+// times in Gyr to match the WebGL data. Pools of node-material meshes with
+// per-mesh uColor/uOpacity uniforms, mirroring the shockwave ring pool.
+// ---------------------------------------------------------------------------
+const ZONE_POOL_SIZE = 64;
+const BEAM_POOL_SIZE = 64;
+const DEATH_POOL_SIZE = 64;
+
+const disasterState = {
+    showHistory: false,
+    exaggeratedScale: false,
+    showSupernovae: true,
+    showGRBs: true,
+    showNSMergers: true,
+    showZones: true,
+    showBeams: true,
+    showDeathMarkers: true,
+    scaleMultiplier: 50.0,
+};
+
+let allDisasters = [];
+let zonePool = [];
+let beamPool = [];
+let deathPool = [];
+
+function hexForKind(kind) {
+    return DISASTER_COLORS[kind] !== undefined ? DISASTER_COLORS[kind] : 0xff0000;
+}
+
+function kindShown(kind) {
+    if (kind === 'supernova') return disasterState.showSupernovae;
+    if (kind === 'grb') return disasterState.showGRBs;
+    if (kind === 'ns_merger') return disasterState.showNSMergers;
+    return true;
+}
+
+function scaledRadius(radiusKpc, energy) {
+    if (disasterState.exaggeratedScale) {
+        const ef = Math.log10(energy || 1e51) / 51;
+        return radiusKpc * disasterState.scaleMultiplier * ef;
+    }
+    return radiusKpc;
+}
+
+function buildAllDisasters() {
+    const list = [];
+    const frames = (window.animationData && window.animationData.frames) || [];
+    for (const f of frames) {
+        const t = f.time_myr !== undefined ? f.time_myr / 1000.0 : f.time || 0;
+        for (const h of f.hazards || []) {
+            list.push({
+                time: h.time !== undefined ? h.time : t,
+                type: h.type,
+                kind: classifyDisaster(h.type),
+                position: h.position || [0, 0, 0],
+                lethal_radius: h.lethal_radius || 0.01,
+                sterilization_radius: h.sterilization_radius || h.lethal_radius || 0.03,
+                energy: h.energy || 1e51,
+                jet_theta: h.jet_theta,
+                jet_phi: h.jet_phi,
+                affected_civs: h.affected_civs || [],
+            });
+        }
+    }
+    const seen = new Set();
+    allDisasters = list
+        .filter((d) => {
+            const k = `${(d.time || 0).toFixed(3)}_${d.type}`;
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+        })
+        .sort((a, b) => a.time - b.time);
+    window.allDisasters = allDisasters;
+    updateDisasterCount();
+}
+
+function updateDisasterCount() {
+    const el = document.getElementById('disaster-count');
+    if (!el) return;
+    const sn = allDisasters.filter((d) => d.kind === 'supernova').length;
+    const grb = allDisasters.filter((d) => d.kind === 'grb').length;
+    const nsm = allDisasters.filter((d) => d.kind === 'ns_merger').length;
+    el.innerHTML =
+        `<span style="color:#ff4400;">SN: ${sn}</span> | ` +
+        `<span style="color:#00ffff;">GRB: ${grb}</span> | ` +
+        `<span style="color:#ff00ff;">NSM: ${nsm}</span>`;
+}
+
+function makePooledMesh(geo, side, additive) {
+    const uColor = uniform(new THREE.Color(0xffffff));
+    const uOpacity = uniform(0.0);
+    const mat = new THREE.MeshBasicNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        side,
+        blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    });
+    mat.colorNode = additive ? uColor.mul(2.0) : uColor;
+    mat.opacityNode = uOpacity;
+    mat.toneMapped = false;
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.visible = false;
+    mesh.userData = { uColor, uOpacity };
+    return mesh;
+}
+
+function buildDeathMarkerGeo() {
+    const s = 0.15;
+    const shape = new THREE.Shape();
+    shape.moveTo(-s, -s * 0.2);
+    shape.lineTo(-s * 0.2, -s);
+    shape.lineTo(0, -s * 0.4);
+    shape.lineTo(s * 0.2, -s);
+    shape.lineTo(s, -s * 0.2);
+    shape.lineTo(s * 0.4, 0);
+    shape.lineTo(s, s * 0.2);
+    shape.lineTo(s * 0.2, s);
+    shape.lineTo(0, s * 0.4);
+    shape.lineTo(-s * 0.2, s);
+    shape.lineTo(-s, s * 0.2);
+    shape.lineTo(-s * 0.4, 0);
+    shape.closePath();
+    return new THREE.ShapeGeometry(shape);
+}
+
+function buildDisasterSublayers() {
+    const zoneGeo = new THREE.SphereGeometry(1, 16, 12);
+    for (let i = 0; i < ZONE_POOL_SIZE; i++) {
+        const m = makePooledMesh(zoneGeo, THREE.BackSide, false);
+        scene.add(m);
+        zonePool.push(m);
+    }
+    const beamGeo = new THREE.ConeGeometry(0.5, 2, 16, 1, true);
+    for (let i = 0; i < BEAM_POOL_SIZE; i++) {
+        const m = makePooledMesh(beamGeo, THREE.DoubleSide, false);
+        scene.add(m);
+        beamPool.push(m);
+    }
+    const deathGeo = buildDeathMarkerGeo();
+    for (let i = 0; i < DEATH_POOL_SIZE; i++) {
+        const m = makePooledMesh(deathGeo, THREE.DoubleSide, false);
+        scene.add(m);
+        deathPool.push(m);
+    }
+}
+
+function updateZones(vis, currentTime) {
+    const cfg = window.config || {};
+    const fadeTime = (cfg.disaster_fade_time_myr || 200) / 1000.0;
+    let slot = 0;
+    if (disasterState.showZones) {
+        for (const d of vis) {
+            if (slot >= zonePool.length) break;
+            const el = currentTime - d.time;
+            let opacity;
+            if (el <= fadeTime) opacity = (1 - (el / fadeTime) * 0.7) * (cfg.sterilization_zone_opacity || 0.25);
+            else if (disasterState.showHistory) opacity = 0.1;
+            else continue;
+            const r = scaledRadius(d.sterilization_radius || d.lethal_radius || 0.03, d.energy);
+            const m = zonePool[slot++];
+            m.position.set(d.position[0], d.position[1], d.position[2]);
+            m.scale.setScalar(r);
+            m.userData.uColor.value.setHex(hexForKind(d.kind));
+            m.userData.uOpacity.value = Math.max(0.05, opacity);
+            m.visible = true;
+        }
+    }
+    for (let i = slot; i < zonePool.length; i++) zonePool[i].visible = false;
+}
+
+function updateBeams(vis, currentTime) {
+    const cfg = window.config || {};
+    const fadeTime = (cfg.beam_fade_time_myr || 100) / 1000.0;
+    let slot = 0;
+    if (disasterState.showBeams) {
+        const jets = vis.filter(
+            (d) => (d.kind === 'grb' || d.kind === 'ns_merger') && d.jet_theta !== undefined,
+        );
+        for (const d of jets) {
+            if (slot + 1 >= beamPool.length) break;
+            const el = currentTime - d.time;
+            let opacity;
+            if (el <= fadeTime) opacity = (1 - el / fadeTime) * 0.5;
+            else if (disasterState.showHistory) opacity = 0.15;
+            else continue;
+            const theta = d.jet_theta || 0;
+            const phi = d.jet_phi || 0;
+            const beamLen =
+                d.kind === 'grb' ? scaledRadius(d.lethal_radius || 5.0, d.energy) : scaledRadius(3.0, d.energy);
+            const coneR = Math.tan((25 * Math.PI) / 180) * beamLen;
+            const dirX = Math.sin(theta) * Math.cos(phi);
+            const dirY = Math.sin(theta) * Math.sin(phi);
+            const dirZ = Math.cos(theta);
+            const [px, py, pz] = d.position;
+            const hex = hexForKind(d.kind);
+            for (const sgn of [1, -1]) {
+                const m = beamPool[slot++];
+                m.position.set(px, py, pz);
+                m.scale.set(coneR, beamLen, coneR);
+                m.userData.uColor.value.setHex(hex);
+                m.userData.uOpacity.value = opacity;
+                m.lookAt(px + sgn * dirX, py + sgn * dirY, pz + sgn * dirZ);
+                m.rotateX(Math.PI / 2);
+                m.visible = true;
+            }
+        }
+    }
+    for (let i = slot; i < beamPool.length; i++) beamPool[i].visible = false;
+}
+
+function updateDeaths(vis, currentTime) {
+    const cfg = window.config || {};
+    const fadeTime = (cfg.death_marker_fade_myr || 500) / 1000.0;
+    let slot = 0;
+    if (disasterState.showDeathMarkers) {
+        const deadly = vis.filter((d) => d.affected_civs && d.affected_civs.length > 0);
+        for (const d of deadly) {
+            if (slot >= deathPool.length) break;
+            const el = currentTime - d.time;
+            if (el < 0 || el > fadeTime) continue;
+            const progress = el / fadeTime;
+            const m = deathPool[slot++];
+            m.position.set(d.position[0], d.position[1], d.position[2] + 0.1);
+            m.scale.setScalar(0.3 + progress * 0.2);
+            m.userData.uColor.value.setHex(0xff0000);
+            m.userData.uOpacity.value = (1 - progress * 0.5) * 0.9;
+            if (camera) m.quaternion.copy(camera.quaternion);
+            m.visible = true;
+        }
+    }
+    for (let i = slot; i < deathPool.length; i++) deathPool[i].visible = false;
+}
+
+function drawDisasterTimeline(currentTime) {
+    const canvas = document.getElementById('disaster-timeline-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, W, H);
+    const tmin = minTimeMyr / 1000.0;
+    const tmax = maxTimeMyr / 1000.0;
+    const span = Math.max(1e-6, tmax - tmin);
+    for (const d of allDisasters) {
+        if (!kindShown(d.kind)) continue;
+        const x = ((d.time - tmin) / span) * W;
+        ctx.fillStyle = '#' + hexForKind(d.kind).toString(16).padStart(6, '0');
+        ctx.fillRect(x - 1, 2, 2, H - 4);
+    }
+    const px = ((currentTime - tmin) / span) * W;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(px - 1, 0, 2, H);
+}
+
+function updateDisasterSublayers() {
+    if (!zonePool.length) return;
+    const currentTime = currentTimeMyr / 1000.0;
+    const vis = allDisasters.filter((d) => {
+        if (!kindShown(d.kind)) return false;
+        const el = currentTime - d.time;
+        if (el < 0) return false;
+        if (disasterState.showHistory) return true;
+        return el <= 0.1;
+    });
+    updateZones(vis, currentTime);
+    updateBeams(vis, currentTime);
+    updateDeaths(vis, currentTime);
+    drawDisasterTimeline(currentTime);
+}
+
+function wireDisasterUI() {
+    const chk = (id, fn) => {
+        const e = document.getElementById(id);
+        if (e) e.addEventListener('change', () => fn(e.checked));
+    };
+    chk('disaster-history-toggle', (v) => {
+        disasterState.showHistory = v;
+        const l = document.getElementById('history-mode-label');
+        if (l) l.textContent = v ? 'Show History' : 'Current Only';
+    });
+    chk('disaster-scale-toggle', (v) => {
+        disasterState.exaggeratedScale = v;
+        const l = document.getElementById('scale-mode-label');
+        if (l) l.textContent = v ? 'Exaggerated (50x)' : 'Physical Scale';
+    });
+    const refilter = () => {
+        if (lastLayerFrame >= 0 && window.animationData) {
+            rebuildHazards(window.animationData.frames[lastLayerFrame]);
+        }
+    };
+    chk('filter-supernova', (v) => {
+        disasterState.showSupernovae = v;
+        refilter();
+    });
+    chk('filter-grb', (v) => {
+        disasterState.showGRBs = v;
+        refilter();
+    });
+    chk('filter-nsm', (v) => {
+        disasterState.showNSMergers = v;
+        refilter();
+    });
+    chk('show-zones', (v) => (disasterState.showZones = v));
+    chk('show-beams', (v) => (disasterState.showBeams = v));
+    chk('show-death-markers', (v) => (disasterState.showDeathMarkers = v));
+}
+
 function wireUI() {
     const slider = document.getElementById('timeline-slider');
     const timeDisplay = document.getElementById('time-display');
@@ -912,6 +1219,7 @@ function wireUI() {
 
     wireCameraUI();
     wireLayerUI();
+    wireDisasterUI();
 }
 
 // ---------------------------------------------------------------------------
@@ -942,6 +1250,7 @@ function tick() {
 
     uTime.value = currentTimeMyr;
     updateDisasters();
+    updateDisasterSublayers();
     if (window.__wgpuUpdateUI) window.__wgpuUpdateUI();
     updateChartFrame();
     updateLayerFrame();
@@ -1005,6 +1314,10 @@ export async function initWebGPUGalaxy() {
     // Dynamic per-frame layers (civs, probes, hazard markers, trajectories)
     buildDynamicLayers();
 
+    // Disaster sub-layers (zones / beams / death markers) + aggregated list
+    buildDisasterSublayers();
+    buildAllDisasters();
+
     // Time range
     if (window.animationData && window.animationData.frames && window.animationData.frames.length > 0) {
         const frames = window.animationData.frames;
@@ -1062,6 +1375,13 @@ export async function initWebGPUGalaxy() {
         hazards: { visible: hazardGroup ? hazardGroup.visible : null, count: hazardGroup ? hazardGroup.children.length : 0 },
         traj: { visible: trajGroup ? trajGroup.visible : null, count: trajGroup ? trajGroup.children.length : 0 },
         postProcessing: usePostProcessing,
+        disasters: {
+            total: allDisasters.length,
+            zonesVisible: zonePool.filter((m) => m.visible).length,
+            beamsVisible: beamPool.filter((m) => m.visible).length,
+            deathsVisible: deathPool.filter((m) => m.visible).length,
+            state: { ...disasterState },
+        },
     });
     renderer.setAnimationLoop(tick);
 }
