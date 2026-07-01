@@ -693,6 +693,194 @@ function wireCameraUI() {
     window.addEventListener('keyup', onCamKeyUp);
 }
 
+// ---------------------------------------------------------------------------
+// Dynamic per-frame layers (civilizations, probes, hazard markers,
+// trajectories) — ported from the WebGL particles.js so the WebGPU scene has
+// parity. Rebuilt only when the frame index changes; toggled via the layer
+// buttons. Rendered as additive emissive spheres/lines (MeshBasicNodeMaterial /
+// LineBasicNodeMaterial) so they participate in the bloom pass like the stars.
+// ---------------------------------------------------------------------------
+let civGroup = null;
+let probeGroup = null;
+let hazardGroup = null;
+let trajGroup = null;
+let showStars = true;
+let showCivs = true;
+let showProbes = true;
+let showHazards = true;
+let showTrajectories = true;
+let usePostProcessing = true;
+let lastLayerFrame = -1;
+
+const VIRIDIS = [0x440154, 0x3b528b, 0x21918c, 0x5ec962, 0xfde725];
+const HAZARD_MARKER_COLORS = { supernova: 0xff4444, grb: 0xffaa00, ns_merger: 0xaa44ff };
+
+function kardashevColorHex(k) {
+    const cfg = window.config || {};
+    const minK = cfg.kardashev_min || 0.7;
+    const maxK = cfg.kardashev_max || 3.0;
+    const n = Math.max(0, Math.min(1, (k - minK) / (maxK - minK)));
+    return VIRIDIS[Math.min(VIRIDIS.length - 1, Math.floor(n * (VIRIDIS.length - 1e-6)))];
+}
+
+function emissiveSphere(radius, hex, opacity) {
+    const geo = new THREE.SphereGeometry(radius, 12, 12);
+    const mat = new THREE.MeshBasicNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+    });
+    mat.colorNode = color(hex).mul(1.8);
+    mat.opacityNode = float(opacity);
+    mat.toneMapped = false;
+    return new THREE.Mesh(geo, mat);
+}
+
+function clearGroup(g) {
+    if (!g) return;
+    for (let i = g.children.length - 1; i >= 0; i--) {
+        const c = g.children[i];
+        g.remove(c);
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+    }
+}
+
+function buildDynamicLayers() {
+    civGroup = new THREE.Group();
+    probeGroup = new THREE.Group();
+    hazardGroup = new THREE.Group();
+    trajGroup = new THREE.Group();
+    scene.add(civGroup, probeGroup, hazardGroup, trajGroup);
+}
+
+// Respects the SN/GRB/NSM disaster filter checkboxes (wired in wireDisasterUI).
+function disasterKindShown(kind) {
+    const f = window.__wgpuDisasterFilters;
+    if (!f) return true;
+    if (kind === 'supernova') return f.sn;
+    if (kind === 'grb') return f.grb;
+    if (kind === 'ns_merger') return f.nsm;
+    return true;
+}
+
+function rebuildCivs(frame) {
+    clearGroup(civGroup);
+    const cfg = window.config || {};
+    for (const civ of frame.civilizations || []) {
+        const active = civ.is_active;
+        const r = active ? cfg.civ_active_size || 0.15 : cfg.civ_extinct_size || 0.1;
+        const op = active ? cfg.civ_active_opacity || 0.9 : cfg.civ_extinct_opacity || 0.5;
+        const m = emissiveSphere(r, kardashevColorHex(civ.kardashev), op);
+        m.position.set(civ.position[0], civ.position[1], civ.position[2]);
+        civGroup.add(m);
+    }
+    civGroup.visible = showCivs;
+}
+
+function rebuildProbes(frame) {
+    clearGroup(probeGroup);
+    for (const p of frame.probes || []) {
+        const m = emissiveSphere(0.05, 0x00ffff, 0.9);
+        m.position.set(p.position[0], p.position[1], p.position[2]);
+        probeGroup.add(m);
+    }
+    probeGroup.visible = showProbes;
+}
+
+function rebuildHazards(frame) {
+    clearGroup(hazardGroup);
+    const cfg = window.config || {};
+    for (const h of frame.hazards || []) {
+        const kind = classifyDisaster(h.type);
+        if (!disasterKindShown(kind)) continue;
+        const m = emissiveSphere(
+            cfg.hazard_marker_size || 0.3,
+            HAZARD_MARKER_COLORS[kind] || 0xff0000,
+            cfg.hazard_opacity || 0.7,
+        );
+        const pos = h.position || [0, 0, 0];
+        m.position.set(pos[0], pos[1], pos[2]);
+        hazardGroup.add(m);
+    }
+    hazardGroup.visible = showHazards;
+}
+
+function rebuildTrajectories(frame) {
+    clearGroup(trajGroup);
+    const tMyr = frame.time_myr !== undefined ? frame.time_myr : (frame.time || 0) * 1000;
+    for (const traj of frame.trajectories || []) {
+        if (!traj.start || !traj.end) continue;
+        if ((traj.time_myr || 0) > tMyr) continue;
+        const civId = traj.civ_id || 0;
+        const hex = new THREE.Color().setHSL((civId * 0.618033988749895) % 1.0, 1.0, 0.65).getHex();
+        const geo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(traj.start[0], traj.start[1], traj.start[2]),
+            new THREE.Vector3(traj.end[0], traj.end[1], traj.end[2]),
+        ]);
+        const mat = new THREE.LineBasicNodeMaterial({
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+        mat.colorNode = color(hex).mul(1.5);
+        mat.opacityNode = float(0.9);
+        mat.toneMapped = false;
+        trajGroup.add(new THREE.Line(geo, mat));
+        const end = emissiveSphere(0.03, hex, 0.95);
+        end.position.set(traj.end[0], traj.end[1], traj.end[2]);
+        trajGroup.add(end);
+    }
+    trajGroup.visible = showTrajectories;
+}
+
+function updateDynamicLayers(frameIdx) {
+    if (!window.animationData || !window.animationData.frames) return;
+    const frame = window.animationData.frames[frameIdx];
+    if (!frame) return;
+    rebuildCivs(frame);
+    rebuildProbes(frame);
+    rebuildHazards(frame);
+    rebuildTrajectories(frame);
+}
+
+function updateLayerFrame() {
+    const fi = frameIndexForTime();
+    if (fi >= 0 && fi !== lastLayerFrame) {
+        lastLayerFrame = fi;
+        updateDynamicLayers(fi);
+    }
+}
+
+function wireLayerUI() {
+    const toggle = (id, get, set, apply) => {
+        const b = document.getElementById(id);
+        if (!b) return;
+        b.classList.toggle('active', get());
+        b.addEventListener('click', (e) => {
+            set(!get());
+            e.target.classList.toggle('active', get());
+            apply();
+        });
+    };
+    toggle('btn-stars', () => showStars, (v) => (showStars = v), () => {
+        if (starPoints) starPoints.visible = showStars;
+    });
+    toggle('btn-civs', () => showCivs, (v) => (showCivs = v), () => {
+        if (civGroup) civGroup.visible = showCivs;
+    });
+    toggle('btn-probes', () => showProbes, (v) => (showProbes = v), () => {
+        if (probeGroup) probeGroup.visible = showProbes;
+    });
+    toggle('btn-hazards', () => showHazards, (v) => (showHazards = v), () => {
+        if (hazardGroup) hazardGroup.visible = showHazards;
+    });
+    toggle('btn-trajectories', () => showTrajectories, (v) => (showTrajectories = v), () => {
+        if (trajGroup) trajGroup.visible = showTrajectories;
+    });
+    toggle('btn-postprocess', () => usePostProcessing, (v) => (usePostProcessing = v), () => {});
+}
+
 function wireUI() {
     const slider = document.getElementById('timeline-slider');
     const timeDisplay = document.getElementById('time-display');
@@ -723,6 +911,7 @@ function wireUI() {
     };
 
     wireCameraUI();
+    wireLayerUI();
 }
 
 // ---------------------------------------------------------------------------
@@ -755,8 +944,10 @@ function tick() {
     updateDisasters();
     if (window.__wgpuUpdateUI) window.__wgpuUpdateUI();
     updateChartFrame();
+    updateLayerFrame();
 
-    postProcessing.render();
+    if (usePostProcessing) postProcessing.render();
+    else renderer.render(scene, camera);
 }
 
 function onResize() {
@@ -811,6 +1002,9 @@ export async function initWebGPUGalaxy() {
     disasterPool.forEach((r) => scene.add(r));
     disasterEvents = collectDisasterEvents(window.animationData);
 
+    // Dynamic per-frame layers (civs, probes, hazard markers, trajectories)
+    buildDynamicLayers();
+
     // Time range
     if (window.animationData && window.animationData.frames && window.animationData.frames.length > 0) {
         const frames = window.animationData.frames;
@@ -859,6 +1053,15 @@ export async function initWebGPUGalaxy() {
         followCivId,
         pos: camera.position.toArray(),
         target: controls.target.toArray(),
+    });
+    window.__wgpuLayerState = () => ({
+        frame: lastLayerFrame,
+        stars: { visible: starPoints ? starPoints.visible : null },
+        civs: { visible: civGroup ? civGroup.visible : null, count: civGroup ? civGroup.children.length : 0 },
+        probes: { visible: probeGroup ? probeGroup.visible : null, count: probeGroup ? probeGroup.children.length : 0 },
+        hazards: { visible: hazardGroup ? hazardGroup.visible : null, count: hazardGroup ? hazardGroup.children.length : 0 },
+        traj: { visible: trajGroup ? trajGroup.visible : null, count: trajGroup ? trajGroup.children.length : 0 },
+        postProcessing: usePostProcessing,
     });
     renderer.setAnimationLoop(tick);
 }
