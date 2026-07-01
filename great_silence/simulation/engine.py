@@ -2,6 +2,7 @@
 
 import copy
 import heapq
+import math
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -3305,21 +3306,25 @@ class GalaxySimulation:
             if not civ.is_active:
                 continue
 
+            # tech_bonus depends only on the civ (not the colony), so hoist it out
+            # of the per-colony loop. Scalar math.* is far cheaper than numpy's
+            # scalar np.exp/np.log10 (identical IEEE result) — this loop runs over
+            # every colony every timestep and was a top self-time hotspot.
+            tech_bonus = math.exp(civ.kardashev_scale * 0.5)
+
             for star_idx in civ.colonized_stars:
                 colony_age = self.current_time_myr - civ.colony_arrival_times.get(star_idx, 0.0)
-                age_factor = 1.0 + np.log10(1.0 + colony_age / 0.05)
+                age_factor = 1.0 + math.log10(1.0 + colony_age / 0.05)
 
-                is_home_world = star_idx == civ.parent_star_idx
-                home_bonus = 2.0 if is_home_world else 1.0
+                home_bonus = 2.0 if star_idx == civ.parent_star_idx else 1.0
 
-                tech_bonus = np.exp(civ.kardashev_scale * 0.5)
-
-                civ.colony_strengths[star_idx] = age_factor * home_bonus * tech_bonus
+                strength = age_factor * home_bonus * tech_bonus
+                civ.colony_strengths[star_idx] = strength
 
                 if self.civ_spatial_index is not None:
                     colony_info = self.civ_spatial_index.get_colony_info(civ.civ_id, star_idx)
                     if colony_info is not None:
-                        colony_info.strength = civ.colony_strengths[star_idx]
+                        colony_info.strength = strength
 
     def _manage_strategic_resources(self, dt_myr: float) -> None:
         """
