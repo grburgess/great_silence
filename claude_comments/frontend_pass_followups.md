@@ -21,7 +21,12 @@ Open followups (not blocking):
   and ignore the r128 snapshot updater when __USE_WEBGPU).
 - Exported HTML loads three.js from CDNs (needs network) and file:// is blocked by
   the browser sandbox (must be served over http). Consider bundling for offline.
-- render() path (webapp embedding) does not copy templates/webgpu/*.mjs — only
-  export()-to-file does. Webapp-embedded viz falls back to r128.
+- ~~render() path (webapp embedding) does not copy templates/webgpu/*.mjs — only
+  export()-to-file does. Webapp-embedded viz falls back to r128.~~ RESOLVED/stale
+  (verified 2026-07-01): results_dashboard._generate_viz uses export_html (=
+  export()), which copies webgpu/*.mjs into the served temp dir. Replicated the
+  webapp export+serve exactly and loaded in Playwright: __USE_WEBGPU=true,
+  __wgpuActive=true, all parity layers present, mjs served 200. Webapp runs full
+  WebGPU, not r128.
 - Static (non-animated) exports show no disaster shockwaves (populated per-frame).
 - results_dashboard.py: add ARIA labels on viz/export/fullscreen controls.
