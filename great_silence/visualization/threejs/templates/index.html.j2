@@ -1077,6 +1077,11 @@
             try {
                 const mod = await import('./webgpu/galaxy-webgpu.mjs?v={{ range(1000000) | random }}');
                 await mod.initWebGPUGalaxy();
+                // Charts + chart-toggle buttons are renderer-independent (Chart.js/DOM)
+                // and normally wired inside the WebGL init(); the WebGPU path skips init(),
+                // so wire them explicitly here.
+                if (window.initCharts) window.initCharts();
+                if (window.initChartToggleControls) window.initChartToggleControls();
             } catch (err) {
                 console.error('WebGPU init failed, falling back to WebGL:', err);
                 window.__USE_WEBGPU = false;
