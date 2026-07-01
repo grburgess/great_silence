@@ -1,10 +1,11 @@
 """Simulation runner component with progress bar and live stats."""
 
+import asyncio
 import time
 from threading import Lock
 from typing import List, Tuple
 
-from nicegui import ui
+from nicegui import run, ui
 
 from ..state import SimulationEvent, app_state
 

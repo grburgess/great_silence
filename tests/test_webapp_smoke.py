@@ -25,6 +25,13 @@ def test_simulation_runner_is_async():
     assert inspect.iscoroutinefunction(SimulationRunner._start_simulation)
 
 
+def test_run_handler_names_resolve():
+    from great_silence.webapp.components import simulation_runner as m
+
+    assert hasattr(m, "asyncio")
+    assert hasattr(m, "run")
+
+
 def test_main_page_constructs():
     from great_silence.webapp import app as webapp_app
 

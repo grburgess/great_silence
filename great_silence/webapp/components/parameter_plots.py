@@ -498,8 +498,8 @@ class ParameterPlots:
             )
         )
 
-        total_area = np.trapz(imf, masses)
-        hab_area = np.trapz(hab_imf, hab_masses) if len(hab_masses) > 0 else 0
+        total_area = np.trapezoid(imf, masses)
+        hab_area = np.trapezoid(hab_imf, hab_masses) if len(hab_masses) > 0 else 0
         hab_fraction = hab_area / total_area if total_area > 0 else 0
 
         fig.add_annotation(
