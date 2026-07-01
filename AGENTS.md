@@ -651,3 +651,11 @@ python scripts/benchmark_baseline.py  # Detailed profiling
 - **Session doc**: `claude_comments/session_2026-02-11_phase01_benchmark.md`
 - **Analysis**: `claude_comments/phase01_optimization_analysis.md`
 - **Recommendation**: Complete Phase 1 integration before adding new features
+
+### Jul 2026 - WebGPU viz parity + snapshot civ-state aliasing fix
+- **Chart panels + camera modes were dead in WebGPU mode**: `init()`/`initUI()`/`initCamera()` only run in the WebGL path; the WebGPU dispatch (`index.html.j2`) skips them. Fixes wire the renderer-independent pieces explicitly in the WebGPU path.
+  - Charts: WebGPU block now calls `initCharts()` + `initChartToggleControls()`. `galaxy-webgpu.mjs` `tick()` bridges continuous `currentTimeMyr` → frame index (`updateChartFrame`) so HR/Kardashev/Timeline/Colony animate. Lifespan is a whole-sim summary (intentionally static).
+  - Camera modes (orbit/follow/fly/tour) ported into `galaxy-webgpu.mjs` operating on its own `camera`/`controls` (positions in kpc, same frame as `animationData` civs). `window.__wgpuCameraState()` exposes camera state for debugging/Playwright.
+- **Snapshot civ-state aliasing (root cause of "no active civs in viz")**: `engine.py _save_snapshot` stored `civilization_states=[c for c in self.civilizations]` — live references to mutable `CivilizationState`. Every frame read end-of-sim state (all `is_active=False`). Fix: `[copy.copy(c) for c in ...]` (shallow) captures scalars by value; collections shared (only used as cumulative/historical). Regression test: `tests/test_snapshot_civ_state.py`.
+- **Gotcha**: ruff autofix removes a newly-added `import` if you add it in a separate edit *before* the edit that uses it. Add import + usage together, or the "unused import" gets stripped.
+- **Pre-existing test failures (NOT from these changes)**: `test_progress_tracking.py` (14), `test_war_mechanics.py` (8, references unimplemented `war_exhaustion_*` config), `test_stellar_motion.py::TestDeltaCompressedSnapshots` (2).
