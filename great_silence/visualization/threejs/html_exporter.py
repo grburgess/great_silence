@@ -1,8 +1,8 @@
 """HTML export for Three.js visualization."""
 
-from pathlib import Path
-from typing import Optional, Union, Any
 import json
+from pathlib import Path
+from typing import Any, Optional, Union
 
 from .config import ThreeJSConfig
 from .data_extractor import SimulationDataExtractor
@@ -37,7 +37,7 @@ class ThreeJSRenderer:
             animated: Include animation frames
         """
         galaxy_data = self.extractor.extract_galaxy_data()
-        
+
         hr_data = self.extractor.extract_stellar_hr_data()
         civ_stats = self.extractor.extract_civ_statistics()
 
@@ -55,9 +55,7 @@ class ThreeJSRenderer:
                     frame_data = {
                         "time": snapshot["time"],
                         "time_myr": snapshot.get("time_myr", snapshot["time"] * 1000),
-                        "civilizations": snapshot.get(
-                            "civilizations", []
-                        ),
+                        "civilizations": snapshot.get("civilizations", []),
                         "probes": snapshot.get("probes", []),
                         "hazards": snapshot.get("hazards", []),
                         "trajectories": snapshot.get("trajectories", []),
@@ -66,9 +64,13 @@ class ThreeJSRenderer:
                     # Apply same subsampling as galaxy data for consistency
                     if "stellar_positions" in snapshot and snapshot["stellar_positions"]:
                         positions = snapshot["stellar_positions"]
-                        if hasattr(self.extractor, '_subsample_indices') and self.extractor._subsample_indices is not None:
+                        if (
+                            hasattr(self.extractor, "_subsample_indices")
+                            and self.extractor._subsample_indices is not None
+                        ):
                             # Convert to numpy, subsample, convert back to list
                             import numpy as np
+
                             pos_array = np.array(positions)
                             positions = pos_array[self.extractor._subsample_indices].tolist()
                         frame_data["stellar_positions"] = positions
@@ -142,14 +144,9 @@ class ThreeJSRenderer:
 
         if animated and "animation_data" in self.data:
             data_placeholder = "<!-- ANIMATION_DATA -->"
-            data_size = self.data.get(
-                "animation_data_size_mb", 0
-            )
+            data_size = self.data.get("animation_data_size_mb", 0)
 
-            if (
-                data_size <= self.config.data_embed_threshold_mb
-                and animation_data_url is None
-            ):
+            if data_size <= self.config.data_embed_threshold_mb and animation_data_url is None:
                 html = html.replace(
                     data_placeholder,
                     f'<script>window.animationData = {self.data["animation_data"]};</script>',
@@ -199,9 +196,7 @@ class ThreeJSRenderer:
 
         animation_data_url = None
         if animated and "animation_data" in self.data:
-            data_size = self.data.get(
-                "animation_data_size_mb", 0
-            )
+            data_size = self.data.get("animation_data_size_mb", 0)
 
             if data_size > self.config.data_embed_threshold_mb:
                 data_filename = Path(filepath).stem + "_data.json"
@@ -221,54 +216,59 @@ class ThreeJSRenderer:
 
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        
+
         if compress:
             import gzip
-            
+
             with gzip.open(str(filepath) + ".gz", "wb") as f:
                 f.write(html.encode("utf-8"))
         else:
             with open(filepath, "w") as f:
                 f.write(html)
-        
+
         from jinja2 import Environment, FileSystemLoader
+
         import great_silence.visualization.threejs.templates as templates_pkg
-        
+
         templates_dir = Path(templates_pkg.__file__).parent
         env = Environment(loader=FileSystemLoader(templates_dir))
         js_template_files = templates_dir.glob("*.js.j2")
-        
+
         for template_file in js_template_files:
             template = env.get_template(template_file.name)
             js_content = template.render(**template_data)
-            
-            js_filename = template_file.stem.replace('.js', '') + '.js'
+
+            js_filename = template_file.stem.replace(".js", "") + ".js"
             js_filepath = filepath.parent / js_filename
-            
+
             with open(js_filepath, "w") as jf:
                 jf.write(js_content)
+
+        webgpu_src = templates_dir / "webgpu"
+        if webgpu_src.is_dir():
+            import shutil
+
+            webgpu_dst = filepath.parent / "webgpu"
+            webgpu_dst.mkdir(parents=True, exist_ok=True)
+            for asset in webgpu_src.iterdir():
+                if asset.is_file() and asset.suffix in (".mjs", ".js", ".css"):
+                    shutil.copy2(asset, webgpu_dst / asset.name)
 
     def _get_template(self, template_name="index.html.j2"):
         """Get Jinja2 template for HTML rendering."""
         try:
             from jinja2 import Environment, FileSystemLoader
-            
+
             if self.template_dir:
-                env = Environment(
-                    loader=FileSystemLoader(self.template_dir)
-                )
+                env = Environment(loader=FileSystemLoader(self.template_dir))
             else:
                 import great_silence.visualization.threejs.templates as templates_pkg
-                
-                templates_dir = Path(
-                    templates_pkg.__file__
-                ).parent
-                env = Environment(
-                    loader=FileSystemLoader(templates_dir)
-                )
-            
+
+                templates_dir = Path(templates_pkg.__file__).parent
+                env = Environment(loader=FileSystemLoader(templates_dir))
+
             return env.get_template(template_name)
-        
+
         except ImportError:
             return _BasicTemplate()
 
@@ -297,9 +297,7 @@ def export_html(
         compress: Compress output with gzip
         template_dir: Optional template directory path
     """
-    renderer = ThreeJSRenderer(
-        source, config=config, template_dir=template_dir
-    )
+    renderer = ThreeJSRenderer(source, config=config, template_dir=template_dir)
     renderer.export(
         output_path,
         animated=animated,

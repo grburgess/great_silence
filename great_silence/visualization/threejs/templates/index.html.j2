@@ -625,6 +625,23 @@
         }
     </style>
 
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js",
+            "three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js",
+            "three/tsl": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.tsl.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script>
+        // Feature-detect WebGPU. When present we use the modern WebGPURenderer
+        // path (GPU-computed epicyclic star positions); otherwise we fall back
+        // to the r128 WebGL renderer loaded below.
+        window.__USE_WEBGPU = (typeof navigator !== 'undefined' && !!navigator.gpu);
+    </script>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tweenjs/tween.js@18.6.4/dist/tween.umd.js"></script>
@@ -1046,7 +1063,28 @@
             animate();
         }
 
-        window.onload = init;
+        window.onload = function () {
+            if (!window.__USE_WEBGPU) {
+                init();
+            }
+        };
+    </script>
+
+    <script type="module">
+        // WebGPU path: shader-computed epicyclic star positions, cinematic look.
+        // Falls back to the WebGL init() if WebGPU init throws (e.g. headless).
+        if (window.__USE_WEBGPU) {
+            try {
+                const mod = await import('./webgpu/galaxy-webgpu.mjs?v={{ range(1000000) | random }}');
+                await mod.initWebGPUGalaxy();
+            } catch (err) {
+                console.error('WebGPU init failed, falling back to WebGL:', err);
+                window.__USE_WEBGPU = false;
+                if (typeof init === 'function') {
+                    init();
+                }
+            }
+        }
     </script>
 </body>
 </html>
