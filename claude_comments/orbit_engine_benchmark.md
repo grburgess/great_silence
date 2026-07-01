@@ -142,3 +142,49 @@ parallel=True retained.
 Note: the radial drift gate (0.261 median) is unaffected by these fixes — it measures
 radial error, the bugs were azimuthal/guiding-radius. Fast-vs-exact radial divergence
 remains the dynamically-hot-disk approximation limit documented above.
+
+## Pivot: Jeans-equilibrium default instead of hybrid fallback (2026-07-01)
+
+Adversarial physics review showed the epicyclic approximation needs X/R_g << 1,
+but the `velocity_init_mode="simple"` disk is dynamically hot: 53% of stars have
+X/R_g >= 0.3 (median 0.33), and 66% of those are DISK stars (not just bulge). A
+per-star exact fallback ("hybrid") was tried and MEASURED SLOWER THAN EXACT
+(run 8.0s vs 5.6s): the eccentric stars are the small-timestep inner stars that
+dominate integration cost, so leapfrogging even a subset costs nearly the full
+exact price plus the analytic pass on top. Hybrid abandoned (profile-driven
+beats theory-driven).
+
+Root cause was the initial velocity distribution, not the method. Switching the
+default to `velocity_init_mode="jeans"` (equilibrium) fixes it at the source:
+
+| Metric                          | simple | jeans  |
+|---------------------------------|--------|--------|
+| Eccentric fraction (X/R_g>=0.3) | 53.4%  | 28.6%  |
+| Median X/R_g                    | 0.327  | 0.143  |
+| Fast-vs-exact radial drift 2Gyr | 0.261  | 0.098  |
+
+`_compute_velocity_dispersion_jeans` was vectorized with `epicyclic_frequencies_batch`
+(dispersions verified identical to the per-star formula), cutting jeans init from
+19.9s -> 0.09s at 100k stars. The bulge velocity loop was kept as-is to preserve
+RNG draw order (test_stellar_motion equilibrium test is realization-sensitive).
+Drift gate tightened 0.35 -> 0.15 (measured 0.098).
+
+### End-to-end benchmark (30k stars, 5 Gyr, jeans default, Apple M1 Max)
+
+| Mode  | Init  | Integrator | Run   | Total | Civs |
+|-------|-------|------------|-------|-------|------|
+| fast  | 0.84s | 1.27s      | 3.82s | 4.67s | 160  |
+| exact | 0.83s | 5.67s      | 6.05s | 6.88s | 184  |
+
+Integrator speedup 4.5x; end-to-end 1.5x this seed. End-to-end is less than the
+integrator ratio because the fast tier's analytic bracket+bisection intercept
+solver is heavier per probe than exact mode's linear extrapolation, so
+probe-heavy realizations spend more in civ/probe work (a future optimization
+target; the integrator was this pass's target). Fast vs exact civ counts differ
+(160 vs 184) on a single seed because stellar positions affect probe
+colonization; this averages out under Monte Carlo. Use orbit_mode=exact for
+single-realization per-star fidelity.
+
+Full suite under jeans default: 566 passed, 17 failed (all pre-existing:
+15 progress_tracking/monte_carlo + 2 delta-compression), 22 skipped. Zero new
+regressions.

@@ -48,7 +48,7 @@ class GalaxyParameters:
     spiral_arm_strength: float = 0.2
     enable_bar: bool = True
     velocity_init_mode: str = (
-        "simple"  # "simple" (circular + empirical) or "jeans" (full equilibrium)
+        "jeans"  # "simple" (circular + empirical) or "jeans" (full equilibrium)
     )
 
     # Star population

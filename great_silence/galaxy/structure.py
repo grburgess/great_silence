@@ -455,10 +455,6 @@ class GalaxyModel:
             Tuple of (σ_R, σ_φ, σ_z) arrays in km/s
         """
         n_stars = len(R)
-        sigma_R = np.zeros(n_stars)
-        sigma_phi = np.zeros(n_stars)
-        sigma_z = np.zeros(n_stars)
-
         h_R = self.params.scale_length_kpc
         h_z = self.params.disk_height_kpc
         v_0 = self.params.rotation_velocity_km_s
@@ -466,23 +462,14 @@ class GalaxyModel:
         sigma_R_0 = 35.0
         sigma_z_0 = 20.0
 
-        for i in range(n_stars):
-            r_i = max(0.1, R[i])
-            z_i = z[i]
+        R_safe = np.maximum(R, 0.1)
+        sigma_R = sigma_R_0 * np.exp(-R_safe / (2 * h_R)) * (1.0 + np.abs(z) / h_z)
 
-            sigma_R[i] = sigma_R_0 * np.exp(-r_i / (2 * h_R))
-            sigma_R[i] *= 1.0 + np.abs(z_i) / h_z
+        kappa = self.epicyclic_frequencies_batch(R_safe)
+        Omega = v_0 / R_safe
+        sigma_phi = np.where(Omega > 1e-10, sigma_R * kappa / (2 * Omega), sigma_R * 0.7)
 
-            kappa = self._compute_epicyclic_frequency(r_i)
-            Omega = v_0 / r_i
-
-            if Omega > 1e-10:
-                sigma_phi[i] = sigma_R[i] * kappa / (2 * Omega)
-            else:
-                sigma_phi[i] = sigma_R[i] * 0.7
-
-            sigma_z[i] = sigma_z_0 * np.exp(-r_i / (2 * h_R))
-            sigma_z[i] *= 1.0 + 0.5 * np.abs(z_i) / h_z
+        sigma_z = sigma_z_0 * np.exp(-R_safe / (2 * h_R)) * (1.0 + 0.5 * np.abs(z) / h_z)
 
         return sigma_R, sigma_phi, sigma_z
 
