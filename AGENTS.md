@@ -659,3 +659,11 @@ python scripts/benchmark_baseline.py  # Detailed profiling
 - **Snapshot civ-state aliasing (root cause of "no active civs in viz")**: `engine.py _save_snapshot` stored `civilization_states=[c for c in self.civilizations]` — live references to mutable `CivilizationState`. Every frame read end-of-sim state (all `is_active=False`). Fix: `[copy.copy(c) for c in ...]` (shallow) captures scalars by value; collections shared (only used as cumulative/historical). Regression test: `tests/test_snapshot_civ_state.py`.
 - **Gotcha**: ruff autofix removes a newly-added `import` if you add it in a separate edit *before* the edit that uses it. Add import + usage together, or the "unused import" gets stripped.
 - **Pre-existing test failures (NOT from these changes)**: `test_progress_tracking.py` (14), `test_war_mechanics.py` (8, references unimplemented `war_exhaustion_*` config), `test_stellar_motion.py::TestDeltaCompressedSnapshots` (2).
+
+### Jul 2026 - WebGPU full layer/disaster parity (phases A+B)
+- Ported all remaining WebGL-only viz layers into `galaxy-webgpu.mjs`:
+  - **Phase A** (dynamic per-frame layers): civ markers (Kardashev-colored emissive spheres), probe markers, hazard markers, expansion trajectory lines. THREE.Group per layer, rebuilt on frame-index change. Wired Stars/Civs/Probes/Hazards/Trajectories + Post-process toggles.
+  - **Phase B** (disasters): sterilization zone spheres, GRB bipolar beam cones, camera-facing death markers; aggregated `window.allDisasters` + count; disaster timeline canvas. Wired SN/GRB/NSM filters, History/Scale modes, Zones/Beams/Deaths checkboxes.
+- Emissive layers use `MeshBasicNodeMaterial`/`LineBasicNodeMaterial` (colorNode/opacityNode + AdditiveBlending) so they bloom; pooled disaster meshes use per-mesh uColor/uOpacity uniforms. ConeGeometry/ShapeGeometry/BackSide all work in WebGPURenderer.
+- Inspection hooks: `window.__wgpuLayerState()` (+ existing `__wgpuCameraState()`).
+- Disaster times are Gyr; currentTime bookkeeping is Myr (watch /1000). Verifying beams/deaths needs GRBs-with-jets + civ kills → inject into `window.allDisasters` and scrub.
