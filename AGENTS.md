@@ -667,5 +667,19 @@ python scripts/benchmark_baseline.py  # Detailed profiling
 - Emissive layers use `MeshBasicNodeMaterial`/`LineBasicNodeMaterial` (colorNode/opacityNode + AdditiveBlending) so they bloom; pooled disaster meshes use per-mesh uColor/uOpacity uniforms. ConeGeometry/ShapeGeometry/BackSide all work in WebGPURenderer.
 - Inspection hooks: `window.__wgpuLayerState()` (+ existing `__wgpuCameraState()`).
 - Disaster times are Gyr; currentTime bookkeeping is Myr (watch /1000). Verifying beams/deaths needs GRBs-with-jets + civ kills → inject into `window.allDisasters` and scrub.
+
+### Jul 2026 - Simulation perf pass 2 (workflow-driven, 34% faster)
+- **Result**: benchmark_quick run median 3.68s → 2.42s, bit-identical seeded outcomes (sha256 civ-state hash), full suite unchanged (25 known failures, 582 passed)
+- **Kept** (each individually gated: ruff → state hash → 3-run median → tests):
+  - `5fdfc41` `_find_nearest_targets`: exclusion via set membership over ~55 nearby indices, not scatter-writes over ~2400 excluded indices into `_exclusion_buf` (biggest win, ~0.76s)
+  - `ca3c296` `_scan_for_encounters` short-circuited: `find_territory_overlaps([single_civ_id])` provably always returns `[]` — was a permanent no-op (4400 calls/run)
+  - `c8dcc9b` `positions_at_time(copy=False)` for the `_step` hot loop (setter makes its own per-axis copies; all other callers keep `copy=True` — orbit tests rely on non-aliasing)
+  - `feb6bdb` scalar `math.log/exp` in colonial-war-risk + age-death paths (same pattern as b425908)
+- **Reverted by benchmark** (verified-safe but not faster): positions-setter transpose-gather (slower than 3 column gathers); orbit-param gather hoist (gain below ±0.1–0.2s noise floor). Lesson re-confirmed: benchmark every change individually, revert unprovable gains
+- **Rejected in review**: numpy-precomputed `gamma*X` for the epicyclic kernel (fastmath reassociation ⇒ not bit-identical); lazy position recompute (SAFE — sterilization is index-based — but worthless: `disaster_track_parent_star` clamps dt onto a disaster nearly every step)
+- **Regression gate**: civ count alone is insufficient (RNG desync can coincidentally preserve it). Use sha256 over sorted per-civ tuples (civ_id, parent_star_idx, birth/death time, cause, is_active, n_colonies) at seed 42; expected `7a18889aedb0…3b03f 160`
+- **Pre-existing gap (deliberately not fixed)**: same-star colonization by two civs never triggers encounters — see `claude_comments/perf_pass_jul2026.md`; a fix adds RNG draws and changes seeded results
+- **Confusions corrected**: `_check_sensor_retargeting` is dead code (no call site); `epicyclic_positions_kernel` (~1.2–1.5s) is now the irreducible floor at 30k stars; earlier belief that skipping position updates was *unsafe* was wrong — it's safe but unprofitable
+- **Uncommitted-work gotcha**: an implementation subagent's `git reset --hard` (recovering from the format-hook mess) also wiped unrelated uncommitted AGENTS.md edits in the shared working tree — commit docs edits promptly, or don't leave them uncommitted while agents hold the tree
 - **Late additions (same gates)**: `df3408b` ExtinctionModel scalar `math.exp` (2.53→2.48s); `5576731` `_launch_initial_probes` now uses `_calculate_intercept_positions_batch` like its siblings (neutral-in-noise, kept for consistency; batch solver already handles empty targets via its `n == 0` early return)
 - **Hook gotcha (extends the ruff one)**: the PostToolUse Edit hook (black+ruff) both strips a momentarily-unused import AND can reformat the ENTIRE file (collapsed constructors, trailing commas) turning a 3-line change into a ~100-line diff. If that happens: `git reset --hard`, re-apply via a python script through Bash (bypasses the Edit hook), verify the diff is surgical before committing
