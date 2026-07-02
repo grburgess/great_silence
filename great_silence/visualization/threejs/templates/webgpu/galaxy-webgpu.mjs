@@ -756,6 +756,38 @@ function buildDynamicLayers() {
     hazardGroup = new THREE.Group();
     trajGroup = new THREE.Group();
     scene.add(civGroup, probeGroup, hazardGroup, trajGroup);
+    buildTrajectoryObjects();
+}
+
+function buildTrajectoryObjects() {
+    const unionList = (window.animationData && window.animationData.trajectories) || [];
+    for (const traj of unionList) {
+        if (!traj.start || !traj.end) continue;
+        const timeMyr = traj.time_myr || 0;
+        const civId = traj.civ_id || 0;
+        const hex = new THREE.Color().setHSL((civId * 0.618033988749895) % 1.0, 1.0, 0.65).getHex();
+        const geo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(traj.start[0], traj.start[1], traj.start[2]),
+            new THREE.Vector3(traj.end[0], traj.end[1], traj.end[2]),
+        ]);
+        const mat = new THREE.LineBasicNodeMaterial({
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+        });
+        mat.colorNode = color(hex).mul(1.5);
+        mat.opacityNode = float(0.9);
+        mat.toneMapped = false;
+        const line = new THREE.Line(geo, mat);
+        line.visible = false;
+        line.userData.timeMyr = timeMyr;
+        trajGroup.add(line);
+        const end = emissiveSphere(0.03, hex, 0.95);
+        end.position.set(traj.end[0], traj.end[1], traj.end[2]);
+        end.visible = false;
+        end.userData.timeMyr = timeMyr;
+        trajGroup.add(end);
+    }
 }
 
 function rebuildCivs(frame) {
@@ -800,30 +832,9 @@ function rebuildHazards(frame) {
     hazardGroup.visible = showHazards;
 }
 
-function rebuildTrajectories(frame) {
-    clearGroup(trajGroup);
-    const tMyr = frame.time_myr !== undefined ? frame.time_myr : (frame.time || 0) * 1000;
-    for (const traj of frame.trajectories || []) {
-        if (!traj.start || !traj.end) continue;
-        if ((traj.time_myr || 0) > tMyr) continue;
-        const civId = traj.civ_id || 0;
-        const hex = new THREE.Color().setHSL((civId * 0.618033988749895) % 1.0, 1.0, 0.65).getHex();
-        const geo = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(traj.start[0], traj.start[1], traj.start[2]),
-            new THREE.Vector3(traj.end[0], traj.end[1], traj.end[2]),
-        ]);
-        const mat = new THREE.LineBasicNodeMaterial({
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-        mat.colorNode = color(hex).mul(1.5);
-        mat.opacityNode = float(0.9);
-        mat.toneMapped = false;
-        trajGroup.add(new THREE.Line(geo, mat));
-        const end = emissiveSphere(0.03, hex, 0.95);
-        end.position.set(traj.end[0], traj.end[1], traj.end[2]);
-        trajGroup.add(end);
+function updateTrajectoryVisibility(tMyr) {
+    for (const child of trajGroup.children) {
+        child.visible = child.userData.timeMyr <= tMyr;
     }
     trajGroup.visible = showTrajectories;
 }
@@ -835,7 +846,9 @@ function updateDynamicLayers(frameIdx) {
     rebuildCivs(frame);
     rebuildProbes(frame);
     rebuildHazards(frame);
-    rebuildTrajectories(frame);
+    updateTrajectoryVisibility(
+        frame.time_myr !== undefined ? frame.time_myr : (frame.time || 0) * 1000,
+    );
 }
 
 function updateLayerFrame() {
