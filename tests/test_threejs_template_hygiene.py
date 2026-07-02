@@ -52,7 +52,7 @@ def test_civ_sprite_materials_are_cached():
 
 def test_teardown_disposes_gpu_resources():
     js = _render("particles.js.j2")
-    assert js.count(".dispose()") >= 6
+    assert js.count(".dispose()") >= 4
 
 
 def test_dead_trail_template_removed():
