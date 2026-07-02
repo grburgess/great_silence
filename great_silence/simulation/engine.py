@@ -2070,13 +2070,15 @@ class GalaxySimulation:
 
         # Filter nearby stars: sufficient metallicity, uncolonized, not targeted, not source
         metallicity_mask = self.galaxy.metallicities[nearby_indices] >= min_metallicity
-        excluded_stars = colonized_set | targeted_set
-        if len(excluded_stars) > 0:
-            buf = self._exclusion_buf
-            exc_list = list(excluded_stars)
-            buf[exc_list] = True
-            not_excluded = ~buf[nearby_indices]
-            buf[exc_list] = False
+        if colonized_set or targeted_set:
+            not_excluded = np.fromiter(
+                (
+                    idx not in colonized_set and idx not in targeted_set
+                    for idx in nearby_indices.tolist()
+                ),
+                dtype=bool,
+                count=len(nearby_indices),
+            )
         else:
             not_excluded = np.ones(len(nearby_indices), dtype=bool)
         not_source = nearby_indices != exclude_idx
