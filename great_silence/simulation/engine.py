@@ -1150,12 +1150,12 @@ class GalaxySimulation:
 
         # Hazard rate increases with K-scale and colonies
         k_factor = kardashev_scale - cfg.colonial_war_kardashev_threshold
-        colony_factor = np.log(num_mature_colonies / cfg.colonial_war_colony_threshold)
+        colony_factor = math.log(num_mature_colonies / cfg.colonial_war_colony_threshold)
 
         lambda_war = cfg.colonial_war_amplitude * k_factor * colony_factor
 
         # Convert hazard rate to probability
-        p_war = 1.0 - np.exp(-lambda_war * dt_myr)
+        p_war = 1.0 - math.exp(-lambda_war * dt_myr)
 
         return p_war
 
@@ -1263,8 +1263,8 @@ class GalaxySimulation:
 
             # Check age-based death with colonization bonus and distributed resilience
             # Calculate effective lifetime with logarithmic colonization bonus
-            colonization_bonus = self.config.civilization.colonization_lifetime_bonus_myr * np.log(
-                1 + num_mature
+            colonization_bonus = (
+                self.config.civilization.colonization_lifetime_bonus_myr * math.log(1 + num_mature)
             )
             effective_lifetime = (
                 self.config.civilization.mean_civilization_lifetime_myr + colonization_bonus
@@ -1282,7 +1282,7 @@ class GalaxySimulation:
             if age >= effective_lifetime:
                 # Exponential decay: lambda = 1/tau
                 decay_rate = 1.0 / effective_lifetime
-                p_death_single = 1.0 - np.exp(-decay_rate * dt_myr)
+                p_death_single = 1.0 - math.exp(-decay_rate * dt_myr)
 
                 # Distributed model: each mature colony rolls independently
                 # Civilization dies only if ALL colonies die
@@ -1583,7 +1583,7 @@ class GalaxySimulation:
             return True
 
         # Age-based death check
-        colonization_bonus = self.config.civilization.colonization_lifetime_bonus_myr * np.log(
+        colonization_bonus = self.config.civilization.colonization_lifetime_bonus_myr * math.log(
             1 + num_mature
         )
         effective_lifetime = (
@@ -1600,7 +1600,7 @@ class GalaxySimulation:
         age = self.current_time_myr - civ.birth_time_myr
         if age >= effective_lifetime:
             decay_rate = 1.0 / effective_lifetime
-            p_death_single = 1.0 - np.exp(-decay_rate * dt_myr)
+            p_death_single = 1.0 - math.exp(-decay_rate * dt_myr)
 
             if num_mature > 1:
                 p_all_die = p_death_single**num_mature
