@@ -77,6 +77,21 @@ def test_export_loads_data_once(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
+def test_animation_payload_has_union_and_lean_frames():
+    import json as _json
+
+    sim = _run_sim_with_snapshots()
+
+    from great_silence.visualization.threejs.html_exporter import ThreeJSRenderer
+
+    renderer = ThreeJSRenderer(sim)
+    renderer._load_data(animated=True)
+    payload = _json.loads(renderer.data["animation_data"])
+
+    assert set(payload.keys()) == {"frames", "trajectories", "time_range"}
+    assert all("trajectories" not in f for f in payload["frames"])
+
+
 class _FakeProbe:
     def __init__(self, launch, target, arrival, generation=1):
         self.launch_star_idx = launch

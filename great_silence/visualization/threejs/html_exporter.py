@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from .config import ThreeJSConfig
-from .data_extractor import SimulationDataExtractor
+from .data_extractor import SimulationDataExtractor, build_union_trajectories
 
 
 class ThreeJSRenderer:
@@ -59,7 +59,6 @@ class ThreeJSRenderer:
                         "civilizations": snapshot.get("civilizations", []),
                         "probes": snapshot.get("probes", []),
                         "hazards": snapshot.get("hazards", []),
-                        "trajectories": snapshot.get("trajectories", []),
                     }
                     # Include stellar positions if available (for stellar motion)
                     # Apply same subsampling as galaxy data for consistency
@@ -85,7 +84,12 @@ class ThreeJSRenderer:
                 "civ_stats": civ_stats,
             }
 
-            frames_json = json.dumps(frames)
+            payload = {
+                "frames": frames,
+                "trajectories": build_union_trajectories(self.extractor.snapshots),
+                "time_range": time_range,
+            }
+            frames_json = json.dumps(payload)
             frames_size_mb = len(frames_json) / (1024 * 1024)
             self.data["animation_data"] = frames_json
             self.data["animation_data_size_mb"] = frames_size_mb
