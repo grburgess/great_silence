@@ -1932,14 +1932,14 @@ class GalaxySimulation:
         )
 
         # Launch probes
-        for target_idx in targets:
-            # Calculate intercept position for moving target
-            intercept_pos, travel_time_myr = self._calculate_intercept_position(
-                source_pos=home_pos,
-                target_idx=target_idx,
-                velocity_c=civ.probe_velocity_c,
-            )
-            arrival_time_myr = self.current_time_myr + travel_time_myr
+        _, travel_times = self._calculate_intercept_positions_batch(
+            source_pos=home_pos,
+            target_indices=targets,
+            velocity_c=civ.probe_velocity_c,
+        )
+
+        for j, target_idx in enumerate(targets):
+            arrival_time_myr = self.current_time_myr + travel_times[j]
 
             # Create probe
             probe = ProbeState(
