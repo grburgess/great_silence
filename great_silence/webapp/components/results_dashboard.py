@@ -1,12 +1,25 @@
 """Results dashboard with Three.js visualization embed and statistics."""
 
-import os
+import shutil
 import tempfile
+import time
 from pathlib import Path
+from typing import Optional
 
-from nicegui import app, ui
+from nicegui import app, run, ui
 
 from ..state import app_state
+
+VIZ_ROOT = Path(tempfile.gettempdir()) / "great_silence_viz"
+VIZ_ROOT.mkdir(parents=True, exist_ok=True)
+app.add_static_files("/viz", str(VIZ_ROOT))
+
+
+def _prune_viz_dirs(root: Path, keep: int = 3, exclude: Optional[Path] = None) -> None:
+    run_dirs = [p for p in root.iterdir() if p.is_dir() and p != exclude]
+    run_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in run_dirs[keep:]:
+        shutil.rmtree(old, ignore_errors=True)
 
 
 class ResultsDashboard:
@@ -157,7 +170,7 @@ class ResultsDashboard:
             ui.label("Interactive 3D Galaxy Visualization").classes("text-gray-400 mb-2")
 
             with ui.row().classes("w-full gap-4"):
-                ui.button(
+                self._generate_btn = ui.button(
                     "Generate Visualization",
                     icon="view_in_ar",
                     on_click=lambda: self._generate_viz(sim),
@@ -180,20 +193,25 @@ class ResultsDashboard:
                     ).classes("text-white")
                 self._fullscreen_frame = ui.html("", sanitize=False).classes("w-full h-full")
 
-    def _generate_viz(self, sim) -> None:
+    async def _generate_viz(self, sim) -> None:
         """Generate the Three.js visualization."""
-        import time
         import traceback
 
+        from great_silence.visualization.threejs import export_html
+
+        self._generate_btn.disable()
+        self._viz_frame_container.clear()
+        with self._viz_frame_container, ui.row().classes("items-center gap-3 mt-4"):
+            ui.spinner(size="lg", color="cyan")
+            ui.label("Generating visualization...").classes("text-gray-400")
+
         try:
-            from great_silence.visualization.threejs import export_html
+            run_dir = VIZ_ROOT / f"run_{int(time.time() * 1000)}"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            self._viz_html_path = str(run_dir / "visualization.html")
 
-            # Use unique path to avoid browser caching
-            viz_id = int(time.time() * 1000)
-            temp_dir = tempfile.mkdtemp()
-            self._viz_html_path = os.path.join(temp_dir, "visualization.html")
-
-            export_html(
+            await run.io_bound(
+                export_html,
                 sim,
                 self._viz_html_path,
                 animated=True,
@@ -202,25 +220,21 @@ class ResultsDashboard:
                 show_hazards=True,
             )
 
-            if not os.path.exists(self._viz_html_path):
-                ui.notify("Error: Visualization file not created", type="negative")
-                return
+            _prune_viz_dirs(VIZ_ROOT, keep=3, exclude=run_dir)
 
-            # Use unique path to bust cache
-            viz_path = f"/viz_{viz_id}"
-            app.add_static_files(viz_path, temp_dir)
+            viz_url = f"/viz/{run_dir.name}/visualization.html"
 
             self._viz_frame_container.clear()
             with self._viz_frame_container:
                 ui.html(
-                    f'<iframe src="{viz_path}/visualization.html" '
+                    f'<iframe src="{viz_url}" '
                     f'style="width: 100%; height: 600px; border: 1px solid #333; border-radius: 8px;">'
                     f"</iframe>",
                     sanitize=False,
                 )
 
             self._fullscreen_frame.content = (
-                f'<iframe src="{viz_path}/visualization.html" '
+                f'<iframe src="{viz_url}" '
                 f'style="width: 100%; height: calc(100vh - 80px); border: none;"></iframe>'
             )
             self._fullscreen_btn.visible = True
@@ -229,7 +243,10 @@ class ResultsDashboard:
 
         except Exception as e:
             traceback.print_exc()
+            self._viz_frame_container.clear()
             ui.notify(f"Error generating visualization: {e}", type="negative")
+        finally:
+            self._generate_btn.enable()
 
     def _open_fullscreen(self) -> None:
         """Open the fullscreen visualization dialog."""
@@ -298,7 +315,7 @@ class ResultsDashboard:
                             on_click=lambda: self._export_hdf5(sim),
                         ).classes("bg-blue-700 hover:bg-blue-600")
 
-    def _export_html(self, sim) -> None:
+    async def _export_html(self, sim) -> None:
         """Export visualization as HTML."""
         try:
             from great_silence.visualization.threejs import export_html
@@ -311,7 +328,7 @@ class ResultsDashboard:
             output_dir.mkdir(parents=True, exist_ok=True)
             full_path = output_dir / output_path
 
-            export_html(sim, str(full_path), animated=True)
+            await run.io_bound(export_html, sim, str(full_path), animated=True)
             ui.notify(f"Exported to {full_path}", type="positive")
 
         except Exception as e:

@@ -1,28 +1,39 @@
 """Main NiceGUI web application for Great Silence simulations."""
 
-from nicegui import ui, app
-from pathlib import Path
 from typing import Callable, Optional
 
+from nicegui import ui
+
+from .components import (
+    BasicSettings,
+    ConfigPanels,
+    ParameterPlots,
+    PresetSelector,
+    ResultsDashboard,
+    SimulationRunner,
+)
+from .config_io import (
+    create_load_config_dialog,
+    create_save_config_dialog,
+    create_save_preset_dialog,
+)
 from .state import app_state
-from .components import PresetSelector, BasicSettings, SimulationRunner, ConfigPanels, ResultsDashboard, ParameterPlots
-from .config_io import create_load_config_dialog, create_save_config_dialog, create_save_preset_dialog
-from .themes import SPACE_THEMES, get_theme_css, get_base_css, get_theme_options
+from .themes import SPACE_THEMES, get_base_css, get_theme_css, get_theme_options
 
 
 class DebouncedCallback:
     """Debounces a callback to only fire after a delay with no new calls."""
-    
+
     def __init__(self, callback: Callable[[], None], delay_seconds: float = 0.3):
         self._callback = callback
         self._delay = delay_seconds
         self._timer: Optional[ui.timer] = None
-    
+
     def __call__(self) -> None:
         if self._timer is not None:
             self._timer.cancel()
         self._timer = ui.timer(self._delay, self._execute, once=True)
-    
+
     def _execute(self) -> None:
         self._timer = None
         self._callback()
@@ -33,14 +44,16 @@ def apply_dark_theme(theme_name: str = "deep_space"):
     base_css = get_base_css()
     theme_css = get_theme_css(theme_name)
 
-    ui.add_head_html(f"""
+    ui.add_head_html(
+        f"""
     <style>
         {base_css}
     </style>
     <style id="theme-styles">
         {theme_css}
     </style>
-    """)
+    """
+    )
 
 
 def refresh_ui_from_state():
@@ -65,52 +78,53 @@ def main_page():
         """Handle theme change from dropdown."""
         app_state.set_theme(theme_name)
         theme_css = get_theme_css(theme_name)
-        escaped_css = theme_css.replace('`', '\\`').replace('${', '\\${')
-        ui.run_javascript(f"""
+        escaped_css = theme_css.replace("`", "\\`").replace("${", "\\${")
+        ui.run_javascript(
+            f"""
             const styleEl = document.getElementById('theme-styles');
             if (styleEl) {{
                 styleEl.textContent = `{escaped_css}`;
             }}
-        """)
+        """
+        )
         theme = SPACE_THEMES.get(theme_name, SPACE_THEMES["deep_space"])
         ui.notify(f"{theme['icon']} {theme['name']} theme applied", type="positive", position="top")
 
     with ui.header().classes(
         "bg-gray-900/80 backdrop-blur-sm border-b border-gray-700/50 items-center"
-    ):
-        with ui.row().classes("w-full max-w-6xl mx-auto items-center px-4"):
-            ui.label("🌌").classes("text-3xl")
-            with ui.column().classes("gap-0"):
-                ui.label("GREAT SILENCE").classes(
-                    "text-xl font-bold tracking-wider text-transparent bg-clip-text "
-                    "bg-gradient-to-r from-cyan-400 to-purple-500"
-                )
-                ui.label("Galactic Civilization Simulator").classes("text-gray-500 text-xs")
+    ), ui.row().classes("w-full max-w-6xl mx-auto items-center px-4"):
+        ui.label("🌌").classes("text-3xl")
+        with ui.column().classes("gap-0"):
+            ui.label("GREAT SILENCE").classes(
+                "text-xl font-bold tracking-wider text-transparent bg-clip-text "
+                "bg-gradient-to-r from-cyan-400 to-purple-500"
+            )
+            ui.label("Galactic Civilization Simulator").classes("text-gray-500 text-xs")
 
-            ui.space()
+        ui.space()
 
-            ui.select(
-                options={t["value"]: t["label"] for t in get_theme_options()},
-                value=app_state.current_theme,
-                on_change=lambda e: on_theme_change(e.value),
-            ).props("dense dark outlined").classes("w-44").tooltip("Select Theme")
+        ui.select(
+            options={t["value"]: t["label"] for t in get_theme_options()},
+            value=app_state.current_theme,
+            on_change=lambda e: on_theme_change(e.value),
+        ).props("dense dark outlined").classes("w-44").tooltip("Select Theme")
 
-            with ui.button_group().props("flat"):
-                ui.button(icon="folder_open", on_click=load_dialog.open).props("flat").tooltip(
-                    "Load Configuration"
-                ).classes("text-gray-400 hover:text-cyan-400")
-                ui.button(icon="save", on_click=save_dialog.open).props("flat").tooltip(
-                    "Save Configuration"
-                ).classes("text-gray-400 hover:text-cyan-400")
-                ui.button(icon="bookmark_add", on_click=preset_dialog.open).props("flat").tooltip(
-                    "Save as Preset"
-                ).classes("text-gray-400 hover:text-purple-400")
+        with ui.button_group().props("flat"):
+            ui.button(icon="folder_open", on_click=load_dialog.open).props("flat").tooltip(
+                "Load Configuration"
+            ).classes("text-gray-400 hover:text-cyan-400")
+            ui.button(icon="save", on_click=save_dialog.open).props("flat").tooltip(
+                "Save Configuration"
+            ).classes("text-gray-400 hover:text-cyan-400")
+            ui.button(icon="bookmark_add", on_click=preset_dialog.open).props("flat").tooltip(
+                "Save as Preset"
+            ).classes("text-gray-400 hover:text-purple-400")
 
-    plots_ref = {'component': None}
+    plots_ref = {"component": None}
 
     def refresh_plots_immediate():
-        if plots_ref['component']:
-            plots_ref['component'].refresh()
+        if plots_ref["component"]:
+            plots_ref["component"].refresh()
 
     refresh_plots = DebouncedCallback(refresh_plots_immediate, delay_seconds=0.3)
 
@@ -119,7 +133,11 @@ def main_page():
         ui.notify(f"Applied '{preset_name}' preset", type="positive", position="top")
         refresh_plots_immediate()
 
-    with ui.element('div').classes("w-full flex flex-row gap-4 p-4").style("max-width: 1800px; margin: 0 auto;"):
+    with (
+        ui.element("div")
+        .classes("w-full flex flex-row gap-4 p-4")
+        .style("max-width: 1800px; margin: 0 auto;")
+    ):
         with ui.column().classes("gap-4").style("flex: 1; min-width: 0;"):
             with ui.card().classes("w-full bg-gradient-to-r from-cyan-900/20 to-purple-900/20"):
                 ui.label(
@@ -138,9 +156,9 @@ def main_page():
             with ui.expansion("Advanced Settings", icon="tune", value=False).classes(
                 "w-full bg-gray-800"
             ):
-                ui.label(
-                    "Fine-tune all simulation parameters. Changes apply immediately."
-                ).classes("text-gray-500 text-sm mb-4")
+                ui.label("Fine-tune all simulation parameters. Changes apply immediately.").classes(
+                    "text-gray-500 text-sm mb-4"
+                )
                 ConfigPanels(on_change=refresh_plots)
 
             results_dashboard = ResultsDashboard()
@@ -153,7 +171,7 @@ def main_page():
             sim_runner.on_complete = on_simulation_complete
 
         with ui.column().classes("gap-4").style("flex: 1; min-width: 0;"):
-            plots_ref['component'] = ParameterPlots()
+            plots_ref["component"] = ParameterPlots()
 
     with ui.footer().classes("bg-gray-900/50 border-t border-gray-700/50"):
         with ui.row().classes("w-full max-w-6xl mx-auto items-center px-4 py-2"):
@@ -181,6 +199,7 @@ def run_app(host: str = "127.0.0.1", port: int = 8080, reload: bool = False):
         reload=reload,
         dark=True,
         favicon="🌌",
+        reconnect_timeout=30.0,
     )
 
 
