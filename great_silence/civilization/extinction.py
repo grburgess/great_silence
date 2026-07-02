@@ -1,5 +1,6 @@
 """Civilization extinction modeling."""
 
+import math
 import numpy as np
 from typing import Optional, Dict, List
 from dataclasses import dataclass
@@ -188,7 +189,7 @@ class ExtinctionModel:
             # Gaussian centered at crisis Kardashev scale
             delta_K = kardashev_scale - crisis.kardashev_center
             exponent = -0.5 * (delta_K / crisis.width) ** 2
-            gaussian = crisis.amplitude * np.exp(exponent)
+            gaussian = crisis.amplitude * math.exp(exponent)
             crisis_risk += gaussian
 
         return lambda_base + crisis_risk
@@ -233,7 +234,7 @@ class ExtinctionModel:
 
         # Convert hazard rate to per-timestep probability
         # For small λ*dt, this approximates λ*dt, but is exact for any λ*dt
-        p = 1.0 - np.exp(-lambda_rate * dt_myr)
+        p = 1.0 - math.exp(-lambda_rate * dt_myr)
 
         return rng.uniform(0, 1) < p
 
