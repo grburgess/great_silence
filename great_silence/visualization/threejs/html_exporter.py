@@ -119,6 +119,9 @@ class ThreeJSRenderer:
         show_spheres: bool = True,
         show_hazards: bool = True,
         animation_data_url: Optional[str] = None,
+        galaxy_data_url: Optional[str] = None,
+        hr_data_url: Optional[str] = None,
+        civ_stats_data_url: Optional[str] = None,
     ) -> str:
         """Render visualization to HTML string.
 
@@ -128,9 +131,12 @@ class ThreeJSRenderer:
             show_spheres: Show expansion spheres
             show_hazards: Show disaster markers
             animation_data_url: External URL for animation data
+            galaxy_data_url: External URL for galaxy star data
+            hr_data_url: External URL for HR-diagram data
+            civ_stats_data_url: External URL for civilization statistics
 
         Returns:
-            HTML string
+            HTML string (self-contained when no external URLs are given)
         """
         if not self.data or self._loaded_animated != animated:
             self._load_data(animated)
@@ -142,30 +148,18 @@ class ThreeJSRenderer:
             "show_hazards": show_hazards,
             "animated": animated,
             "animation_data_url": animation_data_url,
+            "galaxy_data_url": galaxy_data_url,
+            "hr_data_url": hr_data_url,
+            "civ_stats_data_url": civ_stats_data_url,
             "data": self.data,
-            "animation_data": self.data.get("animation_data") if animated else None,
+            "animation_data": (
+                self.data.get("animation_data") if animated and not animation_data_url else None
+            ),
         }
 
         template = self._get_template()
 
-        html = template.render(**template_data)
-
-        if animated and "animation_data" in self.data:
-            data_placeholder = "<!-- ANIMATION_DATA -->"
-            data_size = self.data.get("animation_data_size_mb", 0)
-
-            if data_size <= self.config.data_embed_threshold_mb and animation_data_url is None:
-                html = html.replace(
-                    data_placeholder,
-                    f'<script>window.animationData = {self.data["animation_data"]};</script>',
-                )
-            elif animation_data_url:
-                html = html.replace(
-                    data_placeholder,
-                    f'<script src="{animation_data_url}"></script>',
-                )
-
-        return html
+        return template.render(**template_data)
 
     def export(
         self,
@@ -198,28 +192,51 @@ class ThreeJSRenderer:
             "animation_data": self.data.get("animation_data") if animated else None,
         }
 
-        animation_data_url = None
-        if animated and "animation_data" in self.data:
-            data_size = self.data.get("animation_data_size_mb", 0)
+        filepath = Path(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
 
-            if data_size > self.config.data_embed_threshold_mb:
-                data_filename = Path(filepath).stem + "_data.json"
-                data_filepath = Path(filepath).parent / data_filename
-                animation_data_url = data_filename
-
-                with open(data_filepath, "w") as f:
-                    f.write(self.data["animation_data"])
+        stem = filepath.stem
+        sidecars = {}
+        blobs = [
+            (
+                "animation_data_url",
+                f"{stem}_animation.js",
+                "animationData",
+                self.data.get("animation_data") if animated else None,
+            ),
+            (
+                "galaxy_data_url",
+                f"{stem}_galaxy.js",
+                "galaxyData",
+                json.dumps(self.data["galaxy"]) if self.data.get("galaxy") else None,
+            ),
+            (
+                "hr_data_url",
+                f"{stem}_hrdata.js",
+                "hrData",
+                json.dumps(self.data["hr_data"]) if self.data.get("hr_data") else None,
+            ),
+            (
+                "civ_stats_data_url",
+                f"{stem}_civstats.js",
+                "civStatsData",
+                json.dumps(self.data["civ_stats"]) if self.data.get("civ_stats") else None,
+            ),
+        ]
+        for param, filename, global_name, blob in blobs:
+            if blob is None:
+                continue
+            with open(filepath.parent / filename, "w") as f:
+                f.write(f"window.{global_name} = {blob};")
+            sidecars[param] = filename
 
         html = self.render(
             animated=animated,
             show_trajectories=show_trajectories,
             show_spheres=show_spheres,
             show_hazards=show_hazards,
-            animation_data_url=animation_data_url,
+            **sidecars,
         )
-
-        filepath = Path(filepath)
-        filepath.parent.mkdir(parents=True, exist_ok=True)
 
         if compress:
             import gzip

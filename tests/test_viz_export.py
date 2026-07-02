@@ -77,6 +77,36 @@ def test_export_loads_data_once(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
+def test_export_writes_data_sidecars_and_slim_html(tmp_path):
+    sim = _run_sim_with_snapshots()
+
+    from great_silence.visualization.threejs.html_exporter import ThreeJSRenderer
+
+    renderer = ThreeJSRenderer(sim)
+    renderer.export(str(tmp_path / "viz.html"), animated=True)
+
+    for name in ["viz_animation.js", "viz_galaxy.js", "viz_hrdata.js", "viz_civstats.js"]:
+        assert (tmp_path / name).exists(), name
+
+    html = (tmp_path / "viz.html").read_text()
+    assert 'src="viz_animation.js' in html
+    assert "window.animationData = {" not in html
+    assert "window.galaxyData = {" not in html
+    assert not (tmp_path / "viz_data.json").exists()
+    assert (tmp_path / "viz_animation.js").read_text().startswith("window.animationData = ")
+
+
+def test_bare_render_stays_self_contained():
+    sim = _run_sim_with_snapshots()
+
+    from great_silence.visualization.threejs.html_exporter import ThreeJSRenderer
+
+    html = ThreeJSRenderer(sim).render(animated=True)
+
+    assert "window.animationData = {" in html
+    assert "<!-- ANIMATION_DATA -->" not in html
+
+
 def test_animation_payload_has_union_and_lean_frames():
     import json as _json
 

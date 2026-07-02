@@ -999,34 +999,49 @@
     <script src="postprocess.js?v={{ range(1000000) | random }}"></script>
     <script src="recorder.js?v={{ range(1000000) | random }}"></script>
 
+    {% if galaxy_data_url %}
+    <script src="{{ galaxy_data_url }}?v={{ range(1000000) | random }}"></script>
+    {% elif data.galaxy %}
     <script>
-        {% if data.galaxy %}
         window.galaxyData = {{ data.galaxy | tojson | safe }};
-        {% endif %}
+    </script>
+    {% endif %}
 
-        {% if animated and animation_data %}
-        window.animationData = {
-            frames: {{ animation_data | safe }},
-            time_range: {{ data.time_range | tojson | safe }}
-        };
-        {% endif %}
+    {% if animated and animation_data_url %}
+    <script src="{{ animation_data_url }}?v={{ range(1000000) | random }}"></script>
+    {% elif animated and animation_data %}
+    <script>
+        window.animationData = {{ animation_data | safe }};
+    </script>
+    {% endif %}
 
-        {% if not animated %}
+    {% if not animated %}
+    <script>
         window.civData = {{ data.civilizations | tojson | safe }};
         window.trajectoryData = {{ data.trajectories | tojson | safe }};
         window.probeData = {{ data.probes | tojson | safe }};
         window.hazardData = {{ data.hazards | tojson | safe }};
         window.cameraPresets = {{ data.camera_presets | tojson | safe }};
-        {% endif %}
+    </script>
+    {% endif %}
 
-        {% if data.hr_data %}
+    {% if hr_data_url %}
+    <script src="{{ hr_data_url }}?v={{ range(1000000) | random }}"></script>
+    {% elif data.hr_data %}
+    <script>
         window.hrData = {{ data.hr_data | tojson | safe }};
-        {% endif %}
+    </script>
+    {% endif %}
 
-        {% if data.civ_stats %}
+    {% if civ_stats_data_url %}
+    <script src="{{ civ_stats_data_url }}?v={{ range(1000000) | random }}"></script>
+    {% elif data.civ_stats %}
+    <script>
         window.civStatsData = {{ data.civ_stats | tojson | safe }};
-        {% endif %}
+    </script>
+    {% endif %}
 
+    <script>
         function init() {
             if (typeof THREE === 'undefined') {
                 document.getElementById('loading-text').textContent = 'Error: Three.js failed to load. Please check your internet connection and refresh.';
