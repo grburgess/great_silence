@@ -83,7 +83,7 @@ class EpicyclicOrbitModel:
             Rg = np.clip(Rg - f / np.where(np.abs(df) < 1e-9, 1e-9, df), 0.1, 50.0)
         return Rg
 
-    def positions_at_time(self, t_myr):
+    def positions_at_time(self, t_myr, copy: bool = True):
         epicyclic_positions_kernel(
             float(t_myr),
             self.R_g,
@@ -97,7 +97,7 @@ class EpicyclicOrbitModel:
             self.beta,
             self._out,
         )
-        return self._out.copy()
+        return self._out.copy() if copy else self._out
 
     def _positions_numpy(self, t_myr):
         ph_R = self.kappa * t_myr + self.alpha

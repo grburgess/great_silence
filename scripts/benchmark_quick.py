@@ -13,9 +13,9 @@ def _instrument_integrator(sim):
     if sim.orbit_model is not None:
         original = sim.orbit_model.positions_at_time
 
-        def wrapped(t_myr):
+        def wrapped(t_myr, **kwargs):
             t0 = time.perf_counter()
-            result = original(t_myr)
+            result = original(t_myr, **kwargs)
             timer["total"] += time.perf_counter() - t0
             return result
 

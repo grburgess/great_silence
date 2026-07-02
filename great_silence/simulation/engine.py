@@ -753,7 +753,7 @@ class GalaxySimulation:
         if self.config.simulation.enable_stellar_motion:
             if self.orbit_model is not None:
                 self.galaxy.positions = self.orbit_model.positions_at_time(
-                    self.current_time_myr + dt_myr
+                    self.current_time_myr + dt_myr, copy=False
                 )
             elif self.config.simulation.stellar_motion_adaptive:
                 # Adaptive individual timesteps - much faster for realistic galaxies
