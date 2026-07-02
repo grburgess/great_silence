@@ -731,6 +731,9 @@ function updateAnimation(delta) {
     currentFrame = Math.max(0, Math.min(currentFrame, maxFrame));
 
     const frameIndex = Math.floor(currentFrame);
+    if (frameIndex === window._lastRenderedFrame) {
+        return;
+    }
     window.currentFrame = frameIndex;
     document.getElementById('timeline-slider').value = frameIndex;
 
@@ -745,6 +748,7 @@ function updateFrame(frameIndex) {
 
     // Keep window.currentFrame in sync for external access
     window.currentFrame = frameIndex;
+    window._lastRenderedFrame = frameIndex;
 
     const timeDisplay = document.getElementById('time-display');
     const timeStats = document.getElementById('time-stats');

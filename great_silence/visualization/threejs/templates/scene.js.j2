@@ -222,6 +222,7 @@ function createStarField() {
     });
 
     starPoints = new THREE.Points(starGeometry, starMaterial);
+    starPoints.frustumCulled = false;
     scene.add(starPoints);
 }
 
@@ -260,177 +261,18 @@ function renderStatic() {
     renderer.render(scene, camera);
 }
 
-function initAnimation() {
-    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
-        return;
-    }
-    
-    // Initialize the timeline slider
-    const maxFrame = window.animationData.frames.length - 1;
-    const timelineSlider = document.getElementById('timeline-slider');
-    timelineSlider.max = maxFrame;
-    timelineSlider.value = 0;
-    
-    // Initialize buttons
-    const playBtn = document.getElementById('btn-playpause');
-    playBtn.textContent = '▶ Play';
-    
-    const stepBtn = document.getElementById('btn-step');
-    
-    // Set up play/pause button
-    playBtn.addEventListener('click', function() {
-        isPlaying = !isPlaying;
-        playBtn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
-        
-        if (isPlaying) {
-            playAnimation();
-        }
-    });
-    
-    // Set up step button
-    stepBtn.addEventListener('click', function() {
-        if (!isPlaying) {
-            stepAnimation();
-        }
-    });
-    
-    // Timeline slider
-    timelineSlider.addEventListener('input', function() {
-        currentFrame = parseInt(this.value);
-        updateAnimation(0);  // Update immediately
-    });
-    
-    // Set up reset button
-    document.getElementById('btn-reset').addEventListener('click', function() {
-        currentFrame = 0;
-        timelineSlider.value = 0;
-        updateAnimation(0);
-        isPlaying = false;
-        document.getElementById('btn-playpause').textContent = '▶ Play';
-    });
-}
-
-function playAnimation() {
-    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
-        return;
-    }
-    
-    const speed = parseFloat(document.getElementById('speed-slider').value);
-    
-    function animateStep() {
-        if (isPlaying) {
-            stepAnimation();
-            setTimeout(animateStep, 100 / speed);  // Adjust for speed setting
-        }
-    }
-    
-    animateStep();
-}
-
-function stepAnimation() {
-    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
-        return;
-    }
-    
-    const totalFrames = window.animationData.frames.length;
-    const timelineSlider = document.getElementById('timeline-slider');
-    
-    currentFrame++;
-    if (currentFrame >= totalFrames) {
-        currentFrame = 0;
-    }
-    
-    timelineSlider.value = currentFrame;
-    updateAnimation(0);
-}
-
-function updateAnimation(delta) {
-    if (!window.animationData || !window.animationData.frames || window.animationData.frames.length === 0) {
-        return;
-    }
-    
-    const totalFrames = window.animationData.frames.length;
-    const timeRange = window.animationData.time_range || [0, 1];
-    
-    // Update time display (time in Gyr)
-    const timeGyr = timeRange[0] + (timeRange[1] - timeRange[0]) * currentFrame / (totalFrames - 1);
-    document.getElementById('time-display').textContent = timeGyr.toFixed(2) + ' Gyr';
-    
-    // Update stellar positions if motion enabled (time in Myr for GPU shader)
-    const timeMyr = timeGyr * 1000.0;
-    updateStellarTime(timeMyr);
-    
-    const frame = window.animationData.frames[currentFrame];
-    
-    if (frame) {
-        // Update stellar positions from snapshot (for physically-correct stellar motion)
-        const hasPositions = frame.stellar_positions && frame.stellar_positions.length > 0;
-        const hasGeometry = starGeometry !== undefined && starGeometry !== null;
-        console.log(`[Animation] Frame ${currentFrame}/${window.animationData.frames.length}: stellar_positions=${hasPositions ? frame.stellar_positions.length : 0}, starGeometry=${hasGeometry}`);
-        
-        if (hasPositions && hasGeometry) {
-            try {
-                updateStellarPositions(frame.stellar_positions);
-            } catch (e) {
-                console.error('[Animation] Error updating stellar positions:', e);
-            }
-        } else {
-            console.warn(`[Animation] Skipping stellar update: hasPositions=${hasPositions}, hasGeometry=${hasGeometry}`);
-        }
-        
-        updateCivilizations(frame.civilizations);
-        updateProbes(frame.probes);
-        updateHazards(frame.hazards);
-    }
-    
-    // Update stats
-    const civilStats = document.getElementById('civ-stats');
-    const activeCivs = frame.civilizations ? frame.civilizations.filter(c => c.is_active).length : 0;
-    const totalCivs = frame.civilizations ? frame.civilizations.length : 0;
-    civilStats.textContent = `Active: ${activeCivs} | Total: ${totalCivs}`;
-}
-
 // Update star positions from snapshot data (for stellar motion visualization)
 function updateStellarPositions(positions) {
-    console.log('[StellarMotion] updateStellarPositions called with', positions ? positions.length : 0, 'positions');
-    
-    if (!starGeometry) {
-        console.error('[StellarMotion] ERROR: No starGeometry!');
-        return;
-    }
-    if (!positions || positions.length === 0) {
-        console.error('[StellarMotion] ERROR: No positions data!');
-        return;
-    }
-    
+    if (!starGeometry || !positions || positions.length === 0) return;
+
     const positionAttribute = starGeometry.getAttribute('position');
-    if (!positionAttribute) {
-        console.error('[StellarMotion] ERROR: No position attribute!');
-        return;
-    }
-    
+    if (!positionAttribute) return;
+
     const count = Math.min(positions.length, positionAttribute.count);
-    
-    // Debug: show position change for first star
-    const oldPos = [positionAttribute.getX(0), positionAttribute.getY(0), positionAttribute.getZ(0)];
-    const newPos = positions[0];
-    const delta = Math.sqrt(
-        Math.pow(newPos[0] - oldPos[0], 2) + 
-        Math.pow(newPos[1] - oldPos[1], 2) + 
-        Math.pow(newPos[2] - oldPos[2], 2)
-    );
-    console.log(`[StellarMotion] Updating ${count} stars. Star 0 moved ${delta.toFixed(4)} kpc: [${oldPos.map(x => x.toFixed(2))}] -> [${newPos.map(x => x.toFixed(2))}]`);
-    
     for (let i = 0; i < count; i++) {
         positionAttribute.setXYZ(i, positions[i][0], positions[i][1], positions[i][2]);
     }
-    
     positionAttribute.needsUpdate = true;
-    
-    // Force geometry update
-    starGeometry.computeBoundingSphere();
-    
-    console.log('[StellarMotion] Position update complete');
 }
 
 function animate() {
@@ -445,8 +287,10 @@ function animate() {
         window.updateCameraSystem(delta);
     }
 
-    if (window.updateLOD) {
+    const cameraMoved = !window._lodCameraPos || camera.position.distanceToSquared(window._lodCameraPos) > 1e-8;
+    if (window.updateLOD && (isPlaying || cameraMoved)) {
         window.updateLOD();
+        window._lodCameraPos = camera.position.clone();
     }
 
     if (isPlaying) {

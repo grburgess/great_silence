@@ -18,14 +18,16 @@ function updateParticles() {
     }
 }
 
-function createCivilizationSprite(civData) {
+const _civSpriteMaterialCache = {};
+
+function _getCivSpriteMaterial(baseColor, isActive) {
+    const key = baseColor + '|' + (isActive ? 'a' : 'x');
+    if (_civSpriteMaterialCache[key]) return _civSpriteMaterialCache[key];
+
     const canvas = document.createElement('canvas');
     canvas.width = 64;
     canvas.height = 64;
     const ctx = canvas.getContext('2d');
-
-    const kardashev = civData.kardashev;
-    const baseColor = getKardashevColor(kardashev);
 
     const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
     gradient.addColorStop(0, baseColor);
@@ -41,19 +43,20 @@ function createCivilizationSprite(civData) {
     const material = new THREE.SpriteMaterial({
         map: texture,
         transparent: true,
-        opacity: civData.is_active ? (window.config.civ_active_opacity || 0.9) : (window.config.civ_extinct_opacity || 0.5),
+        opacity: isActive ? (window.config.civ_active_opacity || 0.9) : (window.config.civ_extinct_opacity || 0.5),
         blending: THREE.AdditiveBlending
     });
+    _civSpriteMaterialCache[key] = material;
+    return material;
+}
 
-    const sprite = new THREE.Sprite(material);
+function createCivilizationSprite(civData) {
+    const baseColor = getKardashevColor(civData.kardashev);
+    const sprite = new THREE.Sprite(_getCivSpriteMaterial(baseColor, civData.is_active));
     sprite.position.set(civData.position[0], civData.position[1], civData.position[2]);
-    sprite.scale.set(
-        civData.is_active ? (window.config.civ_active_size || 0.15) : (window.config.civ_extinct_size || 0.1),
-        civData.is_active ? (window.config.civ_active_size || 0.15) : (window.config.civ_extinct_size || 0.1),
-        1
-    );
+    const size = civData.is_active ? (window.config.civ_active_size || 0.15) : (window.config.civ_extinct_size || 0.1);
+    sprite.scale.set(size, size, 1);
     sprite.userData = civData;
-
     return sprite;
 }
 
@@ -160,7 +163,11 @@ function createProbeTrail(probeData) {
 }
 
 function updateProbes(probes) {
-    probeLines.forEach(line => scene.remove(line));
+    probeLines.forEach(line => {
+        line.geometry.dispose();
+        line.material.dispose();
+        scene.remove(line);
+    });
     probeLines = [];
 
     probes.forEach(probe => {
@@ -220,7 +227,11 @@ function createHazardMarker(hazardData) {
 }
 
 function updateHazards(hazards) {
-    hazardMeshes.forEach(mesh => scene.remove(mesh));
+    hazardMeshes.forEach(mesh => {
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+        scene.remove(mesh);
+    });
     hazardMeshes = [];
 
     hazards.forEach(hazard => {
@@ -301,7 +312,13 @@ function createExpansionLine(trajectory) {
 }
 
 function updateTrajectories(trajectories, currentTimeGyr) {
-    trajectoryLines.forEach(obj => scene.remove(obj));
+    trajectoryLines.forEach(obj => {
+        obj.children.forEach(child => {
+            child.geometry.dispose();
+            child.material.dispose();
+        });
+        scene.remove(obj);
+    });
     trajectoryLines = [];
 
     if (!showTrajectoryLines) return;
