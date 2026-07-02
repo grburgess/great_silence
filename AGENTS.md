@@ -683,3 +683,21 @@ python scripts/benchmark_baseline.py  # Detailed profiling
 - **Uncommitted-work gotcha**: an implementation subagent's `git reset --hard` (recovering from the format-hook mess) also wiped unrelated uncommitted AGENTS.md edits in the shared working tree — commit docs edits promptly, or don't leave them uncommitted while agents hold the tree
 - **Late additions (same gates)**: `df3408b` ExtinctionModel scalar `math.exp` (2.53→2.48s); `5576731` `_launch_initial_probes` now uses `_calculate_intercept_positions_batch` like its siblings (neutral-in-noise, kept for consistency; batch solver already handles empty targets via its `n == 0` early return)
 - **Hook gotcha (extends the ruff one)**: the PostToolUse Edit hook (black+ruff) both strips a momentarily-unused import AND can reformat the ENTIRE file (collapsed constructors, trailing commas) turning a 3-line change into a ~100-line diff. If that happens: `git reset --hard`, re-apply via a python script through Bash (bypasses the Edit hook), verify the diff is surgical before committing
+
+### Jul 2026 - Webapp Viz Connection-Loss Fix + WebGL Quick Wins
+- **Root cause of webapp "connection lost"**: `results_dashboard.py` ran `export_html()` synchronously inside `on_click` handlers on the event loop; NiceGUI's default `reconnect_timeout=3.0` dropped the client during long exports. Fix: async handlers + `await run.io_bound(export_html, ...)` + `ui.spinner`, and `ui.run(reconnect_timeout=30.0)` in `app.py:202`
+- **Double-pipeline bug**: `ThreeJSRenderer.export()` ran the full extract+serialize+render pipeline TWICE (`export()` then `render()` again). Fix: `_loaded_animated` reuse guard in `render()` (`html_exporter.py:131`) — halves export time
+- **Static-route leak**: old per-click `mkdtemp` + `app.add_static_files` leaked routes/dirs. Now single `/viz` static root registered at import (`VIZ_ROOT` in `results_dashboard.py:13-15`) with per-run subdirs + `_prune_viz_dirs` keep-last-3
+- **WebGL fallback quick wins** (templates/):
+  - Frame-index gate (`window._lastRenderedFrame`, `ui.js.j2:734`) — `updateFrame` runs once per snapshot transition instead of ~60x/s (verified via Playwright: 39 frames in 2s = exactly 39 rebuilds)
+  - Civ sprite material cache (`_civSpriteMaterialCache` in `particles.js.j2`, <=10 materials vs per-civ-per-frame CanvasTexture)
+  - `dispose()` before `scene.remove` in probe/hazard/trajectory teardowns (civ sprites share cached materials — remove only, never dispose)
+  - Deleted shadowed playback impl in `scene.js.j2` + per-frame `console.log`/`computeBoundingSphere`; `starPoints.frustumCulled = false`; LOD skipped when paused+camera still; deleted dead `animation.js.j2`
+- **WebGPU remains the default renderer** (feature-detect `window.__USE_WEBGPU = !!navigator.gpu`, `index.html.j2:642`); WebGL is fallback-only
+- **Gotchas**:
+  - Non-animated export path (`animated=False`) crashes with "ndarray is not JSON serializable" — pre-existing, untouched
+  - The `?v=random` cache-buster means a same-export reload serves the cached webgpu module — test WebGL fallback by rewriting `__USE_WEBGPU`, not by hiding files
+  - Webapp writes `output/disasters.h5` relative to CWD — launch from project root
+- **Known remaining bottleneck**: the generated viz HTML is ~112MB for a 10k-star run (hrData/galaxyData inlined uncapped; externalization branch dead) — step 3 of the approved plan (payload split) addresses this
+- **Tests**: `tests/test_threejs_template_hygiene.py` (new), plus additions in `tests/test_viz_export.py` and `tests/test_webapp_smoke.py`
+- **Design/plan docs**: `docs/superpowers/specs/2026-07-02-webapp-viz-steps12-design.md`, `docs/superpowers/plans/2026-07-02-webapp-viz-steps12.md`
