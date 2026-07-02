@@ -776,7 +776,7 @@ function updateFrame(frameIndex) {
     }
 
     if (window.updateTrajectories) {
-        window.updateTrajectories(frame.trajectories || [], frame.time);
+        window.updateTrajectories(frame.time);
     }
     
     // Update enhanced disaster visualization

@@ -311,33 +311,31 @@ function createExpansionLine(trajectory) {
     return group;
 }
 
-function updateTrajectories(trajectories, currentTimeGyr) {
-    trajectoryLines.forEach(obj => {
-        obj.children.forEach(child => {
-            child.geometry.dispose();
-            child.material.dispose();
-        });
-        scene.remove(obj);
-    });
-    trajectoryLines = [];
+let _trajectoriesBuilt = false;
+let _lastTrajTimeMyr = 0;
 
-    if (!showTrajectoryLines) return;
-    if (!trajectories || !Array.isArray(trajectories)) return;
+function _buildTrajectoryObjects() {
+    const unionList = (window.animationData && window.animationData.trajectories) || window.trajectoryData || [];
+    unionList.forEach(traj => {
+        if (!traj.start || !traj.end) return;
+        const obj = createExpansionLine(traj);
+        obj.visible = false;
+        trajectoryLines.push(obj);
+        scene.add(obj);
+    });
+    _trajectoriesBuilt = true;
+}
+
+function updateTrajectories(currentTimeGyr) {
+    if (!_trajectoriesBuilt) _buildTrajectoryObjects();
 
     const currentTimeMyr = (currentTimeGyr || 0) * 1000;
+    _lastTrajTimeMyr = currentTimeMyr;
 
-    trajectories.forEach(traj => {
-        if (traj.start && traj.end) {
-            const trajTimeMyr = traj.time_myr || 0;
-            if (trajTimeMyr <= currentTimeMyr) {
-                const obj = createExpansionLine(traj);
-                trajectoryLines.push(obj);
-                scene.add(obj);
-            }
-        }
+    trajectoryLines.forEach(obj => {
+        obj.visible = showTrajectoryLines && (obj.userData.time_myr || 0) <= currentTimeMyr;
     });
-    
-    // Update stellar motion time if enabled
+
     if (window.updateStellarTime && typeof window.updateStellarTime === 'function') {
         window.updateStellarTime(currentTimeMyr);
     }
@@ -346,7 +344,7 @@ function updateTrajectories(trajectories, currentTimeGyr) {
 function setTrajectoryVisibility(visible) {
     showTrajectoryLines = visible;
     trajectoryLines.forEach(obj => {
-        obj.visible = visible;
+        obj.visible = visible && (obj.userData.time_myr || 0) <= _lastTrajTimeMyr;
     });
 }
 

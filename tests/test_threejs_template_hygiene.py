@@ -57,3 +57,22 @@ def test_teardown_disposes_gpu_resources():
 
 def test_dead_trail_template_removed():
     assert not (TEMPLATE_DIR / "animation.js.j2").exists()
+
+
+def test_webgl_trajectories_built_once_from_union():
+    js = _render("particles.js.j2")
+    assert "animationData.trajectories" in js
+    assert "_trajectoriesBuilt" in js
+
+
+def test_updateframe_passes_time_only_to_trajectories():
+    js = _render("ui.js.j2")
+    assert "updateTrajectories(frame.trajectories" not in js
+    assert "updateTrajectories(frame.time)" in js
+
+
+def test_webgpu_trajectories_built_once_from_union():
+    mjs = (TEMPLATE_DIR / "webgpu" / "galaxy-webgpu.mjs").read_text()
+    assert "animationData.trajectories" in mjs
+    assert "updateTrajectoryVisibility" in mjs
+    assert "rebuildTrajectories" not in mjs
