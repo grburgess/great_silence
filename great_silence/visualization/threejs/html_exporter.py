@@ -29,6 +29,7 @@ class ThreeJSRenderer:
         self.template_dir = template_dir
         self.extractor = SimulationDataExtractor(source, self.config)
         self.data: dict = {}
+        self._loaded_animated: Optional[bool] = None
 
     def _load_data(self, animated: bool = False):
         """Load and prepare data for template rendering.
@@ -105,6 +106,8 @@ class ThreeJSRenderer:
                 "civ_stats": civ_stats,
             }
 
+        self._loaded_animated = animated
+
     def render(
         self,
         animated: bool = False,
@@ -125,7 +128,8 @@ class ThreeJSRenderer:
         Returns:
             HTML string
         """
-        self._load_data(animated)
+        if not self.data or self._loaded_animated != animated:
+            self._load_data(animated)
 
         template_data = {
             "config": self.config.to_dict(),
@@ -189,10 +193,6 @@ class ThreeJSRenderer:
             "data": self.data,
             "animation_data": self.data.get("animation_data") if animated else None,
         }
-
-        template = self._get_template()
-
-        html = template.render(**template_data)
 
         animation_data_url = None
         if animated and "animation_data" in self.data:
