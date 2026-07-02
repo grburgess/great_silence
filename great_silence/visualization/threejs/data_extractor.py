@@ -152,6 +152,9 @@ def _extract_expansion_trajectories(snap):
                             "civ_id": civ.civ_id,
                             "generation": probe.generation if hasattr(probe, "generation") else 0,
                             "time_myr": arrival_time,
+                            "start_idx": launch_idx,
+                            "end_idx": target_idx,
+                            "source": "probe",
                         }
                     )
 
@@ -172,10 +175,37 @@ def _extract_expansion_trajectories(snap):
                             "civ_id": civ.civ_id,
                             "generation": 0,
                             "time_myr": current_time,
+                            "start_idx": home_idx,
+                            "end_idx": colony_idx,
+                            "source": "colony",
                         }
                     )
 
     return trajectories
+
+
+def build_union_trajectories(snapshots):
+    """Collapse per-snapshot cumulative trajectory lists to unique edges (earliest occurrence)."""
+    best = {}
+    for snap in snapshots:
+        for entry in snap.get("trajectories", []):
+            if "start_idx" in entry and "end_idx" in entry:
+                key = (entry["civ_id"], entry["start_idx"], entry["end_idx"])
+            else:
+                key = (
+                    entry["civ_id"],
+                    tuple(round(c, 3) for c in entry["start"]),
+                    tuple(round(c, 3) for c in entry["end"]),
+                )
+            current = best.get(key)
+            if current is None:
+                best[key] = entry
+                continue
+            entry_is_probe = entry.get("source") == "probe"
+            current_is_probe = current.get("source") == "probe"
+            if entry_is_probe and not current_is_probe or entry_is_probe == current_is_probe and entry["time_myr"] < current["time_myr"]:
+                best[key] = entry
+    return list(best.values())
 
 
 @dataclass

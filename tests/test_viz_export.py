@@ -77,6 +77,113 @@ def test_export_loads_data_once(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
+class _FakeProbe:
+    def __init__(self, launch, target, arrival, generation=1):
+        self.launch_star_idx = launch
+        self.target_star_idx = target
+        self.arrival_time_myr = arrival
+        self.generation = generation
+
+
+class _FakeCiv:
+    def __init__(self, civ_id, home, probes=(), colonies=()):
+        self.civ_id = civ_id
+        self.parent_star_idx = home
+        self.archived_probes = list(probes)
+        self.colonized_stars = set(colonies)
+
+
+class _FakeSnap:
+    def __init__(self, time_myr, civs, positions):
+        self.time_myr = time_myr
+        self.civilization_states = civs
+        self.stellar_positions = positions
+
+
+def test_trajectory_entries_carry_indices_and_source():
+    import numpy as np
+
+    from great_silence.visualization.threejs.data_extractor import (
+        _extract_expansion_trajectories,
+    )
+
+    pos = np.arange(30, dtype=float).reshape(10, 3)
+    civ = _FakeCiv(7, home=0, probes=[_FakeProbe(0, 3, arrival=120.0)], colonies=[3, 5])
+    snap = _FakeSnap(500.0, [civ], pos)
+
+    entries = _extract_expansion_trajectories(snap)
+
+    probe_entries = [e for e in entries if e["source"] == "probe"]
+    colony_entries = [e for e in entries if e["source"] == "colony"]
+    assert probe_entries[0]["start_idx"] == 0
+    assert probe_entries[0]["end_idx"] == 3
+    assert probe_entries[0]["time_myr"] == 120.0
+    assert colony_entries[0]["end_idx"] == 5
+
+
+def test_union_trajectories_dedups_and_keeps_earliest():
+    from great_silence.visualization.threejs.data_extractor import build_union_trajectories
+
+    def entry(civ, s, e, t, source="probe", coords=None):
+        return {
+            "start": coords or [float(s)] * 3,
+            "end": [float(e)] * 3,
+            "civ_id": civ,
+            "generation": 1,
+            "time_myr": t,
+            "start_idx": s,
+            "end_idx": e,
+            "source": source,
+        }
+
+    snapshots = [
+        {"trajectories": [entry(1, 0, 3, 120.0), entry(1, 0, 5, 300.0, source="colony")]},
+        {
+            "trajectories": [
+                entry(1, 0, 3, 120.0, coords=[9.9] * 3),
+                entry(1, 0, 5, 200.0, source="colony"),
+                entry(2, 4, 6, 400.0),
+            ]
+        },
+    ]
+
+    union = build_union_trajectories(snapshots)
+
+    assert len(union) == 3
+    by_key = {(e["civ_id"], e["start_idx"], e["end_idx"]): e for e in union}
+    assert by_key[(1, 0, 3)]["start"] == [0.0] * 3
+    assert by_key[(1, 0, 5)]["time_myr"] == 200.0
+
+
+def test_union_prefers_probe_over_colony_on_same_key():
+    from great_silence.visualization.threejs.data_extractor import build_union_trajectories
+
+    colony = {
+        "start": [0.0] * 3,
+        "end": [1.0] * 3,
+        "civ_id": 1,
+        "generation": 0,
+        "time_myr": 50.0,
+        "start_idx": 0,
+        "end_idx": 1,
+        "source": "colony",
+    }
+    probe = {
+        "start": [0.0] * 3,
+        "end": [1.0] * 3,
+        "civ_id": 1,
+        "generation": 1,
+        "time_myr": 90.0,
+        "start_idx": 0,
+        "end_idx": 1,
+        "source": "probe",
+    }
+    union = build_union_trajectories([{"trajectories": [colony]}, {"trajectories": [probe]}])
+
+    assert len(union) == 1
+    assert union[0]["source"] == "probe"
+
+
 def test_render_reloads_when_animated_flag_changes(monkeypatch):
     sim = _run_sim_with_snapshots()
 
