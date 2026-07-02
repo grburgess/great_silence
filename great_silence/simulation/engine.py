@@ -2848,33 +2848,14 @@ class GalaxySimulation:
 
     def _scan_for_encounters(self, dt_myr: float) -> None:
         """
-        Scan for new encounters between civilizations using spatial index.
+        Disabled: single-civ_id territory-overlap queries cannot return overlaps.
 
-        O(N) scan using spatial index instead of O(N²) brute force.
+        find_territory_overlaps builds star_to_civs from only the one civ_id passed,
+        so 'len(civs_at_star) > 1' is never true and it always returns []. Scanning
+        one civ at a time can never detect an encounter; the scan is disabled until
+        the spatial-index API can check one civ against the others.
         """
-        if self.civ_spatial_index is None:
-            return
-
-        active_civs = [c for c in self.civilizations if c.is_active]
-
-        for civ in active_civs:
-            if len(civ.colonized_stars) == 0:
-                continue
-
-            overlaps = self.civ_spatial_index.find_territory_overlaps([civ.civ_id])
-
-            for civ_a_id, civ_b_id, overlapping_stars in overlaps:
-                if civ_b_id in civ.known_civilizations:
-                    continue
-
-                civ_a = self._civ_by_id.get(civ_a_id)
-                civ_b = self._civ_by_id.get(civ_b_id)
-
-                if civ_a is None or civ_b is None or not civ_a.is_active or not civ_b.is_active:
-                    continue
-
-                star_idx = next(iter(overlapping_stars))
-                self._handle_encounter(civ_a, civ_b, star_idx, "shared_colony")
+        return
 
     def _handle_encounter(
         self,
