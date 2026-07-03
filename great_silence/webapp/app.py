@@ -1,5 +1,6 @@
 """Main NiceGUI web application for Great Silence simulations."""
 
+import logging
 from typing import Callable, Optional
 
 from nicegui import ui
@@ -90,9 +91,12 @@ def main_page():
         theme = SPACE_THEMES.get(theme_name, SPACE_THEMES["deep_space"])
         ui.notify(f"{theme['icon']} {theme['name']} theme applied", type="positive", position="top")
 
-    with ui.header().classes(
-        "bg-gray-900/80 backdrop-blur-sm border-b border-gray-700/50 items-center"
-    ), ui.row().classes("w-full max-w-6xl mx-auto items-center px-4"):
+    with (
+        ui.header().classes(
+            "bg-gray-900/80 backdrop-blur-sm border-b border-gray-700/50 items-center"
+        ),
+        ui.row().classes("w-full max-w-6xl mx-auto items-center px-4"),
+    ):
         ui.label("🌌").classes("text-3xl")
         with ui.column().classes("gap-0"):
             ui.label("GREAT SILENCE").classes(
@@ -190,8 +194,29 @@ def main_page():
                 ).classes("text-gray-500 text-xs hover:text-cyan-400")
 
 
+class _EngineioDisconnectFilter(logging.Filter):
+    """Suppress upstream python-engineio noise: a client disconnecting mid
+    socket.io polling request makes translate_request return {} and
+    handle_request raise KeyError('REQUEST_METHOD'). Harmless (the request was
+    already dead) but logs a full traceback on every page reload."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc = record.exc_info[1] if record.exc_info else None
+        seen = 0
+        while exc is not None and seen < 20:
+            seen += 1
+            if isinstance(exc, BaseExceptionGroup):
+                exc = exc.exceptions[0] if exc.exceptions else None
+                continue
+            if isinstance(exc, KeyError) and exc.args == ("REQUEST_METHOD",):
+                return False
+            exc = exc.__cause__ or exc.__context__
+        return True
+
+
 def run_app(host: str = "127.0.0.1", port: int = 8080, reload: bool = False):
     """Run the web application."""
+    logging.getLogger("uvicorn.error").addFilter(_EngineioDisconnectFilter())
     ui.run(
         title="Great Silence - Galactic Civilization Simulator",
         host=host,

@@ -724,3 +724,11 @@ python scripts/benchmark_baseline.py  # Detailed profiling
 - **NOT runtime-verified on WebGPU**: headless Playwright lacks `navigator.gpu` — verified via Node unit tests + hygiene tests + `node --check` + 3-lens adversarial review; needs one manual look in a WebGPU browser (markers should glide between snapshots during playback)
 - **GameBlocks skill assessed and rejected** for this work: it targets input-driven game actors (motion controllers + Rapier physics, three@0.161 modules) vs our data-driven keyframe playback on r128/0.180; camera rigs already ported; nothing copied
 - **Plan doc**: `docs/superpowers/plans/2026-07-03-smooth-expansion-webgpu.md`
+
+### Jul 2026 - engineio KeyError('REQUEST_METHOD') log noise (diagnosed + suppressed)
+- **Symptom**: "Exception in ASGI application ... KeyError: 'REQUEST_METHOD'" ExceptionGroup traceback in the webapp server log during test runs
+- **Root cause (upstream, verified in installed source)**: python-engineio 4.13.3 `async_drivers/asgi.py translate_request` returns `{}` when the first `receive()` yields `http.disconnect` (client closed a socket.io polling request before delivering its body — happens on page reload/tab close); `async_server.py:238` then does `environ['REQUEST_METHOD']` unguarded. Still unguarded on engineio `main`, so upgrading does not help
+- **NOT a regression**: reproduced identically on pre-change commit 340c252 (deterministic probe: open TCP, send POST /_nicegui_ws/socket.io/?EIO=4&transport=polling headers with Content-Length but no body, close socket)
+- **Harmless**: the request was already dead; server continues serving
+- **Handling**: `_EngineioDisconnectFilter` on the `uvicorn.error` logger (installed in `run_app`, `webapp/app.py`) suppresses ONLY records whose exception chain (walking BaseExceptionGroup + __cause__/__context__) bottoms out in `KeyError('REQUEST_METHOD')`. E2E verified: 3 disconnect probes → 0 log lines, app serves 200. Remove the filter if engineio ever guards empty environ upstream
+- Tests: `tests/test_webapp_smoke.py` (filter selectivity + installation)

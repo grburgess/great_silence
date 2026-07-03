@@ -79,3 +79,42 @@ def test_run_app_sets_reconnect_timeout(monkeypatch):
     webapp_app.run_app()
 
     assert captured["reconnect_timeout"] == 30.0
+
+
+def _make_record(exc):
+    import logging
+    import sys
+
+    try:
+        raise exc
+    except BaseException:
+        exc_info = sys.exc_info()
+    return logging.LogRecord("uvicorn.error", logging.ERROR, __file__, 1, "boom", None, exc_info)
+
+
+def test_engineio_disconnect_filter_suppresses_only_request_method_keyerror():
+    from great_silence.webapp.app import _EngineioDisconnectFilter
+
+    f = _EngineioDisconnectFilter()
+
+    assert f.filter(_make_record(KeyError("REQUEST_METHOD"))) is False
+    assert f.filter(_make_record(BaseExceptionGroup("g", [KeyError("REQUEST_METHOD")]))) is False
+    assert f.filter(_make_record(KeyError("other"))) is True
+    assert f.filter(_make_record(ValueError("REQUEST_METHOD"))) is True
+
+
+def test_run_app_installs_engineio_noise_filter(monkeypatch):
+    import logging
+
+    from nicegui import ui
+
+    from great_silence.webapp import app as webapp_app
+
+    monkeypatch.setattr(ui, "run", lambda **kwargs: None)
+    webapp_app.run_app()
+
+    logger = logging.getLogger("uvicorn.error")
+    assert any(isinstance(f, webapp_app._EngineioDisconnectFilter) for f in logger.filters)
+    logger.filters = [
+        f for f in logger.filters if not isinstance(f, webapp_app._EngineioDisconnectFilter)
+    ]
