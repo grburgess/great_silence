@@ -1,10 +1,21 @@
 """Reactive state management for the webapp."""
 
-from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
 import asyncio
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 from great_silence.config.parameters import SimulationConfig
+
+WEBAPP_MIN_STARS = 10_000
+WEBAPP_MAX_STARS = 500_000
+WEBAPP_DEFAULT_STARS = 50_000
+
+
+def _webapp_safe_stars(total_stars: int) -> int:
+    """The library default (100M stars) is far beyond what the webapp UI supports."""
+    if WEBAPP_MIN_STARS <= total_stars <= WEBAPP_MAX_STARS:
+        return total_stars
+    return WEBAPP_DEFAULT_STARS
 
 
 @dataclass
@@ -40,6 +51,7 @@ class AppState:
 
     def __init__(self):
         self.config = SimulationConfig()
+        self.config.galaxy.total_stars = _webapp_safe_stars(self.config.galaxy.total_stars)
         self.progress = SimulationProgress()
         self.simulation = None
         self.results = None
@@ -49,8 +61,10 @@ class AppState:
         self._lock = asyncio.Lock()
 
     def apply_preset(self, preset_name: str) -> None:
-        """Apply a named preset to the configuration."""
+        """Apply a named preset to the configuration, preserving the user's star count."""
+        total_stars = self.config.galaxy.total_stars
         self.config = SimulationConfig.with_preset(preset_name)
+        self.config.galaxy.total_stars = _webapp_safe_stars(total_stars)
         self._notify_update()
 
     def update_galaxy_param(self, name: str, value: Any) -> None:

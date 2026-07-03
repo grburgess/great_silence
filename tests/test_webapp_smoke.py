@@ -81,6 +81,26 @@ def test_run_app_sets_reconnect_timeout(monkeypatch):
     assert captured["reconnect_timeout"] == 30.0
 
 
+def test_webapp_state_clamps_library_star_default():
+    from great_silence.webapp.state import WEBAPP_DEFAULT_STARS, AppState
+
+    state = AppState()
+
+    assert state.config.galaxy.total_stars == WEBAPP_DEFAULT_STARS
+    assert 10_000 <= state.config.galaxy.total_stars <= 500_000
+
+
+def test_apply_preset_preserves_user_star_count():
+    from great_silence.webapp.state import AppState
+
+    state = AppState()
+    state.config.galaxy.total_stars = 120_000
+
+    state.apply_preset("optimistic")
+
+    assert state.config.galaxy.total_stars == 120_000
+
+
 def _make_record(exc):
     import logging
     import sys
