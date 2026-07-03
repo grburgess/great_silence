@@ -76,3 +76,18 @@ def test_webgpu_trajectories_built_once_from_union():
     assert "animationData.trajectories" in mjs
     assert "updateTrajectoryVisibility" in mjs
     assert "rebuildTrajectories" not in mjs
+
+
+def test_webgpu_layers_interpolate_continuously():
+    mjs = (TEMPLATE_DIR / "webgpu" / "galaxy-webgpu.mjs").read_text()
+    assert "interp-utils.mjs" in mjs
+    assert "bracketForTime" in mjs
+    assert "updateLayerInterpolation" in mjs
+    assert "civPool" in mjs
+    assert "probePool" in mjs
+
+
+def test_webgpu_frame_index_uses_binary_search():
+    mjs = (TEMPLATE_DIR / "webgpu" / "galaxy-webgpu.mjs").read_text()
+    fn = mjs.split("function frameIndexForTime")[1].split("\n}")[0]
+    assert "bracketForTime" in fn

@@ -21,6 +21,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { bracketForTime, lerp3 } from './interp-utils.mjs';
 
 const KPC = 1.0; // galaxy data is already in kpc scene units
 
@@ -343,10 +344,21 @@ let tourPlaying = false;
 let tourDuration = 20.0;
 let tourName = '';
 
+let frameTimesMyr = null;
+
+function getFrameTimes() {
+    if (frameTimesMyr) return frameTimesMyr;
+    const frames = (window.animationData && window.animationData.frames) || [];
+    if (!frames.length) return null;
+    frameTimesMyr = frames.map((f) => (f.time_myr !== undefined ? f.time_myr : (f.time || 0) * 1000));
+    return frameTimesMyr;
+}
+
 function frameIndexForTime() {
-    const nFrames = (window.animationData && window.animationData.frames && window.animationData.frames.length) || 0;
-    if (nFrames <= 0) return -1;
-    return Math.max(0, Math.min(nFrames - 1, Math.round(timeToFrac(currentTimeMyr) * (nFrames - 1))));
+    const times = getFrameTimes();
+    if (!times) return -1;
+    const { i, j, alpha } = bracketForTime(times, currentTimeMyr);
+    return alpha >= 0.5 ? j : i;
 }
 
 function currentFrameCivs() {
@@ -790,26 +802,59 @@ function buildTrajectoryObjects() {
     }
 }
 
-function rebuildCivs(frame) {
-    clearGroup(civGroup);
+const civPool = new Map();
+const probePool = new Map();
+
+function _disposePooled(group, pool, id) {
+    const m = pool.get(id);
+    if (!m) return;
+    group.remove(m);
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+    pool.delete(id);
+}
+
+function syncCivPool(frame) {
     const cfg = window.config || {};
+    const present = new Set();
     for (const civ of frame.civilizations || []) {
+        const id = civ.civ_id;
+        present.add(id);
         const active = civ.is_active;
-        const r = active ? cfg.civ_active_size || 0.15 : cfg.civ_extinct_size || 0.1;
-        const op = active ? cfg.civ_active_opacity || 0.9 : cfg.civ_extinct_opacity || 0.5;
-        const m = emissiveSphere(r, kardashevColorHex(civ.kardashev), op);
-        m.position.set(civ.position[0], civ.position[1], civ.position[2]);
-        civGroup.add(m);
+        const hex = kardashevColorHex(civ.kardashev);
+        const stateKey = hex + '|' + (active ? 'a' : 'x');
+        let m = civPool.get(id);
+        if (m && m.userData.stateKey !== stateKey) {
+            _disposePooled(civGroup, civPool, id);
+            m = null;
+        }
+        if (!m) {
+            const r = active ? cfg.civ_active_size || 0.15 : cfg.civ_extinct_size || 0.1;
+            const op = active ? cfg.civ_active_opacity || 0.9 : cfg.civ_extinct_opacity || 0.5;
+            m = emissiveSphere(r, hex, op);
+            m.userData.stateKey = stateKey;
+            m.position.set(civ.position[0], civ.position[1], civ.position[2]);
+            civPool.set(id, m);
+            civGroup.add(m);
+        }
     }
+    for (const [id, m] of civPool) m.visible = present.has(id);
     civGroup.visible = showCivs;
 }
 
-function rebuildProbes(frame) {
-    clearGroup(probeGroup);
+function syncProbePool(frame) {
+    const present = new Set();
     for (const p of frame.probes || []) {
-        const m = emissiveSphere(0.05, 0x00ffff, 0.9);
-        m.position.set(p.position[0], p.position[1], p.position[2]);
-        probeGroup.add(m);
+        present.add(p.probe_id);
+        if (!probePool.has(p.probe_id)) {
+            const m = emissiveSphere(0.05, 0x00ffff, 0.9);
+            m.position.set(p.position[0], p.position[1], p.position[2]);
+            probePool.set(p.probe_id, m);
+            probeGroup.add(m);
+        }
+    }
+    for (const id of [...probePool.keys()]) {
+        if (!present.has(id)) _disposePooled(probeGroup, probePool, id);
     }
     probeGroup.visible = showProbes;
 }
@@ -843,12 +888,9 @@ function updateDynamicLayers(frameIdx) {
     if (!window.animationData || !window.animationData.frames) return;
     const frame = window.animationData.frames[frameIdx];
     if (!frame) return;
-    rebuildCivs(frame);
-    rebuildProbes(frame);
+    syncCivPool(frame);
+    syncProbePool(frame);
     rebuildHazards(frame);
-    updateTrajectoryVisibility(
-        frame.time_myr !== undefined ? frame.time_myr : (frame.time || 0) * 1000,
-    );
 }
 
 function updateLayerFrame() {
@@ -857,6 +899,41 @@ function updateLayerFrame() {
         lastLayerFrame = fi;
         updateDynamicLayers(fi);
     }
+}
+
+let lastInterpTimeMyr = null;
+let interpCache = { i: -1, j: -1, civsJ: null, probesJ: null };
+
+function updateLayerInterpolation(tMyr) {
+    if (tMyr === lastInterpTimeMyr) return;
+    const times = getFrameTimes();
+    if (!times) return;
+    lastInterpTimeMyr = tMyr;
+    const { i, j, alpha } = bracketForTime(times, tMyr);
+    if (i < 0) return;
+    const frames = window.animationData.frames;
+    if (interpCache.i !== i || interpCache.j !== j) {
+        const civsJ = new Map();
+        for (const c of frames[j].civilizations || []) civsJ.set(c.civ_id, c);
+        const probesJ = new Map();
+        for (const p of frames[j].probes || []) probesJ.set(p.probe_id, p);
+        interpCache = { i, j, civsJ, probesJ };
+    }
+    for (const civ of frames[i].civilizations || []) {
+        const m = civPool.get(civ.civ_id);
+        if (!m) continue;
+        const next = interpCache.civsJ.get(civ.civ_id);
+        const p = next ? lerp3(civ.position, next.position, alpha) : civ.position;
+        m.position.set(p[0], p[1], p[2]);
+    }
+    for (const probe of frames[i].probes || []) {
+        const m = probePool.get(probe.probe_id);
+        if (!m) continue;
+        const next = interpCache.probesJ.get(probe.probe_id);
+        const p = next ? lerp3(probe.position, next.position, alpha) : probe.position;
+        m.position.set(p[0], p[1], p[2]);
+    }
+    updateTrajectoryVisibility(tMyr);
 }
 
 function wireLayerUI() {
@@ -1267,6 +1344,7 @@ function tick() {
     if (window.__wgpuUpdateUI) window.__wgpuUpdateUI();
     updateChartFrame();
     updateLayerFrame();
+    updateLayerInterpolation(currentTimeMyr);
 
     if (usePostProcessing) postProcessing.render();
     else renderer.render(scene, camera);
@@ -1379,6 +1457,13 @@ export async function initWebGPUGalaxy() {
         followCivId,
         pos: camera.position.toArray(),
         target: controls.target.toArray(),
+    });
+    window.__wgpuInterpState = () => ({
+        timeMyr: currentTimeMyr,
+        bracket: getFrameTimes() ? bracketForTime(getFrameTimes(), currentTimeMyr) : null,
+        civPositions: Object.fromEntries(
+            [...civPool].map(([id, m]) => [id, m.position.toArray()]),
+        ),
     });
     window.__wgpuLayerState = () => ({
         frame: lastLayerFrame,
