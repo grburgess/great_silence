@@ -1,10 +1,13 @@
 """Test Three.js templates with mock data."""
 
-from pathlib import Path
-from great_silence.visualization.threejs.mock_data_generator import generate_mock_data
-from great_silence.visualization.threejs.html_exporter import ThreeJSRenderer, ThreeJSConfig
-from jinja2 import Template
 import json
+from pathlib import Path
+
+from jinja2 import Template
+
+from great_silence.visualization.threejs.html_exporter import ThreeJSConfig
+from great_silence.visualization.threejs.mock_data_generator import generate_mock_data
+
 
 def test_templates():
     """Test template rendering with mock data."""
@@ -18,20 +21,22 @@ def test_templates():
     output_path = Path("output/test_threejs_mock.html")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"\nLoading templates...")
+    print("\nLoading templates...")
     template_dir = Path("great_silence/visualization/threejs/templates")
-    
-    with open(template_dir / "index.html.j2", 'r') as f:
-        index_template = Template(f.read())
-    
-    print(f"  Loaded index.html.j2")
 
-    print(f"\nPreparing template data...")
+    with open(template_dir / "index.html.j2") as f:
+        index_template = Template(f.read())
+
+    print("  Loaded index.html.j2")
+
+    print("\nPreparing template data...")
     config = ThreeJSConfig()
-    
-    frames_json = json.dumps(mock_data['frames'])
+
+    frames = mock_data["frames"]
+    time_range = [frames[0]["time"], frames[-1]["time"]] if frames else [0, 1]
+    frames_json = json.dumps({"frames": frames, "trajectories": [], "time_range": time_range})
     frames_size_mb = len(frames_json) / (1024 * 1024)
-    
+
     template_data = {
         "config": config.to_dict(),
         "show_trajectories": True,
@@ -40,16 +45,16 @@ def test_templates():
         "animated": True,
         "animation_data_url": None,
     }
-    
+
     template_data.update(mock_data)
     template_data["animation_data"] = frames_json
 
     print(f"  Animation data size: {frames_size_mb:.2f} MB")
 
-    print(f"\nRendering HTML...")
+    print("\nRendering HTML...")
     html = index_template.render(**template_data)
 
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         f.write(html)
 
     print(f"  Saved to: {output_path}")
@@ -73,6 +78,7 @@ def test_templates():
     print("  - Mini-map")
     print("  - Export frame button")
     print("  - Post-processing toggle (bloom, film grain, vignette)")
+
 
 if __name__ == "__main__":
     test_templates()
