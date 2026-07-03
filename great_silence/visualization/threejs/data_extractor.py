@@ -203,7 +203,12 @@ def build_union_trajectories(snapshots):
                 continue
             entry_is_probe = entry.get("source") == "probe"
             current_is_probe = current.get("source") == "probe"
-            if entry_is_probe and not current_is_probe or entry_is_probe == current_is_probe and entry["time_myr"] < current["time_myr"]:
+            if (
+                entry_is_probe
+                and not current_is_probe
+                or entry_is_probe == current_is_probe
+                and entry["time_myr"] < current["time_myr"]
+            ):
                 best[key] = entry
     return list(best.values())
 
@@ -334,7 +339,7 @@ class SimulationDataExtractor:
                     "hazards": _extract_hazard_list(snap),
                     "trajectories": _extract_expansion_trajectories(snap),
                     "stellar_ages": (
-                        snap.stellar_ages.tolist()
+                        snap.stellar_ages
                         if hasattr(snap, "stellar_ages") and snap.stellar_ages is not None
                         else None
                     ),
@@ -348,7 +353,7 @@ class SimulationDataExtractor:
                     and snap.stellar_positions is not None
                     and len(snap.stellar_positions) > 0
                 ):
-                    snap_data["stellar_positions"] = snap.stellar_positions.tolist()
+                    snap_data["stellar_positions"] = snap.stellar_positions
 
                 self.snapshots.append(snap_data)
 
@@ -738,7 +743,7 @@ class SimulationDataExtractor:
             for snap in self.snapshots:
                 frame_hr = {"time": snap.get("time", 0)}
                 if "stellar_ages" in snap and snap["stellar_ages"] is not None:
-                    ages = np.array(snap["stellar_ages"])
+                    ages = np.asarray(snap["stellar_ages"])
                     if len(ages) > 0:
                         ages_sub = ages[indices] if len(ages) > len(indices) else ages
 

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any, Optional, Union
 
+import numpy as np
+
 from .config import ThreeJSConfig
 from .data_extractor import SimulationDataExtractor, build_union_trajectories
 
@@ -62,18 +64,13 @@ class ThreeJSRenderer:
                     }
                     # Include stellar positions if available (for stellar motion)
                     # Apply same subsampling as galaxy data for consistency
-                    if "stellar_positions" in snapshot and snapshot["stellar_positions"]:
-                        positions = snapshot["stellar_positions"]
-                        if (
-                            hasattr(self.extractor, "_subsample_indices")
-                            and self.extractor._subsample_indices is not None
-                        ):
-                            # Convert to numpy, subsample, convert back to list
-                            import numpy as np
-
-                            pos_array = np.array(positions)
-                            positions = pos_array[self.extractor._subsample_indices].tolist()
-                        frame_data["stellar_positions"] = positions
+                    positions = snapshot.get("stellar_positions")
+                    if positions is not None and len(positions) > 0:
+                        pos_array = np.asarray(positions)
+                        indices = getattr(self.extractor, "_subsample_indices", None)
+                        if indices is not None:
+                            pos_array = pos_array[indices]
+                        frame_data["stellar_positions"] = pos_array.tolist()
                     frames.append(frame_data)
 
             self.data = {
