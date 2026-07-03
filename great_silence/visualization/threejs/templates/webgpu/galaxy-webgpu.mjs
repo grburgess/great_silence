@@ -304,10 +304,12 @@ function timeToFrac(t) {
 // HR diagram (and other panels) animate as currentTimeMyr advances.
 function updateChartFrame() {
     if (!window.updateCharts) return;
-    const nFrames = (window.animationData && window.animationData.frames && window.animationData.frames.length)
-        || (window.hrData && window.hrData.per_frame && window.hrData.per_frame.length) || 0;
-    if (nFrames <= 0) return;
-    const idx = Math.max(0, Math.min(nFrames - 1, Math.round(timeToFrac(currentTimeMyr) * (nFrames - 1))));
+    let idx = frameIndexForTime();
+    if (idx < 0) {
+        const nFrames = (window.hrData && window.hrData.per_frame && window.hrData.per_frame.length) || 0;
+        if (nFrames <= 0) return;
+        idx = Math.max(0, Math.min(nFrames - 1, Math.round(timeToFrac(currentTimeMyr) * (nFrames - 1))));
+    }
     if (idx !== lastChartFrame) {
         lastChartFrame = idx;
         window.updateCharts(idx);
@@ -462,7 +464,10 @@ function updateFollow() {
             }
             return;
         }
-        const tp = new THREE.Vector3(civ.position[0], civ.position[1], civ.position[2]);
+        const pooled = civPool.get(followCivId);
+        const tp = pooled
+            ? pooled.position.clone()
+            : new THREE.Vector3(civ.position[0], civ.position[1], civ.position[2]);
         if (!followTarget) followTarget = tp.clone();
         else followTarget.lerp(tp, followLerp);
         controls.target.lerp(followTarget, followLerp);
@@ -833,10 +838,10 @@ function syncCivPool(frame) {
             const op = active ? cfg.civ_active_opacity || 0.9 : cfg.civ_extinct_opacity || 0.5;
             m = emissiveSphere(r, hex, op);
             m.userData.stateKey = stateKey;
-            m.position.set(civ.position[0], civ.position[1], civ.position[2]);
             civPool.set(id, m);
             civGroup.add(m);
         }
+        m.position.set(civ.position[0], civ.position[1], civ.position[2]);
     }
     for (const [id, m] of civPool) m.visible = present.has(id);
     civGroup.visible = showCivs;
@@ -846,16 +851,15 @@ function syncProbePool(frame) {
     const present = new Set();
     for (const p of frame.probes || []) {
         present.add(p.probe_id);
-        if (!probePool.has(p.probe_id)) {
-            const m = emissiveSphere(0.05, 0x00ffff, 0.9);
-            m.position.set(p.position[0], p.position[1], p.position[2]);
+        let m = probePool.get(p.probe_id);
+        if (!m) {
+            m = emissiveSphere(0.05, 0x00ffff, 0.9);
             probePool.set(p.probe_id, m);
             probeGroup.add(m);
         }
+        m.position.set(p.position[0], p.position[1], p.position[2]);
     }
-    for (const id of [...probePool.keys()]) {
-        if (!present.has(id)) _disposePooled(probeGroup, probePool, id);
-    }
+    for (const [id, m] of probePool) m.visible = present.has(id);
     probeGroup.visible = showProbes;
 }
 
@@ -1468,8 +1472,16 @@ export async function initWebGPUGalaxy() {
     window.__wgpuLayerState = () => ({
         frame: lastLayerFrame,
         stars: { visible: starPoints ? starPoints.visible : null },
-        civs: { visible: civGroup ? civGroup.visible : null, count: civGroup ? civGroup.children.length : 0 },
-        probes: { visible: probeGroup ? probeGroup.visible : null, count: probeGroup ? probeGroup.children.length : 0 },
+        civs: {
+            visible: civGroup ? civGroup.visible : null,
+            count: [...civPool.values()].filter((m) => m.visible).length,
+            poolSize: civPool.size,
+        },
+        probes: {
+            visible: probeGroup ? probeGroup.visible : null,
+            count: [...probePool.values()].filter((m) => m.visible).length,
+            poolSize: probePool.size,
+        },
         hazards: { visible: hazardGroup ? hazardGroup.visible : null, count: hazardGroup ? hazardGroup.children.length : 0 },
         traj: { visible: trajGroup ? trajGroup.visible : null, count: trajGroup ? trajGroup.children.length : 0 },
         postProcessing: usePostProcessing,
