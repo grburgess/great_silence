@@ -732,3 +732,13 @@ python scripts/benchmark_baseline.py  # Detailed profiling
 - **Harmless**: the request was already dead; server continues serving
 - **Handling**: `_EngineioDisconnectFilter` on the `uvicorn.error` logger (installed in `run_app`, `webapp/app.py`) suppresses ONLY records whose exception chain (walking BaseExceptionGroup + __cause__/__context__) bottoms out in `KeyError('REQUEST_METHOD')`. E2E verified: 3 disconnect probes → 0 log lines, app serves 200. Remove the filter if engineio ever guards empty environ upstream
 - Tests: `tests/test_webapp_smoke.py` (filter selectivity + installation)
+
+### Jul 2026 - "Viz generation still slow + disconnect" (root causes found at scale)
+- **Primary root cause**: `SimulationConfig` library default `total_stars = 100_000_000` (parameters.py:55) flowed into the webapp unchanged — the Stars slider (10k-500k) DISPLAYS the out-of-range 1e8 but only writes back when dragged, AND `apply_preset` rebuilt the config from scratch, silently resetting stars to 1e8 even after the user set the slider. Any preset-then-run flow was a 100M-star simulation
+- **Fix**: `_webapp_safe_stars` clamp in `webapp/state.py` at AppState init (out-of-range → 50,000) and in `apply_preset` (preserves the user's in-range choice). E2E verified: fresh page shows 50,000; survives preset click
+- **Secondary (extraction hotspots at honest scale, 100k stars/10 Gyr/102 snaps)**: `_load_data` 8.8s → 2.1s (4.2x):
+  - `temperature_to_rgb` was a per-star Python loop with scalar `np.clip` (1.35M calls, 5.5s) — vectorized with masked numpy ops, golden-value tests prove identical output (`tests/test_stellar_colors.py`)
+  - snapshot `stellar_positions`/`stellar_ages` did full `.tolist()` per snapshot then `np.array(list)` again at consumers (2.1s) — arrays now stay numpy through `extractor.snapshots`; consumers use `np.asarray` (no copy). GOTCHA: ndarray truthiness — `if snap["stellar_positions"]:` raises on arrays; use `is not None and len(...)`
+  - remaining floor: single `json.dumps` of the animation payload (~1.3s @100k, GIL-held) — acceptable
+- **E2E after fixes** (50k stars, Optimistic preset, 10 Gyr): sim 5s; Generate Visualization 8.1s; no "Connection lost" at any poll; iframe live with 102 frames + 18,328 union trajectory edges
+- **Profiling recipe**: scratchpad `profile_export_scale.py` pattern — cProfile around `renderer._load_data(animated=True)` only (sim excluded)
