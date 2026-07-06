@@ -44,8 +44,14 @@ function classifyDisaster(type) {
 
 // --- module-level state (single renderer per page) ---
 let renderer, scene, camera, controls, postProcessing;
-let uTime, uStarIntensity;
+let uTime, uStarIntensity, uCivGlow;
 let starPoints = null;
+
+const CIV_GLOW_BASE = 6.0;
+const CIV_GLOW_MIN = 0.06;
+let civGlowSlider = 1.0;
+let historyWindowFrac = 0.25;
+let lastCivGlowCount = 1;
 let disasterPool = [];
 let disasterEvents = [];
 let clock;
@@ -725,6 +731,9 @@ let civGroup = null;
 let probeGroup = null;
 let hazardGroup = null;
 let trajGroup = null;
+let trajLines = null;
+let trajPoints = null;
+let trajTimesSorted = null;
 let showStars = true;
 let showCivs = true;
 let showProbes = true;
@@ -757,6 +766,25 @@ function emissiveSphere(radius, hex, opacity) {
     return new THREE.Mesh(geo, mat);
 }
 
+function civHalo(radius, hex, opacity) {
+    const geo = new THREE.SphereGeometry(radius, 12, 12);
+    const mat = new THREE.MeshBasicNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+    });
+    mat.colorNode = color(hex).mul(uCivGlow);
+    mat.opacityNode = float(opacity);
+    mat.toneMapped = false;
+    return new THREE.Mesh(geo, mat);
+}
+
+function applyCivGlow() {
+    const n = Math.max(1, lastCivGlowCount);
+    const adaptive = Math.min(CIV_GLOW_BASE, Math.max(CIV_GLOW_MIN, CIV_GLOW_BASE / Math.sqrt(n)));
+    if (uCivGlow) uCivGlow.value = adaptive * civGlowSlider;
+}
+
 function clearGroup(g) {
     if (!g) return;
     for (let i = g.children.length - 1; i >= 0; i--) {
@@ -773,77 +801,193 @@ function buildDynamicLayers() {
     hazardGroup = new THREE.Group();
     trajGroup = new THREE.Group();
     scene.add(civGroup, probeGroup, hazardGroup, trajGroup);
+    buildCivCorePoints();
     buildTrajectoryObjects();
+}
+
+function buildCivCorePoints() {
+    const frames = (window.animationData && window.animationData.frames) || [];
+    let maxCivs = 0;
+    for (const f of frames) {
+        const c = (f.civilizations || []).length;
+        if (c > maxCivs) maxCivs = c;
+    }
+    if (maxCivs === 0) return;
+    civCorePos = new Float32Array(maxCivs * 3);
+    civCoreCol = new Float32Array(maxCivs * 3);
+    civCoreSize = new Float32Array(maxCivs);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(civCorePos, 3));
+    geo.setAttribute('civColor', new THREE.BufferAttribute(civCoreCol, 3));
+    geo.setAttribute('civSize', new THREE.BufferAttribute(civCoreSize, 1));
+    geo.setDrawRange(0, 0);
+    const mat = new THREE.PointsNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.NormalBlending,
+        sizeAttenuation: false,
+    });
+    mat.colorNode = attribute('civColor', 'vec3');
+    mat.sizeNode = attribute('civSize', 'float');
+    mat.opacityNode = float(0.95);
+    mat.toneMapped = false;
+    civCorePoints = new THREE.Points(geo, mat);
+    civCorePoints.frustumCulled = false;
+    civGroup.add(civCorePoints);
 }
 
 function buildTrajectoryObjects() {
     const unionList = (window.animationData && window.animationData.trajectories) || [];
-    for (const traj of unionList) {
-        if (!traj.start || !traj.end) continue;
-        const timeMyr = traj.time_myr || 0;
-        const civId = traj.civ_id || 0;
-        const hex = new THREE.Color().setHSL((civId * 0.618033988749895) % 1.0, 1.0, 0.65).getHex();
-        const geo = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(traj.start[0], traj.start[1], traj.start[2]),
-            new THREE.Vector3(traj.end[0], traj.end[1], traj.end[2]),
-        ]);
-        const mat = new THREE.LineBasicNodeMaterial({
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-        mat.colorNode = color(hex).mul(1.5);
-        mat.opacityNode = float(0.9);
-        mat.toneMapped = false;
-        const line = new THREE.Line(geo, mat);
-        line.visible = false;
-        line.userData.timeMyr = timeMyr;
-        trajGroup.add(line);
-        const end = emissiveSphere(0.03, hex, 0.95);
-        end.position.set(traj.end[0], traj.end[1], traj.end[2]);
-        end.visible = false;
-        end.userData.timeMyr = timeMyr;
-        trajGroup.add(end);
+    const sorted = unionList
+        .filter((traj) => traj.start && traj.end)
+        .sort((a, b) => (a.time_myr || 0) - (b.time_myr || 0));
+    const n = sorted.length;
+    trajTimesSorted = new Float64Array(n);
+    if (n === 0) return;
+
+    const linePos = new Float32Array(n * 6);
+    const lineCol = new Float32Array(n * 6);
+    const endPos = new Float32Array(n * 3);
+    const endCol = new Float32Array(n * 3);
+    const tmp = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+        const traj = sorted[i];
+        trajTimesSorted[i] = traj.time_myr || 0;
+        tmp.setHSL(((traj.civ_id || 0) * 0.618033988749895) % 1.0, 1.0, 0.65);
+        const s = traj.start;
+        const e = traj.end;
+        linePos[i * 6 + 0] = s[0];
+        linePos[i * 6 + 1] = s[1];
+        linePos[i * 6 + 2] = s[2];
+        linePos[i * 6 + 3] = e[0];
+        linePos[i * 6 + 4] = e[1];
+        linePos[i * 6 + 5] = e[2];
+        for (let k = 0; k < 2; k++) {
+            lineCol[i * 6 + k * 3 + 0] = tmp.r;
+            lineCol[i * 6 + k * 3 + 1] = tmp.g;
+            lineCol[i * 6 + k * 3 + 2] = tmp.b;
+        }
+        endPos[i * 3 + 0] = e[0];
+        endPos[i * 3 + 1] = e[1];
+        endPos[i * 3 + 2] = e[2];
+        endCol[i * 3 + 0] = tmp.r;
+        endCol[i * 3 + 1] = tmp.g;
+        endCol[i * 3 + 2] = tmp.b;
     }
+
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+    lineGeo.setAttribute('trajColor', new THREE.BufferAttribute(lineCol, 3));
+    lineGeo.setDrawRange(0, 0);
+    const lineMat = new THREE.LineBasicNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.NormalBlending,
+    });
+    lineMat.colorNode = attribute('trajColor', 'vec3').mul(0.8);
+    lineMat.opacityNode = float(0.07);
+    lineMat.toneMapped = true;
+    trajLines = new THREE.LineSegments(lineGeo, lineMat);
+    trajLines.frustumCulled = false;
+    trajGroup.add(trajLines);
+
+    const endGeo = new THREE.BufferGeometry();
+    endGeo.setAttribute('position', new THREE.BufferAttribute(endPos, 3));
+    endGeo.setAttribute('trajColor', new THREE.BufferAttribute(endCol, 3));
+    endGeo.setDrawRange(0, 0);
+    const endMat = new THREE.PointsNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.NormalBlending,
+        sizeAttenuation: false,
+    });
+    endMat.colorNode = attribute('trajColor', 'vec3').mul(0.9);
+    endMat.opacityNode = float(0.14);
+    endMat.sizeNode = float(1.0);
+    endMat.toneMapped = true;
+    trajPoints = new THREE.Points(endGeo, endMat);
+    trajPoints.frustumCulled = false;
+    trajGroup.add(trajPoints);
 }
 
 const civPool = new Map();
 const probePool = new Map();
+const _tmpCivColor = new THREE.Color();
+let civCorePoints = null;
+let civCorePos = null;
+let civCoreCol = null;
+let civCoreSize = null;
 
 function _disposePooled(group, pool, id) {
     const m = pool.get(id);
     if (!m) return;
     group.remove(m);
-    if (m.geometry) m.geometry.dispose();
-    if (m.material) m.material.dispose();
+    m.traverse((c) => {
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+    });
     pool.delete(id);
 }
 
 function syncCivPool(frame) {
     const cfg = window.config || {};
+    const activePx = cfg.civ_core_active_px || 10.0;
+    const extinctPx = cfg.civ_core_extinct_px || 4.0;
+    const activeScale = cfg.civ_core_active_intensity || 3.0;
+    const extinctScale = cfg.civ_core_extinct_intensity || 1.2;
     const present = new Set();
+    let activeCount = 0;
+    let n = 0;
+    const win = historyWindowMyr();
     for (const civ of frame.civilizations || []) {
+        const active = civ.is_active;
+        if (
+            !active &&
+            win !== Infinity &&
+            civ.death_time != null &&
+            currentTimeMyr - civ.death_time > win
+        ) {
+            continue;
+        }
+        const hex = kardashevColorHex(civ.kardashev);
+        if (civCorePos) {
+            const scale = active ? activeScale : extinctScale;
+            _tmpCivColor.set(hex);
+            civCorePos[n * 3] = civ.position[0];
+            civCorePos[n * 3 + 1] = civ.position[1];
+            civCorePos[n * 3 + 2] = civ.position[2];
+            civCoreCol[n * 3] = _tmpCivColor.r * scale;
+            civCoreCol[n * 3 + 1] = _tmpCivColor.g * scale;
+            civCoreCol[n * 3 + 2] = _tmpCivColor.b * scale;
+            civCoreSize[n] = active ? activePx : extinctPx;
+            n++;
+        }
+        if (!active) continue;
+        activeCount++;
         const id = civ.civ_id;
         present.add(id);
-        const active = civ.is_active;
-        const hex = kardashevColorHex(civ.kardashev);
-        const stateKey = hex + '|' + (active ? 'a' : 'x');
         let m = civPool.get(id);
-        if (m && m.userData.stateKey !== stateKey) {
+        if (m && m.userData.stateKey !== hex) {
             _disposePooled(civGroup, civPool, id);
             m = null;
         }
         if (!m) {
-            const r = active ? cfg.civ_active_size || 0.15 : cfg.civ_extinct_size || 0.1;
-            const op = active ? cfg.civ_active_opacity || 0.9 : cfg.civ_extinct_opacity || 0.5;
-            m = emissiveSphere(r, hex, op);
-            m.userData.stateKey = stateKey;
+            m = civHalo(cfg.civ_active_glow_size || 1.0, hex, cfg.civ_active_opacity || 0.9);
+            m.userData.stateKey = hex;
             civPool.set(id, m);
             civGroup.add(m);
         }
         m.position.set(civ.position[0], civ.position[1], civ.position[2]);
     }
+    if (civCorePoints) {
+        civCorePoints.geometry.setDrawRange(0, n);
+        civCorePoints.geometry.attributes.position.needsUpdate = true;
+        civCorePoints.geometry.attributes.civColor.needsUpdate = true;
+        civCorePoints.geometry.attributes.civSize.needsUpdate = true;
+    }
     for (const [id, m] of civPool) m.visible = present.has(id);
+    lastCivGlowCount = Math.max(1, activeCount);
+    applyCivGlow();
     civGroup.visible = showCivs;
 }
 
@@ -881,11 +1025,36 @@ function rebuildHazards(frame) {
     hazardGroup.visible = showHazards;
 }
 
+function historyWindowMyr() {
+    if (maxTimeMyr <= 0 || historyWindowFrac >= 0.999) return Infinity;
+    return historyWindowFrac * maxTimeMyr;
+}
+
 function updateTrajectoryVisibility(tMyr) {
-    for (const child of trajGroup.children) {
-        child.visible = child.userData.timeMyr <= tMyr;
-    }
     trajGroup.visible = showTrajectories;
+    if (!trajTimesSorted || trajTimesSorted.length === 0) return;
+    let lo = 0;
+    let hi = trajTimesSorted.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (trajTimesSorted[mid] <= tMyr) lo = mid + 1;
+        else hi = mid;
+    }
+    let start = 0;
+    const win = historyWindowMyr();
+    if (win !== Infinity) {
+        const cutoff = tMyr - win;
+        let a = 0;
+        let b = trajTimesSorted.length;
+        while (a < b) {
+            const mid = (a + b) >> 1;
+            if (trajTimesSorted[mid] <= cutoff) a = mid + 1;
+            else b = mid;
+        }
+        start = a;
+    }
+    if (trajLines) trajLines.geometry.setDrawRange(start * 2, (lo - start) * 2);
+    if (trajPoints) trajPoints.geometry.setDrawRange(start, lo - start);
 }
 
 function updateDynamicLayers(frameIdx) {
@@ -1314,6 +1483,40 @@ function wireUI() {
     wireCameraUI();
     wireLayerUI();
     wireDisasterUI();
+    wireCivGlowUI();
+    wireHistoryWindowUI();
+}
+
+function wireCivGlowUI() {
+    const slider = document.getElementById('civ-glow-slider');
+    const display = document.getElementById('civ-glow-display');
+    if (!slider) return;
+    civGlowSlider = parseFloat(slider.value);
+    if (display) display.textContent = civGlowSlider.toFixed(1) + 'x';
+    slider.addEventListener('input', () => {
+        civGlowSlider = parseFloat(slider.value);
+        if (display) display.textContent = civGlowSlider.toFixed(1) + 'x';
+        applyCivGlow();
+    });
+}
+
+function refreshHistoryWindow() {
+    updateTrajectoryVisibility(currentTimeMyr);
+    lastLayerFrame = -1;
+    updateLayerFrame();
+}
+
+function wireHistoryWindowUI() {
+    const slider = document.getElementById('history-window-slider');
+    const display = document.getElementById('history-window-display');
+    if (!slider) return;
+    historyWindowFrac = parseFloat(slider.value) / 100;
+    if (display) display.textContent = slider.value + '%';
+    slider.addEventListener('input', () => {
+        historyWindowFrac = parseFloat(slider.value) / 100;
+        if (display) display.textContent = slider.value + '%';
+        refreshHistoryWindow();
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1390,6 +1593,7 @@ export async function initWebGPUGalaxy() {
 
     uTime = uniform(0.0);
     uStarIntensity = uniform(2.6);
+    uCivGlow = uniform(CIV_GLOW_BASE);
 
     clock = new THREE.Clock();
 

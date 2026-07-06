@@ -47,6 +47,7 @@ def _extract_civ_list(snap, galaxy_positions=None):
                         else c.birth_time_myr / 1000.0
                     ),
                     "is_active": c.is_active,
+                    "death_time": getattr(c, "death_time_myr", None),
                 }
             )
         return civs
